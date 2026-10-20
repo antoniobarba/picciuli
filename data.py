@@ -49,10 +49,21 @@ class Data:
             self._db.commit()
 
     def get_period(self, date):
+        from datetime import datetime
         cur = self._db.cursor()
         res = cur.execute("select id, start_date, end_date from periods where start_date <= ? and end_date >= ?", (date, date))
-        values = res.fetchone()
-        return values
+        v = res.fetchone()
+        prettier = {'id': v[0], 'start_date': datetime.fromtimestamp(v[1]), 'end_date': datetime.fromtimestamp(v[2])}
+        return prettier
+
+    def del_period(self, period_id):
+        try:
+            cur = self._db.cursor()
+            cur.execute("delete from periods where id = ?", (period_id,))
+            self._db.commit()
+        except:
+            pass
+
 
     def add_period(self, start_date, end_date):
         cur = self._db.cursor()
