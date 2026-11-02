@@ -19,7 +19,7 @@ from data import (
 )
 
 
-PERIOD_COLORS = ("blue", "green", "magenta", "cyan", "yellow", "red")
+PERIOD_COLORS = ("green", "magenta", "cyan", "red", "blue")
 
 
 def month_grid(year: int, month: int) -> list[list[date | None]]:
@@ -79,17 +79,20 @@ def _periods_for_day(
     day: date,
     periods: Sequence[PeriodRecord],
 ) -> list[PeriodRecord]:
-    return [
-        period
-        for period in periods
-        if (
-            period["start_date"].date() <= day
-            and (
-                period["end_date"] is None
-                or period["end_date"].date() >= day
+    return sorted(
+        (
+            period
+            for period in periods
+            if (
+                period["start_date"].date() <= day
+                and (
+                    period["end_date"] is None
+                    or period["end_date"].date() >= day
+                )
             )
-        )
-    ]
+        ),
+        key=lambda period: (period["start_date"], period["id"]),
+    )
 
 
 def _period_for_day(day: date, periods: Sequence[PeriodRecord]) -> PeriodRecord | None:
@@ -107,21 +110,29 @@ def _calendar_lines(
         " Mo  Tu  We  Th  Fr  Sa  Su ",
     ]
     for week in month_grid(selected_day.year, selected_day.month):
-        cells = []
+        top_cells = []
+        bottom_cells = []
         for day in week:
             if day is None:
-                cells.append("    ")
+                top_cells.append("    ")
+                bottom_cells.append("    ")
                 continue
-            period = _period_for_day(day, periods)
-            if day == selected_day:
-                style = term.reverse
-            elif period is not None:
-                color_index = (period["id"] - 1) % len(PERIOD_COLORS)
-                style = getattr(term, f"on_{PERIOD_COLORS[color_index]}")
-            else:
+            day_periods = _periods_for_day(day, periods)
+            first_period = day_periods[0] if day_periods else None
+            second_period = day_periods[1] if len(day_periods) > 1 else first_period
+            for cells, period, label in (
+                (top_cells, first_period, f"{day.day:>3} "),
+                (bottom_cells, second_period, "    "),
+            ):
                 style = ""
-            cells.append(f"{style}{day.day:>3}{term.normal} ")
-        lines.append("".join(cells).rstrip())
+                if period is not None:
+                    color_index = (period["id"] - 1) % len(PERIOD_COLORS)
+                    style = getattr(term, f"on_{PERIOD_COLORS[color_index]}")
+                if day == selected_day:
+                    style += term.reverse
+                cells.append(f"{style}{label}{term.normal}")
+        lines.append("".join(top_cells).rstrip())
+        lines.append("".join(bottom_cells).rstrip())
     lines.append("")
 
     month_periods = [
@@ -246,6 +257,7 @@ def render_screen(
                 item["category_id"]: item["parent_id"]
                 for item in report_categories
             }
+            balance_rows: list[tuple[str, str, str]] = []
             if not report_categories:
                 balance_panel.append(
                     f"No categories yet. Press {term.yellow('[c]')} to add one."
@@ -255,7 +267,7 @@ def render_screen(
                 for item in report_categories:
                     if item["parent_id"] is None:
                         if has_root_category:
-                            balance_panel.append("")
+                            balance_rows.append(("", "", ""))
                         has_root_category = True
                     name = (
                         f"  └─ {item['category_name']}"
@@ -285,19 +297,42 @@ def render_screen(
                         remaining = format_amount(remaining_amount, currency)
                         if remaining_amount < 0:
                             remaining = term.red(remaining)
-                        amount += f" ({remaining} left)"
-                    amount_padding = max(0, 16 - term.length(amount))
-                    balance_panel.append(
-                        f"{name:<22} {' ' * amount_padding}{amount}"
-                    )
+                        allocated = format_amount(allocated_budget, currency)
+                        budget_text = f"({remaining}/{allocated} left)"
+                    else:
+                        budget_text = ""
+                    balance_rows.append((name, amount, budget_text))
             total = format_amount(report["total"], currency)
             if report["total"] < 0:
                 total = term.red(total)
-            total_padding = max(0, 16 - term.length(total))
+            amount_width = max(
+                [term.length(total)]
+                + [term.length(amount) for _, amount, _ in balance_rows]
+            )
+            budget_width = max(
+                [0] + [term.length(budget) for _, _, budget in balance_rows]
+            )
+            name_width = max(22, balance_width - amount_width - budget_width - 2)
+            for name, amount, budget in balance_rows:
+                if not name and not amount and not budget:
+                    balance_panel.append("")
+                    continue
+                if term.length(name) > name_width:
+                    name = name[: max(0, name_width - 1)] + "…"
+                name_padding = max(0, name_width - term.length(name))
+                amount_padding = max(0, amount_width - term.length(amount))
+                budget_padding = max(0, budget_width - term.length(budget))
+                balance_panel.append(
+                    f"{name}{' ' * name_padding} "
+                    f"{' ' * amount_padding}{amount}"
+                    f"{' ' * budget_padding}{' ' if budget_width else ''}{budget}"
+                )
             balance_panel.extend(
                 [
                     "-" * min(balance_width, 32),
-                    f"{'Total':<22} {' ' * total_padding}{total}",
+                    f"{'Total':<{name_width}} "
+                    f"{' ' * max(0, amount_width - term.length(total))}{total}"
+                    f"{' ' * (budget_width + (1 if budget_width else 0))}",
                 ]
             )
 

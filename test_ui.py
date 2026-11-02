@@ -3,6 +3,7 @@ import unittest
 from datetime import date, datetime
 
 from main import (
+    _calendar_lines,
     _periods_for_day,
     _period_date,
     _period_end_datetime,
@@ -120,11 +121,40 @@ class UiHelperTests(unittest.TestCase):
             None,
         )
 
-        self.assertIn("<on_blue>", screen)
+        self.assertIn("<on_green>", screen)
         self.assertIn(
             "Period: <yellow><</yellow>Payday (1/1)<yellow>></yellow>",
             screen,
         )
+
+    def test_calendar_uses_two_rows_for_the_first_two_overlapping_periods(self):
+        periods = [
+            {
+                "id": 1,
+                "name": "Earlier",
+                "start_date": datetime(2026, 10, 1),
+                "end_date": datetime(2026, 10, 31, 23, 59, 59),
+            },
+            {
+                "id": 2,
+                "name": "Second",
+                "start_date": datetime(2026, 10, 2),
+                "end_date": datetime(2026, 10, 31, 23, 59, 59),
+            },
+            {
+                "id": 3,
+                "name": "Third",
+                "start_date": datetime(2026, 10, 2),
+                "end_date": datetime(2026, 10, 31, 23, 59, 59),
+            },
+        ]
+
+        lines = _calendar_lines(FakeTerminal(), date(2026, 10, 2), periods)
+        first_week = lines[2:4]
+
+        self.assertIn("<on_green>  2 ", first_week[0])
+        self.assertIn("<on_magenta>    ", first_week[1])
+        self.assertNotIn("<on_cyan>", "".join(first_week))
 
     def test_balance_panel_shows_selected_period_index_when_periods_overlap(self):
         terminal = FakeTerminal()
@@ -228,8 +258,25 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("└─ Groceries", screen)
         self.assertIn("<red>-€150.00</red>", screen)
         plain_screen = re.sub(r"</?red>", "", screen)
-        self.assertIn("-€150.00 (€100.00 left)", plain_screen)
-        self.assertIn("-€50.00 (€0.00 left)", plain_screen)
+        balance_rows = [
+            line.split(" │ ")[-1]
+            for line in plain_screen.splitlines()
+            if "Essentials" in line or "Groceries" in line
+        ]
+        self.assertEqual(len(balance_rows), 2)
+        self.assertIn("Essentials", balance_rows[0])
+        self.assertIn("Groceries", balance_rows[1])
+        amount_ends = [
+            line.index(amount) + len(amount)
+            for line, amount in zip(balance_rows, ("-€150.00", "-€50.00"))
+        ]
+        self.assertEqual(amount_ends[0], amount_ends[1])
+        budget_ends = [
+            line.index(" left)") + len(" left)") for line in balance_rows
+        ]
+        self.assertEqual(budget_ends[0], budget_ends[1])
+        self.assertIn("(€100.00/€250.00 left)", balance_rows[0])
+        self.assertIn("(€0.00/€50.00 left)", balance_rows[1])
         self.assertIn("(€)", screen)
         lines = screen.splitlines()
         travel_index = next(
