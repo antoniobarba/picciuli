@@ -9,5 +9,5 @@
 
 ## Future budgeting
 
-- [ ] Assign budgets to categories for future periods.
-- [ ] Show the remaining budget decreasing as cash-flow balances increase.
+- [x] Assign budgets to categories for periods.
+- [x] Show the remaining budget decreasing as cash-flow outflows accumulate.
