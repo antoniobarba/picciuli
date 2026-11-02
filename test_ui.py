@@ -89,6 +89,7 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("<yellow>[u]</yellow> currency", screen)
         self.assertIn("<yellow>[n]</yellow> new period - <yellow>[r]</yellow>", screen)
         self.assertIn("<yellow>[p]</yellow> manage periods", screen)
+        self.assertIn("<yellow>[b]</yellow> manage budgets", screen)
         self.assertIn("-" * 80, screen)
 
     def test_period_date_entry_parses_iso_dates_and_open_ends(self):
@@ -191,6 +192,28 @@ class UiHelperTests(unittest.TestCase):
             ],
             "total": -15_000,
         }
+        budget_report = {
+            "period": period,
+            "categories": [
+                {
+                    "category_id": 1,
+                    "category_name": "Essentials",
+                    "budget": 20_000,
+                    "balance": -10_000,
+                    "remaining": 10_000,
+                },
+                {
+                    "category_id": 2,
+                    "category_name": "Groceries",
+                    "budget": 5_000,
+                    "balance": -5_000,
+                    "remaining": 0,
+                },
+            ],
+            "total_budget": 25_000,
+            "total_balance": -15_000,
+            "total_remaining": 10_000,
+        }
 
         screen = render_screen(
             terminal,
@@ -198,11 +221,15 @@ class UiHelperTests(unittest.TestCase):
             [period],
             report,
             currency="€",
+            budget_report=budget_report,
         )
 
         self.assertIn("Essentials", screen)
         self.assertIn("└─ Groceries", screen)
         self.assertIn("<red>-€150.00</red>", screen)
+        plain_screen = re.sub(r"</?red>", "", screen)
+        self.assertIn("-€150.00 (€100.00 left)", plain_screen)
+        self.assertIn("-€50.00 (€0.00 left)", plain_screen)
         self.assertIn("(€)", screen)
         lines = screen.splitlines()
         travel_index = next(

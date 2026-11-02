@@ -12,7 +12,9 @@ from data import (
     CashFlowRecord,
     CategoryRecord,
     Data,
+    BudgetRecord,
     PeriodBalanceReport,
+    PeriodBudgetReport,
     PeriodRecord,
 )
 
@@ -180,6 +182,7 @@ def render_screen(
     currency: str = "$",
     notice: str = "",
     selected_cash_flow_id: int | None = None,
+    budget_report: PeriodBudgetReport | None = None,
 ) -> str:
     left_width = 30
     title = term.bold(f"Picciuli - Personal Finance ({currency})")
@@ -235,6 +238,14 @@ def render_screen(
             balance_panel.append("No balance data available.")
         else:
             report_categories = report["categories"]
+            budget_amounts = {
+                item["category_id"]: item["budget"]
+                for item in budget_report["categories"]
+            } if budget_report is not None else {}
+            category_parent_ids = {
+                item["category_id"]: item["parent_id"]
+                for item in report_categories
+            }
             if not report_categories:
                 balance_panel.append(
                     f"No categories yet. Press {term.yellow('[c]')} to add one."
@@ -254,6 +265,27 @@ def render_screen(
                     amount = format_amount(item["balance"], currency)
                     if item["balance"] < 0:
                         amount = term.red(amount)
+                    budget_category_ids = [item["category_id"]]
+                    if item["parent_id"] is None:
+                        budget_category_ids.extend(
+                            category_id
+                            for category_id, parent_id in category_parent_ids.items()
+                            if parent_id == item["category_id"]
+                        )
+                    allocated_budget = sum(
+                        budget_amounts.get(category_id, 0)
+                        for category_id in budget_category_ids
+                    )
+                    has_budget = any(
+                        category_id in budget_amounts
+                        for category_id in budget_category_ids
+                    )
+                    if has_budget:
+                        remaining_amount = allocated_budget + item["balance"]
+                        remaining = format_amount(remaining_amount, currency)
+                        if remaining_amount < 0:
+                            remaining = term.red(remaining)
+                        amount += f" ({remaining} left)"
                     amount_padding = max(0, 16 - term.length(amount))
                     balance_panel.append(
                         f"{name:<22} {' ' * amount_padding}{amount}"
@@ -315,6 +347,7 @@ def render_screen(
                     ("[c]", "category"),
                     ("[m]", "manage categories"),
                     ("[p]", "manage periods"),
+                    ("[b]", "manage budgets"),
                     ("[<]", "previous period"),
                     ("[>]", "next period"),
                     ("[u]", "currency"),
@@ -825,6 +858,206 @@ def _manage_periods(term: Terminal, data: Data) -> str:
                 notice = f"Could not delete period: {error}"
 
 
+def _choose_budget_reference(
+    term: Terminal,
+    prompt: str,
+    options: Sequence[tuple[int, str]],
+    selected_id: int | None = None,
+) -> int | None:
+    if not options:
+        raise ValueError(f"cannot choose {prompt.lower()}: none are available")
+    default = next(
+        (
+            str(index)
+            for index, (option_id, _) in enumerate(options, start=1)
+            if option_id == selected_id
+        ),
+        "1",
+    )
+    labels = "\n".join(
+        f"{index}. {label}" for index, (_, label) in enumerate(options, start=1)
+    )
+    choice = _read_line(
+        term,
+        f"{prompt} number: ",
+        default,
+        prelude=f"Choose {prompt.lower()}:\n{labels}\n",
+    )
+    if choice is None:
+        return None
+    try:
+        index = int(choice) - 1
+        return options[index][0]
+    except (ValueError, IndexError):
+        raise ValueError(f"choose a valid {prompt.lower()} number") from None
+
+
+def _budget_references(
+    data: Data,
+) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    periods = [
+        (period["id"], f"{period['name']} ({period['start_date']:%Y-%m-%d})")
+        for period in data.list_periods()
+    ]
+    categories = [
+        (
+            category["id"],
+            (
+                f"└─ {category['name']}"
+                if category["parent_id"] is not None
+                else category["name"]
+            ),
+        )
+        for category in data.list_categories()
+    ]
+    return periods, categories
+
+
+def _add_budget(term: Terminal, data: Data) -> tuple[str, int | None]:
+    periods, categories = _budget_references(data)
+    period_id = _choose_budget_reference(term, "Period", periods)
+    if period_id is None:
+        return "Budget creation cancelled.", None
+    category_id = _choose_budget_reference(term, "Category", categories)
+    if category_id is None:
+        return "Budget creation cancelled.", None
+    amount_text = _read_line(term, "Budget amount (e.g. 123.45): ")
+    if amount_text is None:
+        return "Budget creation cancelled.", None
+    budget = data.create_budget(parse_amount(amount_text), category_id, period_id)
+    category_name = dict(categories)[category_id]
+    return f"Created budget for {category_name}.", budget["id"]
+
+
+def _edit_budget(
+    term: Terminal,
+    data: Data,
+    budget: BudgetRecord,
+) -> str:
+    periods, categories = _budget_references(data)
+    period_id = _choose_budget_reference(
+        term, "Period", periods, budget["period_id"]
+    )
+    if period_id is None:
+        return "Budget edit cancelled."
+    category_id = _choose_budget_reference(
+        term, "Category", categories, budget["category_id"]
+    )
+    if category_id is None:
+        return "Budget edit cancelled."
+    amount_text = _read_line(
+        term,
+        "Budget amount: ",
+        f"{Decimal(budget['amount']) / 100:.2f}",
+    )
+    if amount_text is None:
+        return "Budget edit cancelled."
+    data.update_budget(
+        budget["id"],
+        parse_amount(amount_text),
+        category_id,
+        period_id,
+    )
+    return "Budget updated."
+
+
+def _manage_budgets(term: Terminal, data: Data) -> str:
+    budgets = data.list_budgets()
+    selected_id: int | None = budgets[0]["id"] if budgets else None
+    notice = ""
+    while True:
+        budgets = data.list_budgets()
+        periods, categories = _budget_references(data)
+        period_names = dict(periods)
+        category_names = dict(categories)
+        selected_index = next(
+            (
+                index
+                for index, budget in enumerate(budgets)
+                if budget["id"] == selected_id
+            ),
+            0,
+        )
+        selected = budgets[selected_index] if budgets else None
+        if selected is not None:
+            selected_id = selected["id"]
+        rows = (
+            [
+                f"{'>' if budget['id'] == selected_id else ' '} "
+                f"{period_names[budget['period_id']]} / "
+                f"{category_names[budget['category_id']]} - "
+                f"{format_amount(budget['amount'], data.get_currency())}"
+                for budget in budgets
+            ]
+            if budgets
+            else ["No budgets yet."]
+        )
+        footer = _key_binding_footer(
+            term,
+            [
+                [("[↑/↓]", "select"), ("[a]", "add"), ("[e]", "edit")],
+                [("[d]", "delete"), ("[Esc/q]", "return to overview")],
+            ],
+        )
+        header = [term.bold("Manage budgets"), ""]
+        visible_rows = max(1, term.height - len(header) - len(footer) - 2)
+        first_row = min(
+            max(0, selected_index - visible_rows + 1),
+            max(0, len(rows) - visible_rows),
+        )
+        lines = header + rows[first_row : first_row + visible_rows]
+        if notice:
+            lines.extend(["", term.bold(notice)])
+        lines.extend(["", *footer])
+        print(term.home + term.clear + "\n".join(lines), end="", flush=True)
+
+        key = term.inkey()
+        if key.name == "KEY_ESCAPE" or key == "\x1b" or key.lower() == "q":
+            return notice or "Budget management closed."
+        if key.lower() == "a":
+            try:
+                notice, selected_id = _add_budget(term, data)
+            except (IntegrityError, LookupError, ValueError) as error:
+                notice = f"Could not create budget: {error}"
+            continue
+        if selected is None:
+            continue
+        if key.name == "KEY_UP":
+            selected_id = budgets[max(0, selected_index - 1)]["id"]
+            notice = ""
+            continue
+        if key.name == "KEY_DOWN":
+            selected_id = budgets[min(len(budgets) - 1, selected_index + 1)]["id"]
+            notice = ""
+            continue
+        if key.lower() == "e":
+            try:
+                notice = _edit_budget(term, data, selected)
+            except (IntegrityError, LookupError, ValueError) as error:
+                notice = f"Could not edit budget: {error}"
+            continue
+        if key.lower() == "d":
+            confirmation = _read_line(
+                term,
+                f"Type {term.yellow('[y]')} to confirm deletion (anything else cancels): ",
+                prelude="Delete selected budget?\n",
+            )
+            if confirmation is None or confirmation.lower() != "y":
+                notice = "Budget deletion cancelled."
+                continue
+            try:
+                data.delete_budget(selected["id"])
+                budgets.pop(selected_index)
+                selected_id = (
+                    budgets[min(selected_index, len(budgets) - 1)]["id"]
+                    if budgets
+                    else None
+                )
+                notice = "Budget deleted."
+            except (IntegrityError, LookupError, ValueError) as error:
+                notice = f"Could not delete budget: {error}"
+
+
 def _add_cash_flow(
     term: Terminal,
     data: Data,
@@ -990,6 +1223,11 @@ def run_ui(database_path: Path) -> None:
                     if selected_period is not None
                     else None
                 )
+                budget_report = (
+                    data.get_period_budget_report(selected_period["id"])
+                    if selected_period is not None
+                    else None
+                )
                 currency = data.get_currency()
                 print(
                     render_screen(
@@ -1002,6 +1240,7 @@ def run_ui(database_path: Path) -> None:
                         currency,
                         notice,
                         selected_cash_flow_id,
+                        budget_report,
                     ),
                     end="",
                     flush=True,
@@ -1104,6 +1343,11 @@ def run_ui(database_path: Path) -> None:
                         notice = _manage_periods(term, data)
                     except (IntegrityError, LookupError, ValueError) as error:
                         notice = f"Could not manage periods: {error}"
+                elif key.lower() == "b":
+                    try:
+                        notice = _manage_budgets(term, data)
+                    except (IntegrityError, LookupError, ValueError) as error:
+                        notice = f"Could not manage budgets: {error}"
                 elif key.lower() == "c":
                     try:
                         notice = _add_category(term, data)
