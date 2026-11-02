@@ -1,22 +1,30 @@
 import re
+import tempfile
 import unittest
 from datetime import date, datetime
+from pathlib import Path
 
 from main import (
     _calendar_lines,
+    _key_binding_footer,
+    _period_report_content,
     _periods_for_day,
     _period_date,
     _period_end_datetime,
+    _select_graph_categories,
+    _save_period_report,
     format_amount,
     month_grid,
     parse_amount,
     render_screen,
     shift_month,
 )
+from data import Data
 
 
 class FakeTerminal:
     width = 100
+    height = 40
     home = ""
     clear = ""
     normal = ""
@@ -46,6 +54,25 @@ class FakeTerminal:
         if name.startswith("on_"):
             return f"<{name}>"
         raise AttributeError(name)
+
+
+class FakeKey(str):
+    @property
+    def name(self):
+        return {
+            "down": "KEY_DOWN",
+            "up": "KEY_UP",
+            "\r": "KEY_ENTER",
+            "\x1b": "KEY_ESCAPE",
+        }.get(str(self), "")
+
+
+class ScriptedTerminal(FakeTerminal):
+    def __init__(self, keys):
+        self.keys = iter(keys)
+
+    def inkey(self):
+        return FakeKey(next(self.keys))
 
 
 class UiHelperTests(unittest.TestCase):
@@ -85,13 +112,33 @@ class UiHelperTests(unittest.TestCase):
         )
 
         self.assertIn("Tuesday, 27 October 2026", screen)
-        self.assertIn("<yellow>[n]</yellow> new period", screen)
-        self.assertIn("<yellow>[a]</yellow> add cash flow", screen)
-        self.assertIn("<yellow>[u]</yellow> currency", screen)
-        self.assertIn("<yellow>[n]</yellow> new period - <yellow>[r]</yellow>", screen)
-        self.assertIn("<yellow>[p]</yellow> manage periods", screen)
-        self.assertIn("<yellow>[b]</yellow> manage budgets", screen)
+        self.assertIn("Navigate:", screen)
+        self.assertIn("Cash flows:", screen)
+        self.assertIn("<yellow>[n]</yellow> new", screen)
+        self.assertIn("<yellow>[c]</yellow> add category", screen)
+        self.assertIn("<yellow>[v]</yellow> report", screen)
         self.assertIn("-" * 80, screen)
+
+    def test_key_binding_footer_wraps_long_groups_to_terminal_width(self):
+        terminal = FakeTerminal()
+        terminal.width = 48
+        footer = _key_binding_footer(
+            terminal,
+            [
+                (
+                    "Manage",
+                    [
+                        ("[↑/↓]", "select"),
+                        ("[a]", "add"),
+                        ("[e]", "edit"),
+                        ("[d]", "delete"),
+                    ],
+                )
+            ],
+        )
+
+        self.assertGreater(len(footer), 2)
+        self.assertTrue(all(terminal.length(line) <= terminal.width for line in footer))
 
     def test_period_date_entry_parses_iso_dates_and_open_ends(self):
         self.assertEqual(_period_date("2026-10-27", "start date"), date(2026, 10, 27))
@@ -126,6 +173,20 @@ class UiHelperTests(unittest.TestCase):
             "Period: <yellow><</yellow>Payday (1/1)<yellow>></yellow>",
             screen,
         )
+
+    def test_calendar_marks_days_with_cash_flow_items(self):
+        days_with_cash_flows = {date(2026, 10, 7), date(2026, 10, 27)}
+
+        lines = _calendar_lines(
+            FakeTerminal(),
+            date(2026, 10, 27),
+            [],
+            days_with_cash_flows,
+        )
+
+        self.assertIn("  7*", "\n".join(lines))
+        self.assertIn(" 27*", "\n".join(lines))
+        self.assertIn("* Cash-flow items", lines)
 
     def test_calendar_uses_two_rows_for_the_first_two_overlapping_periods(self):
         periods = [
@@ -283,6 +344,90 @@ class UiHelperTests(unittest.TestCase):
             index for index, line in enumerate(lines) if "Travel" in line
         )
         self.assertEqual(lines[travel_index - 1].split(" │ ")[-1], "")
+
+    def test_period_report_groups_transactions_budgets_and_exports_png(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            data = Data(str(Path(temporary_directory) / "finance.db"))
+            try:
+                period = data.create_period(
+                    datetime(2026, 10, 1),
+                    datetime(2026, 10, 31, 23, 59, 59),
+                    "October",
+                )
+                parent = data.create_category("Home")
+                child = data.create_category("Utilities", parent["id"])
+                overspent = data.create_category("Repairs", parent["id"])
+                data.create_budget(10_000, parent["id"], period["id"])
+                data.create_budget(20_000, child["id"], period["id"])
+                data.create_budget(1_000, overspent["id"], period["id"])
+                data.create_cash_flow(
+                    -500, parent["id"], datetime(2026, 10, 2), "Direct | item"
+                )
+                data.create_cash_flow(
+                    -2_500, child["id"], datetime(2026, 10, 3), "Water bill"
+                )
+                data.create_cash_flow(
+                    -2_000, overspent["id"], datetime(2026, 10, 4), "Repair"
+                )
+
+                markdown, graph_dates, graph_categories, total_values = (
+                    _period_report_content(data, period, "€")
+                )
+                self.assertIn("**Subtotal:** -€50.00 — Budget €310.00; remaining €260.00", markdown)
+                self.assertIn("**Subtotal:** -€25.00 — Budget €200.00; remaining €175.00", markdown)
+                self.assertIn("overspent €10.00", markdown)
+                self.assertIn("Direct \\| item", markdown)
+                self.assertEqual(
+                    {
+                        label.strip().split("] ", 1)[-1]: values
+                        for _, label, values in graph_categories
+                    },
+                    {
+                        "Home": [0, -500, -3_000, -5_000, -5_000],
+                        "Utilities": [0, 0, -2_500, -2_500, -2_500],
+                        "Repairs": [0, 0, 0, -2_000, -2_000],
+                    },
+                )
+                self.assertEqual(total_values, [0, -500, -3_000, -5_000, -5_000])
+                self.assertEqual(
+                    graph_dates,
+                    [
+                        date(2026, 10, 1),
+                        date(2026, 10, 2),
+                        date(2026, 10, 3),
+                        date(2026, 10, 4),
+                        date(2026, 10, 31),
+                    ],
+                )
+
+                markdown_path, graph_path = _save_period_report(
+                    markdown,
+                    period,
+                    graph_dates,
+                    graph_categories,
+                    total_values,
+                    {category_id for category_id, _, _ in graph_categories},
+                    "€",
+                    Path(temporary_directory) / "reports",
+                )
+                self.assertTrue(markdown_path.is_file())
+                self.assertEqual(graph_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+                self.assertIn(f"]({graph_path.name})", markdown_path.read_text())
+            finally:
+                data.close()
+
+    def test_graph_category_selector_toggles_selected_category(self):
+        categories = [
+            (1, "Food", [0, -100]),
+            (2, "Transport", [0, -50]),
+        ]
+        selection = _select_graph_categories(
+            ScriptedTerminal(["down", " ", "\r"]),
+            categories,
+            {1, 2},
+        )
+
+        self.assertEqual(selection, {1})
 
     def test_selected_day_cash_flow_panel_shows_description_category_and_amount(self):
         terminal = FakeTerminal()

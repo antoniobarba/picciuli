@@ -1,9 +1,10 @@
 import argparse
 import calendar
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Sequence
+from typing import Collection, Sequence
 
 from blessed import Terminal
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -61,18 +62,28 @@ def format_amount(amount: int, currency: str = "$") -> str:
 
 def _key_binding_footer(
     term: Terminal,
-    groups: Sequence[Sequence[tuple[str, str]]],
+    groups: Sequence[tuple[str, Sequence[tuple[str, str]]]],
 ) -> list[str]:
-    return [
-        "-" * min(term.width, 80),
-        *[
-            " - ".join(
-                f"{term.yellow(key)} {description}"
-                for key, description in group
-            )
-            for group in groups
-        ],
-    ]
+    lines = ["-" * min(term.width, 80)]
+    for label, bindings in groups:
+        prefix = f"{term.bold(label)}: "
+        continuation = " " * len(label + ": ")
+        line = prefix
+        has_binding = False
+        for key, description in bindings:
+            binding = f"{term.yellow(key)} {description}"
+            separator = "  " if has_binding else ""
+            if has_binding and term.length(line) + len(separator) + term.length(
+                binding
+            ) > term.width:
+                lines.append(line)
+                line = continuation + binding
+                has_binding = True
+            else:
+                line += separator + binding
+                has_binding = True
+        lines.append(line)
+    return lines
 
 
 def _periods_for_day(
@@ -104,6 +115,7 @@ def _calendar_lines(
     term: Terminal,
     selected_day: date,
     periods: Sequence[PeriodRecord],
+    cash_flow_days: Collection[date] = (),
 ) -> list[str]:
     lines = [
         term.bold(term.center(selected_day.strftime("%B %Y"), 30)),
@@ -120,8 +132,9 @@ def _calendar_lines(
             day_periods = _periods_for_day(day, periods)
             first_period = day_periods[0] if day_periods else None
             second_period = day_periods[1] if len(day_periods) > 1 else first_period
+            day_label = f"{day.day:>3}{'*' if day in cash_flow_days else ' '}"
             for cells, period, label in (
-                (top_cells, first_period, f"{day.day:>3} "),
+                (top_cells, first_period, day_label),
                 (bottom_cells, second_period, "    "),
             ):
                 style = ""
@@ -150,6 +163,11 @@ def _calendar_lines(
         color_index = (period["id"] - 1) % len(PERIOD_COLORS)
         style = getattr(term, f"on_{PERIOD_COLORS[color_index]}")
         lines.append(f"{style}   {term.normal} {period['name']}")
+    if any(
+        day.year == selected_day.year and day.month == selected_day.month
+        for day in cash_flow_days
+    ):
+        lines.append("* Cash-flow items")
     return lines
 
 
@@ -194,10 +212,19 @@ def render_screen(
     notice: str = "",
     selected_cash_flow_id: int | None = None,
     budget_report: PeriodBudgetReport | None = None,
+    cash_flow_days: Collection[date] = (),
 ) -> str:
     left_width = 30
     title = term.bold(f"Picciuli - Personal Finance ({currency})")
-    calendar_panel = _calendar_lines(term, selected_day, periods)
+    calendar_panel = _calendar_lines(
+        term,
+        selected_day,
+        periods,
+        {
+            *cash_flow_days,
+            *(cash_flow["occurred_at"].date() for cash_flow in cash_flows),
+        },
+    )
     cash_width = max(12, (term.width - left_width - 6) // 2)
     balance_width = max(12, term.width - left_width - cash_width - 6)
     cash_panel = _cash_flow_lines(
@@ -375,19 +402,38 @@ def render_screen(
         _key_binding_footer(
             term,
             [
-                [("[←/→]", "day"), ("[↑/↓]", "week"), ("[/]", "month")],
-                [("[n]", "new period"), ("[r]", "rename period"), ("[a]", "add cash flow")],
-                [("[j/k]", "select item"), ("[e]", "edit item"), ("[d]", "delete item")],
-                [
-                    ("[c]", "category"),
-                    ("[m]", "manage categories"),
-                    ("[p]", "manage periods"),
-                    ("[b]", "manage budgets"),
-                    ("[<]", "previous period"),
-                    ("[>]", "next period"),
-                    ("[u]", "currency"),
-                    ("[q]", "quit"),
-                ],
+                (
+                    "Navigate",
+                    [("[←/→]", "day"), ("[↑/↓]", "week"), ("[ and ]", "month")],
+                ),
+                (
+                    "Cash flows",
+                    [
+                        ("[a]", "add"),
+                        ("[j/k]", "select"),
+                        ("[e]", "edit"),
+                        ("[d]", "delete"),
+                    ],
+                ),
+                (
+                    "Periods",
+                    [
+                        ("[n]", "new"),
+                        ("[r]", "rename"),
+                        ("[</>]", "switch overlap"),
+                        ("[p]", "manage"),
+                    ],
+                ),
+                (
+                    "Categories & budgets",
+                    [
+                        ("[c]", "add category"),
+                        ("[m]", "manage categories"),
+                        ("[b]", "budgets"),
+                        ("[v]", "report"),
+                    ],
+                ),
+                ("App", [("[u]", "currency"), ("[q]", "quit")]),
             ],
         )
     )
@@ -501,9 +547,18 @@ def _manage_categories(term: Terminal, data: Data) -> str:
         footer = _key_binding_footer(
             term,
             [
-                [("[↑/↓]", "select"), ("[e]", "edit"), ("[d]", "delete")],
-                [("[s]", "add subcategory"), ("[c]", "add category")],
-                [("[j/k]", "reorder"), ("[Esc/q]", "return to overview")],
+                ("Select", [("[↑/↓]", "move cursor")]),
+                (
+                    "Category",
+                    [
+                        ("[e]", "edit"),
+                        ("[d]", "delete"),
+                        ("[c]", "add"),
+                        ("[s]", "add subcategory"),
+                    ],
+                ),
+                ("Order", [("[j/k]", "reorder")]),
+                ("Return", [("[Esc/q]", "overview")]),
             ],
         )
         visible_rows = max(1, term.height - len(header) - len(footer) - 2)
@@ -831,8 +886,9 @@ def _manage_periods(term: Terminal, data: Data) -> str:
         footer = _key_binding_footer(
             term,
             [
-                [("[↑/↓]", "select"), ("[a]", "add"), ("[e]", "edit")],
-                [("[d]", "delete"), ("[Esc/q]", "return to overview")],
+                ("Period", [("[↑/↓]", "select"), ("[a]", "add"), ("[e]", "edit")]),
+                ("Delete", [("[d]", "delete")]),
+                ("Return", [("[Esc/q]", "overview")]),
             ],
         )
         visible_rows = max(1, term.height - len(header) - len(footer) - 2)
@@ -1030,8 +1086,9 @@ def _manage_budgets(term: Terminal, data: Data) -> str:
         footer = _key_binding_footer(
             term,
             [
-                [("[↑/↓]", "select"), ("[a]", "add"), ("[e]", "edit")],
-                [("[d]", "delete"), ("[Esc/q]", "return to overview")],
+                ("Budget", [("[↑/↓]", "select"), ("[a]", "add"), ("[e]", "edit")]),
+                ("Delete", [("[d]", "delete")]),
+                ("Return", [("[Esc/q]", "overview")]),
             ],
         )
         header = [term.bold("Manage budgets"), ""]
@@ -1091,6 +1148,391 @@ def _manage_budgets(term: Terminal, data: Data) -> str:
                 notice = "Budget deleted."
             except (IntegrityError, LookupError, ValueError) as error:
                 notice = f"Could not delete budget: {error}"
+
+
+def _markdown_cell(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+
+
+def _period_report_content(
+    data: Data,
+    period: PeriodRecord,
+    currency: str,
+) -> tuple[
+    str,
+    list[date],
+    list[tuple[int, str, list[int]]],
+    list[int],
+]:
+    cash_flows = data.list_cash_flows(
+        start_date=period["start_date"],
+        end_date=period["end_date"],
+    )
+    categories = data.list_categories()
+    budget_report = data.get_period_budget_report(period["id"])
+    budgets = {
+        item["category_id"]: item["budget"]
+        for item in budget_report["categories"]
+    }
+    flows_by_category: dict[int, list[CashFlowRecord]] = {
+        category["id"]: [] for category in categories
+    }
+    for cash_flow in cash_flows:
+        flows_by_category[cash_flow["category_id"]].append(cash_flow)
+    graph_end = (
+        period["end_date"].date()
+        if period["end_date"] is not None
+        else max(date.today(), max(
+            (cash_flow["occurred_at"].date() for cash_flow in cash_flows),
+            default=period["start_date"].date(),
+        ))
+    )
+    graph_dates = sorted(
+        {
+            period["start_date"].date(),
+            graph_end,
+            *(cash_flow["occurred_at"].date() for cash_flow in cash_flows),
+        }
+    )
+
+    def cumulative_values(flows: Sequence[CashFlowRecord]) -> list[int]:
+        dated_amounts: dict[date, int] = {}
+        for cash_flow in flows:
+            flow_day = cash_flow["occurred_at"].date()
+            dated_amounts[flow_day] = dated_amounts.get(flow_day, 0) + cash_flow["amount"]
+        running_total = 0
+        values = []
+        for graph_day in graph_dates:
+            running_total += dated_amounts.get(graph_day, 0)
+            values.append(running_total)
+        return values
+
+    total_values = cumulative_values(cash_flows)
+
+    def budget_status(category_ids: Sequence[int], balance: int) -> str:
+        allocated = sum(budgets.get(category_id, 0) for category_id in category_ids)
+        if not any(category_id in budgets for category_id in category_ids):
+            return ""
+        remaining = allocated + balance
+        if remaining < 0:
+            return (
+                f" — Budget {format_amount(allocated, currency)}; "
+                f"overspent {format_amount(abs(remaining), currency)}"
+            )
+        return (
+            f" — Budget {format_amount(allocated, currency)}; "
+            f"remaining {format_amount(remaining, currency)}"
+        )
+
+    lines = [
+        f"# Period report: {_markdown_cell(period['name'])}",
+        "",
+        f"**Dates:** {period['start_date']:%Y-%m-%d} – "
+        f"{period['end_date']:%Y-%m-%d}" if period["end_date"] else
+        f"**Dates:** {period['start_date']:%Y-%m-%d} – Open",
+        "",
+    ]
+    graph_categories: list[tuple[int, str, list[int]]] = []
+    roots = [category for category in categories if category["parent_id"] is None]
+    children_by_parent: dict[int, list[CategoryRecord]] = {}
+    for category in categories:
+        if category["parent_id"] is not None:
+            children_by_parent.setdefault(category["parent_id"], []).append(category)
+
+    grand_total = 0
+    for root in roots:
+        children = children_by_parent.get(root["id"], [])
+        category_ids = [root["id"], *(child["id"] for child in children)]
+        root_balance = sum(
+            cash_flow["amount"]
+            for category_id in category_ids
+            for cash_flow in flows_by_category[category_id]
+        )
+        grand_total += root_balance
+        root_label = f"[{root['symbol']}] {_markdown_cell(root['name'])}"
+        lines.extend(
+            [
+                f"## {root_label}",
+                f"**Subtotal:** {format_amount(root_balance, currency)}"
+                f"{budget_status(category_ids, root_balance)}",
+                "",
+            ]
+        )
+        root_flows = [
+            cash_flow
+            for category_id in category_ids
+            for cash_flow in flows_by_category[category_id]
+        ]
+        graph_categories.append(
+            (root["id"], root_label, cumulative_values(root_flows))
+        )
+        own_flows = flows_by_category[root["id"]]
+        if own_flows:
+            lines.extend(
+                [
+                    f"### Transactions in {root_label}",
+                    "| Date | Description | Amount |",
+                    "| --- | --- | ---: |",
+                ]
+            )
+            for cash_flow in own_flows:
+                description = _markdown_cell(
+                    cash_flow["description"] or "(no description)"
+                )
+                lines.append(
+                    f"| {cash_flow['occurred_at']:%Y-%m-%d} | {description} | "
+                    f"{format_amount(cash_flow['amount'], currency)} |"
+                )
+            lines.append("")
+
+        for child in children:
+            child_balance = sum(
+                cash_flow["amount"] for cash_flow in flows_by_category[child["id"]]
+            )
+            child_label = f"[{child['symbol']}] {_markdown_cell(child['name'])}"
+            lines.extend(
+                [
+                    f"### {child_label}",
+                    f"**Subtotal:** {format_amount(child_balance, currency)}"
+                    f"{budget_status([child['id']], child_balance)}",
+                    "",
+                ]
+            )
+            graph_categories.append(
+                (
+                    child["id"],
+                    f"  {child_label}",
+                    cumulative_values(flows_by_category[child["id"]]),
+                )
+            )
+            child_flows = flows_by_category[child["id"]]
+            if not child_flows:
+                lines.extend(["_(No cash-flow items.)_", ""])
+                continue
+            lines.extend(
+                [
+                    "| Date | Description | Amount |",
+                    "| --- | --- | ---: |",
+                ]
+            )
+            for cash_flow in child_flows:
+                description = _markdown_cell(
+                    cash_flow["description"] or "(no description)"
+                )
+                lines.append(
+                    f"| {cash_flow['occurred_at']:%Y-%m-%d} | {description} | "
+                    f"{format_amount(cash_flow['amount'], currency)} |"
+                )
+            lines.append("")
+
+    total_budget = sum(budgets.values())
+    total_remaining = total_budget + grand_total
+    lines.extend(
+        [
+            "## Period total",
+            f"**Cash flow total:** {format_amount(grand_total, currency)}",
+        ]
+    )
+    if budgets:
+        status = (
+            f"Overspent {format_amount(abs(total_remaining), currency)}"
+            if total_remaining < 0
+            else f"Remaining {format_amount(total_remaining, currency)}"
+        )
+        lines.append(
+            f"**Allocated budget:** {format_amount(total_budget, currency)} — "
+            f"{status}"
+        )
+    lines.extend(
+        [
+            "",
+            "The graph shows cumulative balance over time. Category lines follow "
+            "the graph-category selection; the total line includes all categories.",
+            "",
+            "![Cumulative balance over time](GRAPH_PATH)",
+            "",
+        ]
+    )
+    return "\n".join(lines), graph_dates, graph_categories, total_values
+
+
+def _select_graph_categories(
+    term: Terminal,
+    categories: Sequence[tuple[int, str, list[int]]],
+    selected_ids: set[int],
+) -> set[int]:
+    selection = set(selected_ids)
+    index = 0
+    while True:
+        rows = [
+            f"{'>' if row_index == index else ' '} "
+            f"{'[x]' if category_id in selection else '[ ]'} {label}"
+            for row_index, (category_id, label, _) in enumerate(categories)
+        ]
+        footer = _key_binding_footer(
+            term,
+            [
+                ("Select", [("[↑/↓]", "move cursor"), ("[Space]", "toggle")]),
+                ("All", [("[a]", "select all"), ("[n]", "select none")]),
+                ("Done", [("[Enter/Esc]", "return")]),
+            ],
+        )
+        visible_rows = max(1, term.height - len(footer) - 5)
+        first_row = min(
+            max(0, index - visible_rows + 1),
+            max(0, len(rows) - visible_rows),
+        )
+        lines = [
+            term.bold("Graph categories"),
+            "",
+            *rows[first_row : first_row + visible_rows],
+            "",
+            *footer,
+        ]
+        print(term.home + term.clear + "\n".join(lines), end="", flush=True)
+        key = term.inkey()
+        if key.name == "KEY_ESCAPE" or key == "\x1b" or key.name in (
+            "KEY_ENTER",
+            "KEY_RETURN",
+        ) or key in ("\r", "\n"):
+            return selection
+        if not categories:
+            continue
+        if key.name == "KEY_UP":
+            index = max(0, index - 1)
+        elif key.name == "KEY_DOWN":
+            index = min(len(categories) - 1, index + 1)
+        elif key == " ":
+            category_id = categories[index][0]
+            if category_id in selection:
+                selection.remove(category_id)
+            else:
+                selection.add(category_id)
+        elif key.lower() == "a":
+            selection = {category_id for category_id, _, _ in categories}
+        elif key.lower() == "n":
+            selection.clear()
+
+
+def _save_period_report(
+    markdown: str,
+    period: PeriodRecord,
+    graph_dates: Sequence[date],
+    graph_categories: Sequence[tuple[int, str, list[int]]],
+    total_values: Sequence[int],
+    selected_ids: set[int],
+    currency: str,
+    output_dir: Path = Path("reports"),
+) -> tuple[Path, Path]:
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", period["name"]).strip("-")
+    slug = slug or "period"
+    stem = f"period-{period['id']}-{slug}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    markdown_path = output_dir / f"{stem}.md"
+    graph_path = output_dir / f"{stem}.png"
+
+    selected = [
+        (label, values)
+        for category_id, label, values in graph_categories
+        if category_id in selected_ids
+    ]
+    figure = Figure(figsize=(10, max(3.5, len(selected) * 0.45)))
+    FigureCanvasAgg(figure)
+    axes = figure.subplots()
+    for label, values in selected:
+        axes.plot(
+            graph_dates,
+            [value / 100 for value in values],
+            label=label,
+            drawstyle="steps-post",
+        )
+    axes.plot(
+        graph_dates,
+        [value / 100 for value in total_values],
+        label="Total (all categories)",
+        color="#222222",
+        linewidth=2.5,
+        drawstyle="steps-post",
+    )
+    axes.set_title(f"Cumulative balance over time — {period['name']}")
+    axes.set_xlabel("Date")
+    axes.set_ylabel(f"Balance ({currency})")
+    axes.grid(alpha=0.2)
+    axes.legend()
+    figure.autofmt_xdate()
+    figure.tight_layout()
+    figure.savefig(graph_path, dpi=160)
+    markdown_path.write_text(
+        markdown.replace("GRAPH_PATH", graph_path.name),
+        encoding="utf-8",
+    )
+    return markdown_path, graph_path
+
+
+def _show_period_report(
+    term: Terminal,
+    data: Data,
+    period: PeriodRecord,
+) -> str:
+    currency = data.get_currency()
+    markdown, graph_dates, graph_categories, total_values = _period_report_content(
+        data, period, currency
+    )
+    lines = markdown.replace(
+        "![Cumulative balance over time](GRAPH_PATH)", ""
+    ).splitlines()
+    selected_ids = {category_id for category_id, _, _ in graph_categories}
+    offset = 0
+    notice = ""
+    while True:
+        footer = _key_binding_footer(
+            term,
+            [
+                ("Report", [("[↑/↓]", "scroll"), ("[g]", "graph categories")]),
+                ("Export", [("[s]", "save Markdown + PNG")]),
+                ("Return", [("[q/Esc]", "overview")]),
+            ],
+        )
+        page_size = max(1, term.height - len(footer) - 5)
+        offset = min(offset, max(0, len(lines) - page_size))
+        visible = lines[offset : offset + page_size]
+        screen_lines = [term.bold(f"Report: {period['name']}"), "", *visible]
+        if notice:
+            screen_lines.extend(["", term.bold(notice)])
+        screen_lines.extend(["", *footer])
+        print(term.home + term.clear + "\n".join(screen_lines), end="", flush=True)
+        key = term.inkey()
+        if key.name == "KEY_ESCAPE" or key == "\x1b" or key.lower() == "q":
+            return notice or "Period report closed."
+        if key.name in ("KEY_UP", "KEY_PAGE_UP"):
+            offset = max(0, offset - (page_size if key.name == "KEY_PAGE_UP" else 1))
+        elif key.name in ("KEY_DOWN", "KEY_PAGE_DOWN"):
+            offset = min(
+                max(0, len(lines) - page_size),
+                offset + (page_size if key.name == "KEY_PAGE_DOWN" else 1),
+            )
+        elif key.lower() == "g":
+            selected_ids = _select_graph_categories(
+                term, graph_categories, selected_ids
+            )
+            notice = "Graph categories updated."
+        elif key.lower() == "s":
+            try:
+                markdown_path, graph_path = _save_period_report(
+                    markdown,
+                    period,
+                    graph_dates,
+                    graph_categories,
+                    total_values,
+                    selected_ids,
+                    currency,
+                )
+                notice = f"Saved {markdown_path} and {graph_path}."
+            except OSError as error:
+                notice = f"Could not save report: {error}"
 
 
 def _add_cash_flow(
@@ -1219,6 +1661,8 @@ def run_ui(database_path: Path) -> None:
     selected_day = date.today()
     selected_cash_flow_id: int | None = None
     selected_period_id: int | None = None
+    calendar_month: tuple[int, int] | None = None
+    cash_flow_days: set[date] = set()
     notice = ""
     try:
         with term.fullscreen(), term.cbreak(), term.hidden_cursor():
@@ -1231,6 +1675,24 @@ def run_ui(database_path: Path) -> None:
                     start_date=day_start,
                     end_date=day_end,
                 )
+                selected_month = (selected_day.year, selected_day.month)
+                if calendar_month != selected_month:
+                    month_end = date(
+                        selected_day.year,
+                        selected_day.month,
+                        calendar.monthrange(*selected_month)[1],
+                    )
+                    month_cash_flows = data.list_cash_flows(
+                        start_date=datetime.combine(
+                            selected_day.replace(day=1), time.min
+                        ),
+                        end_date=datetime.combine(month_end, time.max),
+                    )
+                    cash_flow_days = {
+                        cash_flow["occurred_at"].date()
+                        for cash_flow in month_cash_flows
+                    }
+                    calendar_month = selected_month
                 available_cash_flow_ids = {
                     cash_flow["id"] for cash_flow in cash_flows
                 }
@@ -1276,6 +1738,7 @@ def run_ui(database_path: Path) -> None:
                         notice,
                         selected_cash_flow_id,
                         budget_report,
+                        cash_flow_days,
                     ),
                     end="",
                     flush=True,
@@ -1360,6 +1823,7 @@ def run_ui(database_path: Path) -> None:
                                 selected_cash_flow_id = None
                         except (IntegrityError, LookupError, ValueError) as error:
                             notice = f"Could not delete cash flow: {error}"
+                    calendar_month = None
                 elif key.lower() == "n":
                     try:
                         notice = _add_period(term, data, selected_day)
@@ -1383,6 +1847,18 @@ def run_ui(database_path: Path) -> None:
                         notice = _manage_budgets(term, data)
                     except (IntegrityError, LookupError, ValueError) as error:
                         notice = f"Could not manage budgets: {error}"
+                elif key.lower() == "v":
+                    if selected_period is None:
+                        notice = "Select a day inside a period first."
+                    else:
+                        try:
+                            notice = _show_period_report(
+                                term,
+                                data,
+                                selected_period,
+                            )
+                        except (IntegrityError, LookupError, ValueError) as error:
+                            notice = f"Could not display period report: {error}"
                 elif key.lower() == "c":
                     try:
                         notice = _add_category(term, data)
@@ -1398,6 +1874,7 @@ def run_ui(database_path: Path) -> None:
                         notice = _add_cash_flow(term, data, selected_day, categories)
                     except (IntegrityError, LookupError, ValueError) as error:
                         notice = f"Could not add cash flow: {error}"
+                    calendar_month = None
                 elif key.lower() == "u":
                     try:
                         notice = _set_currency(term, data)

@@ -1,4 +1,5 @@
 .env/
-
+reports/
+data/
 __pycache__/
 *.db

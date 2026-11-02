@@ -1,2 +1,3 @@
 blessed
 SQLAlchemy>=2.0,<3.0
+matplotlib>=3.9,<4.0
