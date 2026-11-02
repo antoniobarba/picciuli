@@ -31,6 +31,14 @@ class DataTests(unittest.TestCase):
             "parent_id",
             {column["name"] for column in inspector.get_columns("categories")},
         )
+        self.assertIn(
+            "symbol",
+            {column["name"] for column in inspector.get_columns("categories")},
+        )
+        self.assertIn(
+            "sort_order",
+            {column["name"] for column in inspector.get_columns("categories")},
+        )
         self.assertEqual(
             {column["name"] for column in inspector.get_columns("cash_flows")},
             {"id", "amount", "description", "category_id", "occurred_at"},
@@ -67,7 +75,13 @@ class DataTests(unittest.TestCase):
 
         self.assertEqual(
             food,
-            {"id": 1, "name": "Food", "parent_id": None, "parent_name": None},
+            {
+                "id": 1,
+                "name": "Food",
+                "symbol": "F",
+                "parent_id": None,
+                "parent_name": None,
+            },
         )
         self.assertEqual(self.data.get_category(food["id"]), food)
         self.assertEqual(
@@ -79,6 +93,7 @@ class DataTests(unittest.TestCase):
             {
                 "id": food["id"],
                 "name": "Groceries",
+                "symbol": "F",
                 "parent_id": None,
                 "parent_name": None,
             },
@@ -91,6 +106,7 @@ class DataTests(unittest.TestCase):
                 {
                     "id": food["id"],
                     "name": "Groceries",
+                    "symbol": "F",
                     "parent_id": None,
                     "parent_name": None,
                 }
@@ -112,28 +128,58 @@ class DataTests(unittest.TestCase):
         self.assertEqual(
             self.data.list_categories(),
             [
-                {"id": 1, "name": "Food", "parent_id": None, "parent_name": None},
-                {"id": 2, "name": "Other", "parent_id": None, "parent_name": None},
+                {
+                    "id": 1,
+                    "name": "Food",
+                    "symbol": "F",
+                    "parent_id": None,
+                    "parent_name": None,
+                },
+                {
+                    "id": 2,
+                    "name": "Other",
+                    "symbol": "O",
+                    "parent_id": None,
+                    "parent_name": None,
+                },
             ],
         )
 
+    def test_category_symbol_validation_and_update(self):
+        category = self.data.create_category("Coffee", symbol="CAF")
+        self.assertEqual(category["symbol"], "CAF")
+        renamed = self.data.update_category(category["id"], "Cafes")
+        self.assertEqual(renamed["symbol"], "CAF")
+        changed = self.data.update_category(
+            category["id"], "Cafes", symbol="CAFE"
+        )
+        self.assertEqual(changed["symbol"], "CAFE")
+
+        with self.assertRaises(ValueError):
+            self.data.create_category("Empty symbol", symbol=" ")
+        with self.assertRaises(ValueError):
+            self.data.create_category("Long symbol", symbol="1234567890123")
+        with self.assertRaises(TypeError):
+            self.data.create_category("Wrong symbol", symbol=123)
+
     def test_category_hierarchy_validation_and_ordering(self):
-        essentials = self.data.create_category("Essentials")
-        groceries = self.data.create_category("Groceries", essentials["id"])
-        bills = self.data.create_category("Bills", essentials["id"])
-        other = self.data.create_category("Income")
+        essentials = self.data.create_category("Essentials", symbol="ESS")
+        groceries = self.data.create_category("Groceries", essentials["id"], "GRO")
+        bills = self.data.create_category("Bills", essentials["id"], "BIL")
+        other = self.data.create_category("Income", symbol="INC")
 
         self.assertEqual(
             self.data.list_categories(),
             [
                 essentials,
-                bills,
                 groceries,
+                bills,
                 other,
             ],
         )
         self.assertEqual(groceries["parent_id"], essentials["id"])
         self.assertEqual(groceries["parent_name"], "Essentials")
+        self.assertEqual(groceries["symbol"], "GRO")
         with self.assertRaises(ValueError):
             self.data.create_category("Nested", groceries["id"])
         with self.assertRaises(LookupError):
@@ -145,9 +191,39 @@ class DataTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.data.delete_category(essentials["id"])
 
-        moved = self.data.update_category(groceries["id"], "Groceries", other["id"])
+        moved = self.data.update_category(
+            groceries["id"], "Food shop", other["id"], "SHOP"
+        )
         self.assertEqual(moved["parent_id"], other["id"])
         self.assertEqual(moved["parent_name"], "Income")
+        self.assertEqual(moved["symbol"], "SHOP")
+
+    def test_category_order_can_be_changed_and_is_used_by_period_balances(self):
+        first = self.data.create_category("First")
+        second = self.data.create_category("Second")
+        first_child = self.data.create_category("First child", first["id"])
+        self.data.create_category("Second child", first["id"])
+        period = self.data.create_period(datetime(2026, 10, 1))
+
+        self.data.update_category(second["id"], "Second", position=1)
+        self.data.update_category(
+            first_child["id"], "First child", first["id"], position=2
+        )
+
+        self.assertEqual(
+            [category["name"] for category in self.data.list_categories()],
+            ["Second", "First", "Second child", "First child"],
+        )
+        report = self.data.get_period_balances(period["id"])
+        self.assertEqual(
+            [category["category_name"] for category in report["categories"]],
+            ["Second", "First", "Second child", "First child"],
+        )
+
+        with self.assertRaises(ValueError):
+            self.data.update_category(first["id"], "First", position=0)
+        with self.assertRaises(TypeError):
+            self.data.update_category(first["id"], "First", position="1")
 
     def test_currency_setting_is_validated_and_persisted(self):
         self.assertEqual(self.data.get_currency(), "$")
@@ -216,14 +292,51 @@ class DataTests(unittest.TestCase):
             second,
         )
 
-    def test_period_creation_rejects_overlaps_and_invalid_names(self):
-        self.data.create_period(
+    def test_periods_can_overlap_and_names_are_validated(self):
+        first = self.data.create_period(
             datetime(2026, 10, 1), datetime(2026, 10, 31, 23, 59, 59)
         )
-        with self.assertRaises(ValueError):
-            self.data.create_period(datetime(2026, 10, 15))
+        overlap = self.data.create_period(
+            datetime(2026, 10, 15), datetime(2026, 11, 5)
+        )
+        self.assertEqual(
+            [period["id"] for period in self.data.list_periods()],
+            [first["id"], overlap["id"]],
+        )
         with self.assertRaises(ValueError):
             self.data.create_period(datetime(2026, 11, 1), name="  ")
+
+    def test_earlier_period_can_overlap_an_open_period_without_closing_it(self):
+        open_period = self.data.create_period(datetime(2026, 11, 2))
+        earlier_period = self.data.create_period(
+            datetime(2026, 11, 1),
+            datetime(2026, 11, 5, 23, 59, 59),
+        )
+
+        self.assertIsNone(self.data.get_period(open_period["id"])["end_date"])
+        self.assertEqual(
+            [period["id"] for period in self.data.list_periods()],
+            [earlier_period["id"], open_period["id"]],
+        )
+
+    def test_period_update_allows_overlapping_another_period(self):
+        first = self.data.create_period(
+            datetime(2026, 10, 1), datetime(2026, 10, 10, 23, 59, 59)
+        )
+        second = self.data.create_period(
+            datetime(2026, 10, 11), datetime(2026, 10, 20, 23, 59, 59)
+        )
+
+        updated = self.data.update_period(
+            second["id"],
+            datetime(2026, 10, 5),
+            datetime(2026, 10, 25, 23, 59, 59),
+        )
+        self.assertEqual(updated["start_date"], datetime(2026, 10, 5))
+        self.assertEqual(
+            [period["id"] for period in self.data.list_periods()],
+            [first["id"], second["id"]],
+        )
 
     def test_open_period_balance_reports_include_later_cash_flows(self):
         period = self.data.create_period(datetime(2026, 10, 1))

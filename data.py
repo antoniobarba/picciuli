@@ -21,6 +21,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship,
 class CategoryRecord(TypedDict):
     id: int
     name: str
+    symbol: str
     parent_id: int | None
     parent_name: str | None
 
@@ -93,6 +94,8 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, unique=True)
+    symbol: Mapped[str] = mapped_column(String(12))
+    sort_order: Mapped[int] = mapped_column(Integer)
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("categories.id", ondelete="RESTRICT"),
         nullable=True,
@@ -198,6 +201,7 @@ class Data:
         return {
             "id": category.id,
             "name": category.name,
+            "symbol": category.symbol,
             "parent_id": category.parent_id,
             "parent_name": category.parent.name if category.parent else None,
         }
@@ -265,10 +269,31 @@ class Data:
             raise ValueError("category name cannot be empty")
         return name
 
+    @staticmethod
+    def _normalize_category_symbol(symbol: str | None, name: str) -> str:
+        if symbol is None:
+            symbol = (
+                "".join(part[0] for part in name.split())[:4] or name[:4]
+            ).upper()
+        if not isinstance(symbol, str):
+            raise TypeError("category symbol must be a string")
+        symbol = symbol.strip()
+        if not symbol:
+            raise ValueError("category symbol cannot be empty")
+        if len(symbol) > 12:
+            raise ValueError("category symbol cannot exceed 12 characters")
+        if not symbol.isprintable():
+            raise ValueError("category symbol must contain printable characters")
+        return symbol
+
     def create_category(
-        self, name: str, parent_id: int | None = None
+        self,
+        name: str,
+        parent_id: int | None = None,
+        symbol: str | None = None,
     ) -> CategoryRecord:
         name = self._normalize_category_name(name)
+        symbol = self._normalize_category_symbol(symbol, name)
         with self.session_factory.begin() as session:
             parent = None
             if parent_id is not None:
@@ -277,7 +302,21 @@ class Data:
                     raise LookupError(f"parent category {parent_id} does not exist")
                 if parent.parent_id is not None:
                     raise ValueError("subcategories cannot have their own subcategories")
-            category = Category(name=name, parent=parent)
+            sibling_parent_id = parent.id if parent is not None else None
+            sibling_parent_filter = (
+                Category.parent_id.is_(None)
+                if sibling_parent_id is None
+                else Category.parent_id == sibling_parent_id
+            )
+            last_order = session.scalar(
+                select(func.max(Category.sort_order)).where(sibling_parent_filter)
+            )
+            category = Category(
+                name=name,
+                symbol=symbol,
+                parent=parent,
+                sort_order=(last_order or 0) + 1,
+            )
             session.add(category)
             session.flush()
             return self._category_dict(category)
@@ -291,14 +330,14 @@ class Data:
 
     def list_categories(self) -> list[CategoryRecord]:
         with self.session_factory() as session:
-            categories = session.scalars(select(Category).order_by(Category.name)).all()
+            categories = session.scalars(
+                select(Category).order_by(Category.sort_order, Category.id)
+            ).all()
             roots = [category for category in categories if category.parent_id is None]
             ordered = []
             for root in roots:
                 ordered.append(root)
-                ordered.extend(
-                    sorted(root.children, key=lambda child: child.name.casefold())
-                )
+                ordered.extend(sorted(root.children, key=lambda child: (child.sort_order, child.id)))
             return [self._category_dict(category) for category in ordered]
 
     def update_category(
@@ -306,12 +345,18 @@ class Data:
         category_id: int,
         name: str,
         parent_id: int | None = None,
+        symbol: str | None = None,
+        position: int | None = None,
     ) -> CategoryRecord:
         name = self._normalize_category_name(name)
         with self.session_factory.begin() as session:
             category = session.get(Category, category_id)
             if category is None:
                 raise LookupError(f"category {category_id} does not exist")
+            symbol = self._normalize_category_symbol(
+                symbol if symbol is not None else category.symbol,
+                name,
+            )
             if category.children and parent_id is not None:
                 raise ValueError("a parent category cannot become a subcategory")
             parent = None
@@ -323,8 +368,57 @@ class Data:
                     raise LookupError(f"parent category {parent_id} does not exist")
                 if parent.parent_id is not None:
                     raise ValueError("subcategories cannot have their own subcategories")
+            old_parent_id = category.parent_id
+            new_parent_id = parent.id if parent is not None else None
+            old_siblings = session.scalars(
+                select(Category)
+                .where(Category.parent_id == old_parent_id)
+                .order_by(Category.sort_order, Category.id)
+            ).all()
+            current_group = [
+                sibling for sibling in old_siblings if sibling.id != category_id
+            ]
+            if old_parent_id == new_parent_id:
+                current_group.insert(
+                    next(
+                        (
+                            index
+                            for index, sibling in enumerate(old_siblings)
+                            if sibling.id == category_id
+                        ),
+                        len(current_group),
+                    ),
+                    category,
+                )
+            target_siblings = current_group if old_parent_id == new_parent_id else session.scalars(
+                select(Category)
+                .where(Category.parent_id == new_parent_id)
+                .order_by(Category.sort_order, Category.id)
+            ).all()
+            target_siblings = [
+                sibling for sibling in target_siblings if sibling.id != category_id
+            ]
+            if position is None:
+                position = (
+                    current_group.index(category) + 1
+                    if old_parent_id == new_parent_id
+                    else len(target_siblings) + 1
+                )
+            if not isinstance(position, int) or isinstance(position, bool):
+                raise TypeError("category position must be an integer")
+            if position < 1 or position > len(target_siblings) + 1:
+                raise ValueError(
+                    f"category position must be between 1 and {len(target_siblings) + 1}"
+                )
+            target_siblings.insert(position - 1, category)
+            if old_parent_id != new_parent_id:
+                for index, sibling in enumerate(current_group, start=1):
+                    sibling.sort_order = index
             category.parent = parent
             category.name = name
+            category.symbol = symbol
+            for index, sibling in enumerate(target_siblings, start=1):
+                sibling.sort_order = index
             session.flush()
             return self._category_dict(category)
 
@@ -376,20 +470,11 @@ class Data:
                 select(Period).order_by(Period.start_date)
             ).all()
             for existing in periods:
-                if existing.end_date is None:
-                    if existing.start_date >= start_date:
-                        raise ValueError(
-                            "a new period must start after the current open period"
-                        )
-                    existing.end_date = start_date - timedelta(microseconds=1)
-            new_end = end_date or datetime.max
-            for existing in periods:
-                existing_end = existing.end_date or datetime.max
                 if (
-                    existing.start_date <= new_end
-                    and start_date <= existing_end
+                    existing.end_date is None
+                    and existing.start_date < start_date
                 ):
-                    raise ValueError("period dates cannot overlap")
+                    existing.end_date = start_date - timedelta(microseconds=1)
 
             period = Period(name=name, start_date=start_date, end_date=end_date)
             session.add(period)
@@ -424,14 +509,6 @@ class Data:
             period = session.get(Period, period_id)
             if period is None:
                 raise LookupError(f"period {period_id} does not exist")
-            other_periods = session.scalars(
-                select(Period).where(Period.id != period_id)
-            )
-            for other in other_periods:
-                period_end = end_date or datetime.max
-                other_end = other.end_date or datetime.max
-                if start_date <= other_end and other.start_date <= period_end:
-                    raise ValueError("period dates cannot overlap")
             period.start_date = start_date
             period.end_date = end_date
             if name is not None:
@@ -558,6 +635,7 @@ class Data:
                     Category.id,
                     Category.name,
                     Category.parent_id,
+                    Category.sort_order,
                     func.coalesce(func.sum(CashFlow.amount), 0),
                 )
                 .outerjoin(
@@ -570,8 +648,13 @@ class Data:
                         else True
                     ),
                 )
-                .group_by(Category.id, Category.name, Category.parent_id)
-                .order_by(Category.name, Category.id)
+                .group_by(
+                    Category.id,
+                    Category.name,
+                    Category.parent_id,
+                    Category.sort_order,
+                )
+                .order_by(Category.sort_order, Category.id)
             )
             balances = {
                 category_id: {
@@ -581,7 +664,7 @@ class Data:
                     "is_parent": False,
                     "balance": balance,
                 }
-                for category_id, name, parent_id, balance in rows
+                for category_id, name, parent_id, _, balance in rows
             }
             children_by_parent: dict[int, list[CategoryBalance]] = {}
             for category in balances.values():
@@ -601,9 +684,7 @@ class Data:
                         child["balance"] for child in children
                     )
                 categories.append(category)
-                categories.extend(
-                    sorted(children, key=lambda child: child["category_name"].casefold())
-                )
+                categories.extend(children)
             total = sum(
                 category["balance"]
                 for category in categories
