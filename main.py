@@ -14,6 +14,7 @@ from data import (
     CategoryRecord,
     Data,
     BudgetRecord,
+    FinancialTotalsRecord,
     PeriodBalanceReport,
     PeriodBudgetReport,
     PeriodRecord,
@@ -213,6 +214,7 @@ def render_screen(
     selected_cash_flow_id: int | None = None,
     budget_report: PeriodBudgetReport | None = None,
     cash_flow_days: Collection[date] = (),
+    financial_totals: FinancialTotalsRecord | None = None,
 ) -> str:
     left_width = 30
     title = term.bold(f"Picciuli - Personal Finance ({currency})")
@@ -363,7 +365,26 @@ def render_screen(
                 ]
             )
 
-    lines = [term.center(title), "", f"Selected day: {selected_day:%A, %d %B %Y}", ""]
+    totals = financial_totals or {
+        "loans_pending": 0,
+        "savings_accrued": 0,
+    }
+    summary = (
+        f"Loans remaining: {format_amount(totals['loans_pending'], currency)}"
+        f"   Savings accrued: "
+        f"{format_amount(totals['savings_accrued'], currency)}"
+    )
+    summary_border = "─" * (term.length(summary) + 2)
+    lines = [
+        term.center(title),
+        "",
+        f"Selected day: {selected_day:%A, %d %B %Y}",
+        "",
+        f"┌{summary_border}┐",
+        f"│ {summary} │",
+        f"└{summary_border}┘",
+        "",
+    ]
     if term.width >= 100:
         columns = (
             (calendar_panel, left_width),
@@ -433,7 +454,10 @@ def render_screen(
                         ("[v]", "report"),
                     ],
                 ),
-                ("Loans", [("[l]", "manage loans")]),
+                (
+                    "Goals",
+                    [("[l]", "manage loans"), ("[t]", "savings targets")],
+                ),
                 ("App", [("[u]", "currency"), ("[q]", "quit")]),
             ],
         )
@@ -1280,6 +1304,133 @@ def _manage_loans(term: Terminal, data: Data) -> str:
             )
 
 
+def _add_savings_target(
+    term: Terminal, data: Data
+) -> tuple[str, int | None]:
+    name = _read_line(term, "Savings target name (Esc cancels): ")
+    if name is None:
+        return "Savings target creation cancelled.", None
+    amount_text = _read_line(term, "Target amount (e.g. 15000.00): ")
+    if amount_text is None:
+        return "Savings target creation cancelled.", None
+    target = data.create_savings_target(name, parse_amount(amount_text))
+    return f"Added savings target {target['name']}.", target["id"]
+
+
+def _manage_savings_targets(term: Terminal, data: Data) -> str:
+    targets = data.list_savings_targets()
+    selected_id = targets[0]["id"] if targets else None
+    payment_offset = 0
+    notice = ""
+    while True:
+        targets = data.list_savings_targets()
+        selected_index = next(
+            (index for index, target in enumerate(targets) if target["id"] == selected_id),
+            0,
+        )
+        selected = targets[selected_index] if targets else None
+        if selected is not None:
+            selected_id = selected["id"]
+        footer = _key_binding_footer(
+            term,
+            [
+                ("Savings targets", [("[j/k]", "select"), ("[a]", "add target")]),
+                ("Contributions", [("[↑/↓]", "scroll"), ("[PgUp/PgDn]", "page")]),
+                ("Return", [("[q/Esc]", "overview")]),
+            ],
+        )
+        lines = [term.bold("Manage savings targets"), ""]
+        if targets:
+            for target in targets:
+                completed = target["accrued_amount"]
+                completion_percent = min(
+                    100,
+                    (completed * 100 + target["amount"] // 2) // target["amount"],
+                )
+                bar_width = 20
+                filled_width = min(
+                    bar_width,
+                    (completed * bar_width + target["amount"] // 2)
+                    // target["amount"],
+                )
+                progress_bar = (
+                    f"[{'#' * filled_width}{'-' * (bar_width - filled_width)}]"
+                )
+                lines.extend(
+                    [
+                        f"{'>' if target['id'] == selected_id else ' '} "
+                        f"{target['name']} — "
+                        f"{format_amount(completed, data.get_currency())} / "
+                        f"{format_amount(target['amount'], data.get_currency())} "
+                        f"({completion_percent}% completed)",
+                        f"  {progress_bar}",
+                    ]
+                )
+        else:
+            lines.append("No savings targets yet.")
+
+        payments: list[CashFlowRecord] = []
+        if selected is not None:
+            payments = list(
+                reversed(
+                    data.list_cash_flows(savings_target_id=selected["id"])
+                )
+            )
+            lines.extend(
+                [
+                    "",
+                    term.bold(selected["name"]),
+                    f"Accrued: "
+                    f"{format_amount(selected['accrued_amount'], data.get_currency())}",
+                    f"Target: {format_amount(selected['amount'], data.get_currency())}",
+                    "",
+                    "Date       Contribution",
+                ]
+            )
+            if not payments:
+                lines.append("No contributions recorded.")
+        page_size = max(1, term.height - len(lines) - len(footer) - 2)
+        payment_offset = min(payment_offset, max(0, len(payments) - page_size))
+        for payment in payments[payment_offset : payment_offset + page_size]:
+            lines.append(
+                f"{payment['occurred_at']:%Y-%m-%d}   "
+                f"{format_amount(abs(payment['amount']), data.get_currency())}"
+            )
+        if notice:
+            lines.extend(["", term.bold(notice)])
+        lines.extend(["", *footer])
+        print(term.home + term.clear + "\n".join(lines), end="", flush=True)
+
+        key = term.inkey()
+        if key.name == "KEY_ESCAPE" or key == "\x1b" or key.lower() == "q":
+            return notice or "Savings-target management closed."
+        if key.lower() == "a":
+            try:
+                notice, selected_id = _add_savings_target(term, data)
+                payment_offset = 0
+            except (IntegrityError, LookupError, ValueError) as error:
+                notice = f"Could not create savings target: {error}"
+            continue
+        if key.lower() in ("j", "k") and targets:
+            direction = 1 if key.lower() == "j" else -1
+            selected_index = (selected_index + direction) % len(targets)
+            selected_id = targets[selected_index]["id"]
+            payment_offset = 0
+            notice = ""
+        elif key.name in ("KEY_UP", "KEY_PAGE_UP"):
+            payment_offset = max(
+                0,
+                payment_offset - (page_size if key.name == "KEY_PAGE_UP" else 1),
+            )
+        elif key.name in ("KEY_DOWN", "KEY_PAGE_DOWN"):
+            payment_offset = min(
+                max(0, len(payments) - page_size),
+                payment_offset + (
+                    page_size if key.name == "KEY_PAGE_DOWN" else 1
+                ),
+            )
+
+
 def _markdown_cell(value: str) -> str:
     return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
 
@@ -1698,30 +1849,52 @@ def _add_cash_flow(
     active_loans = [
         loan for loan in data.list_loans() if loan["current_principal"] > 0
     ]
+    active_targets = [
+        target
+        for target in data.list_savings_targets()
+        if target["accrued_amount"] < target["amount"]
+    ]
     loan_id = None
-    if active_loans:
-        loan_options = "\n".join(
-            f"{index}. {loan['name']} "
-            f"({format_amount(loan['current_principal'], data.get_currency())} principal)"
-            for index, loan in enumerate(active_loans, start=1)
-        )
+    savings_target_id = None
+    available_goals = [
+        ("loan", loan) for loan in active_loans
+    ] + [("savings", target) for target in active_targets]
+    if available_goals:
+        goal_option_lines = []
+        for index, (kind, goal) in enumerate(available_goals, start=1):
+            remaining = (
+                goal["current_principal"]
+                if kind == "loan"
+                else goal["amount"] - goal["accrued_amount"]
+            )
+            goal_option_lines.append(
+                f"{index}. {kind.title()}: {goal['name']} "
+                f"({format_amount(remaining, data.get_currency())} remaining)"
+            )
+        goal_options = "\n".join(goal_option_lines)
         loan_text = _read_line(
             term,
-            "Loan number (blank for regular cash flow): ",
-            prelude=f"Choose a loan or leave blank:\n{loan_options}\n",
+            "Goal number (blank for regular cash flow): ",
+            prelude=f"Choose a loan or savings target, or leave blank:\n{goal_options}\n",
         )
         if loan_text is None:
             return "Cash-flow creation cancelled."
         if loan_text:
             try:
-                loan_id = active_loans[int(loan_text) - 1]["id"]
+                goal_kind, goal = available_goals[int(loan_text) - 1]
+                if goal_kind == "loan":
+                    loan_id = goal["id"]
+                else:
+                    savings_target_id = goal["id"]
             except (ValueError, IndexError):
-                raise ValueError("choose a valid loan number") from None
+                raise ValueError("choose a valid goal number") from None
 
     amount_text = _read_line(
         term,
         "Total payment amount (e.g. 12.34): "
         if loan_id is not None
+        else "Savings contribution (e.g. 12.34): "
+        if savings_target_id is not None
         else "Amount (+ income, - expense; e.g. 12.34): ",
     )
     if amount_text is None:
@@ -1735,6 +1908,10 @@ def _add_cash_flow(
         if principal_text is None:
             return "Cash-flow creation cancelled."
         principal_amount = parse_amount(principal_text)
+        amount = -amount
+    elif savings_target_id is not None:
+        if amount <= 0:
+            raise ValueError("savings contribution must be greater than zero")
         amount = -amount
 
     category_options = "\n".join(
@@ -1766,6 +1943,7 @@ def _add_cash_flow(
         description=description or None,
         loan_id=loan_id,
         principal_amount=principal_amount,
+        savings_target_id=savings_target_id,
     )
     return f"Added cash flow: {format_amount(amount, data.get_currency())}."
 
@@ -1781,15 +1959,22 @@ def _edit_cash_flow(
     )
     if description is None:
         return "Cash-flow edit cancelled."
-    amount_default = f"{Decimal(cash_flow['amount']) / 100:.2f}"
+    is_savings_contribution = cash_flow["savings_target_id"] is not None
+    amount_default = f"{Decimal(abs(cash_flow['amount']) if is_savings_contribution else cash_flow['amount']) / 100:.2f}"
     amount_text = _read_line(
         term,
-        "Amount (+ income, - expense): ",
+        "Savings contribution amount: "
+        if is_savings_contribution
+        else "Amount (+ income, - expense): ",
         amount_default,
     )
     if amount_text is None:
         return "Cash-flow edit cancelled."
     amount = parse_amount(amount_text)
+    if is_savings_contribution:
+        if amount <= 0:
+            raise ValueError("savings contribution must be greater than zero")
+        amount = -amount
     principal_amount = cash_flow["principal_amount"]
     if cash_flow["loan_id"] is not None:
         principal_default = f"{Decimal(principal_amount or 0) / 100:.2f}"
@@ -1837,6 +2022,7 @@ def _edit_cash_flow(
         description or None,
         cash_flow["loan_id"],
         principal_amount,
+        cash_flow["savings_target_id"],
     )
     return "Cash-flow item updated."
 
@@ -1925,6 +2111,7 @@ def run_ui(database_path: Path) -> None:
                     else None
                 )
                 currency = data.get_currency()
+                financial_totals = data.get_financial_totals()
                 print(
                     render_screen(
                         term,
@@ -1938,6 +2125,7 @@ def run_ui(database_path: Path) -> None:
                         selected_cash_flow_id,
                         budget_report,
                         cash_flow_days,
+                        financial_totals,
                     ),
                     end="",
                     flush=True,
@@ -2051,6 +2239,11 @@ def run_ui(database_path: Path) -> None:
                         notice = _manage_loans(term, data)
                     except (IntegrityError, LookupError, ValueError) as error:
                         notice = f"Could not manage loans: {error}"
+                elif key.lower() == "t":
+                    try:
+                        notice = _manage_savings_targets(term, data)
+                    except (IntegrityError, LookupError, ValueError) as error:
+                        notice = f"Could not manage savings targets: {error}"
                 elif key.lower() == "v":
                     if selected_period is None:
                         notice = "Select a day inside a period first."

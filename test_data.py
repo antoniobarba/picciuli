@@ -25,7 +25,15 @@ class DataTests(unittest.TestCase):
 
         self.assertEqual(
             set(inspector.get_table_names()),
-            {"categories", "cash_flows", "periods", "budgets", "settings", "loans"},
+            {
+                "categories",
+                "cash_flows",
+                "periods",
+                "budgets",
+                "settings",
+                "loans",
+                "savings_targets",
+            },
         )
         self.assertIn(
             "parent_id",
@@ -49,6 +57,7 @@ class DataTests(unittest.TestCase):
                 "occurred_at",
                 "loan_id",
                 "principal_amount",
+                "savings_target_id",
             },
         )
         period_columns = {
@@ -528,6 +537,78 @@ class DataTests(unittest.TestCase):
 
         self.data.delete_cash_flow(first_payment["id"])
         self.assertEqual(self.data.get_loan(loan["id"])["current_principal"], 95_000)
+
+    def test_savings_targets_track_contributions_and_financial_totals(self):
+        category = self.data.create_category("Savings contribution")
+        target = self.data.create_savings_target("New car", 1_500_000)
+        loan = self.data.create_loan("Car loan", 100_000)
+        self.data.create_cash_flow(
+            -10_000,
+            category["id"],
+            datetime(2026, 10, 4),
+            "Loan payment",
+            loan["id"],
+            10_000,
+        )
+        contribution = self.data.create_cash_flow(
+            -250_000,
+            category["id"],
+            datetime(2026, 10, 5),
+            "Monthly saving",
+            savings_target_id=target["id"],
+        )
+        self.assertEqual(
+            self.data.get_savings_target(target["id"]),
+            {
+                "id": target["id"],
+                "name": "New car",
+                "amount": 1_500_000,
+                "accrued_amount": 250_000,
+            },
+        )
+        self.assertEqual(
+            self.data.list_cash_flows(savings_target_id=target["id"]),
+            [contribution],
+        )
+        self.assertEqual(
+            self.data.get_financial_totals(),
+            {"loans_pending": 90_000, "savings_accrued": 250_000},
+        )
+
+        with self.assertRaises(ValueError):
+            self.data.create_cash_flow(
+                100, category["id"], datetime(2026, 10, 6),
+                savings_target_id=target["id"],
+            )
+        with self.assertRaises(ValueError):
+            self.data.create_cash_flow(
+                -1_250_001,
+                category["id"],
+                datetime(2026, 10, 6),
+                savings_target_id=target["id"],
+            )
+        with self.assertRaises(ValueError):
+            self.data.create_savings_target("", 1_000)
+
+        self.data.create_cash_flow(
+            -1_250_000,
+            category["id"],
+            datetime(2026, 11, 5),
+            savings_target_id=target["id"],
+        )
+        self.assertEqual(
+            self.data.get_savings_target(target["id"])["accrued_amount"],
+            1_500_000,
+        )
+        self.assertEqual(
+            self.data.get_financial_totals(),
+            {"loans_pending": 90_000, "savings_accrued": 1_500_000},
+        )
+        self.data.delete_cash_flow(contribution["id"])
+        self.assertEqual(
+            self.data.get_savings_target(target["id"])["accrued_amount"],
+            1_250_000,
+        )
 
     def test_cash_flow_rejects_missing_category_and_invalid_range(self):
         with self.assertRaises(LookupError):

@@ -10,6 +10,8 @@ from main import (
     _calendar_lines,
     _key_binding_footer,
     _manage_loans,
+    _manage_savings_targets,
+    _add_cash_flow,
     _period_report_content,
     _periods_for_day,
     _period_date,
@@ -60,6 +62,10 @@ class FakeTerminal:
 
 
 class FakeKey(str):
+    @property
+    def is_sequence(self):
+        return False
+
     @property
     def name(self):
         return {
@@ -121,7 +127,25 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("<yellow>[c]</yellow> add category", screen)
         self.assertIn("<yellow>[v]</yellow> report", screen)
         self.assertIn("<yellow>[l]</yellow> manage loans", screen)
+        self.assertIn("<yellow>[t]</yellow> savings targets", screen)
         self.assertIn("-" * 80, screen)
+
+    def test_dashboard_shows_separate_loan_and_savings_totals(self):
+        screen = render_screen(
+            FakeTerminal(),
+            date(2026, 10, 27),
+            [],
+            None,
+            financial_totals={
+                "loans_pending": 1_234_500,
+                "savings_accrued": 750_000,
+            },
+        )
+
+        self.assertIn("┌", screen)
+        self.assertIn("Loans remaining: $12,345.00", screen)
+        self.assertIn("Savings accrued: $7,500.00", screen)
+        self.assertNotIn("Net worth", screen)
 
     def test_key_binding_footer_wraps_long_groups_to_terminal_width(self):
         terminal = FakeTerminal()
@@ -484,6 +508,63 @@ class UiHelperTests(unittest.TestCase):
         finally:
             data.close()
 
+    def test_savings_target_screen_shows_progress_and_contributions(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Savings")
+            target = data.create_savings_target("New car", 1_500_000)
+            data.create_cash_flow(
+                -250_000,
+                category["id"],
+                datetime(2026, 11, 5),
+                "Monthly",
+                savings_target_id=target["id"],
+            )
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = _manage_savings_targets(
+                    ScriptedTerminal(["\x1b"]), data
+                )
+
+            screen = output.getvalue()
+            self.assertIn("$2,500.00 / $15,000.00 (17% completed)", screen)
+            self.assertIn("[###-----------------]", screen)
+            self.assertIn("Accrued: $2,500.00", screen)
+            self.assertIn("2026-11-05", screen)
+            self.assertEqual(result, "Savings-target management closed.")
+        finally:
+            data.close()
+
+    def test_cash_flow_entry_links_savings_target_as_contribution(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Savings")
+            target = data.create_savings_target("New car", 1_500_000)
+            keys = [
+                *"Monthly saving",
+                "\r",
+                "1",
+                "\r",
+                *"2500.00",
+                "\r",
+                "1",
+                "\r",
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                message = _add_cash_flow(
+                    ScriptedTerminal(keys),
+                    data,
+                    date(2026, 11, 5),
+                    [category],
+                )
+
+            payment = data.list_cash_flows(savings_target_id=target["id"])[0]
+            self.assertEqual(payment["amount"], -250_000)
+            self.assertEqual(payment["savings_target_id"], target["id"])
+            self.assertEqual(message, "Added cash flow: -$2,500.00.")
+        finally:
+            data.close()
+
     def test_graph_category_selector_toggles_selected_category(self):
         categories = [
             (1, "Food", [0, -100]),
@@ -514,6 +595,7 @@ class UiHelperTests(unittest.TestCase):
             "occurred_at": datetime(2026, 10, 27, 9, 15),
             "loan_id": None,
             "principal_amount": None,
+            "savings_target_id": None,
         }
 
         screen = render_screen(

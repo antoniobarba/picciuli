@@ -11,6 +11,8 @@ tracks budgets against spending.
 - Track loans with manually entered payments. Loan repayments are cash-flow
   items whose total amount and principal portion are recorded separately;
   interest is derived from their difference.
+- Track savings targets with manually entered contributions linked to cash-flow
+  items, and see accrued savings against each target.
 - Use top-level categories and one level of subcategories; choose a symbol and
   display order for each category.
 - Create overlapping periods and view a period's balances for any selected
@@ -66,6 +68,12 @@ On the overview:
 - Press `l` to add loans and review each loan's remaining principal, interest
   paid, and payment history (newest first). Payments are entered manually;
   automatic payments and interest calculations are not managed.
+- Press `t` to add savings targets and review progress and contributions.
+  When adding a cash-flow item, choose a savings target and enter its
+  contribution amount; contributions are recorded as expenses in the selected
+  category.
+- The overview separately displays outstanding loan principal and total
+  savings accrued. These values are not combined into a net-worth figure.
 - Press `p` to manage periods, `b` to manage budgets, `u` to change the
   currency, or `v` to open a report for the selected period. Period reports
   include loans with principal remaining.

@@ -51,6 +51,18 @@ class LoanRecord(TypedDict):
     total_interest_paid: int
 
 
+class SavingsTargetRecord(TypedDict):
+    id: int
+    name: str
+    amount: int
+    accrued_amount: int
+
+
+class FinancialTotalsRecord(TypedDict):
+    loans_pending: int
+    savings_accrued: int
+
+
 class CategoryBalance(TypedDict):
     category_id: int
     category_name: str
@@ -128,9 +140,15 @@ class CashFlow(Base):
         CheckConstraint(
             "(loan_id IS NULL AND principal_amount IS NULL) OR "
             "(loan_id IS NOT NULL AND principal_amount IS NOT NULL "
-            "AND amount < 0 AND principal_amount >= 0 "
+            "AND savings_target_id IS NULL AND amount < 0 "
+            "AND principal_amount >= 0 "
             "AND principal_amount <= -amount)",
             name="valid_loan_payment",
+        ),
+        CheckConstraint(
+            "savings_target_id IS NULL OR "
+            "(loan_id IS NULL AND principal_amount IS NULL AND amount < 0)",
+            name="valid_savings_contribution",
         ),
     )
 
@@ -143,8 +161,14 @@ class CashFlow(Base):
         ForeignKey("loans.id", ondelete="RESTRICT"), nullable=True
     )
     principal_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    savings_target_id: Mapped[int | None] = mapped_column(
+        ForeignKey("savings_targets.id", ondelete="RESTRICT"), nullable=True
+    )
     category: Mapped[Category] = relationship(back_populates="cash_flows")
     loan: Mapped["Loan | None"] = relationship(back_populates="payments")
+    savings_target: Mapped["SavingsTarget | None"] = relationship(
+        back_populates="payments"
+    )
 
 
 class Loan(Base):
@@ -155,6 +179,20 @@ class Loan(Base):
     name: Mapped[str] = mapped_column(String)
     amount: Mapped[int] = mapped_column(Integer)
     payments: Mapped[list[CashFlow]] = relationship(back_populates="loan")
+
+
+class SavingsTarget(Base):
+    __tablename__ = "savings_targets"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="positive_savings_target_amount"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    amount: Mapped[int] = mapped_column(Integer)
+    payments: Mapped[list[CashFlow]] = relationship(
+        back_populates="savings_target"
+    )
 
 
 class Period(Base):
@@ -212,17 +250,28 @@ class Data:
             for table_name, missing in missing_columns.items()
             if missing
         }
-        if missing_columns == {
-            "cash_flows": {"loan_id", "principal_amount"}
-        }:
+        if (
+            missing_columns
+            and set(missing_columns) <= {"cash_flows"}
+            and missing_columns.get("cash_flows", set())
+            <= {"loan_id", "principal_amount", "savings_target_id"}
+        ):
             with self.engine.begin() as connection:
-                connection.exec_driver_sql(
-                    "ALTER TABLE cash_flows ADD COLUMN loan_id "
-                    "INTEGER REFERENCES loans(id) ON DELETE RESTRICT"
-                )
-                connection.exec_driver_sql(
-                    "ALTER TABLE cash_flows ADD COLUMN principal_amount INTEGER"
-                )
+                missing_cash_flow_columns = missing_columns.get("cash_flows", set())
+                if "loan_id" in missing_cash_flow_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE cash_flows ADD COLUMN loan_id "
+                        "INTEGER REFERENCES loans(id) ON DELETE RESTRICT"
+                    )
+                if "principal_amount" in missing_cash_flow_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE cash_flows ADD COLUMN principal_amount INTEGER"
+                    )
+                if "savings_target_id" in missing_cash_flow_columns:
+                    connection.exec_driver_sql(
+                        "ALTER TABLE cash_flows ADD COLUMN savings_target_id "
+                        "INTEGER REFERENCES savings_targets(id) ON DELETE RESTRICT"
+                    )
             with self.engine.connect() as connection:
                 inspector = inspect(connection)
                 missing_columns = {
@@ -282,6 +331,7 @@ class Data:
             "occurred_at": cash_flow.occurred_at,
             "loan_id": cash_flow.loan_id,
             "principal_amount": cash_flow.principal_amount,
+            "savings_target_id": cash_flow.savings_target_id,
         }
 
     @staticmethod
@@ -297,6 +347,17 @@ class Data:
             "amount": loan.amount,
             "current_principal": loan.amount - principal_paid,
             "total_interest_paid": interest_paid,
+        }
+
+    @staticmethod
+    def _savings_target_dict(
+        target: SavingsTarget, payments: list[CashFlow]
+    ) -> SavingsTargetRecord:
+        return {
+            "id": target.id,
+            "name": target.name,
+            "amount": target.amount,
+            "accrued_amount": sum(abs(payment.amount) for payment in payments),
         }
 
     @staticmethod
@@ -353,6 +414,15 @@ class Data:
         return name
 
     @staticmethod
+    def _normalize_savings_target_name(name: str) -> str:
+        if not isinstance(name, str):
+            raise TypeError("savings target name must be a string")
+        name = name.strip()
+        if not name:
+            raise ValueError("savings target name cannot be empty")
+        return name
+
+    @staticmethod
     def _validate_loan_payment(
         session,
         amount: int,
@@ -384,6 +454,33 @@ class Data:
         principal_paid = session.scalar(statement) or 0
         if principal_amount > loan.amount - principal_paid:
             raise ValueError("principal amount exceeds the remaining loan principal")
+
+    @staticmethod
+    def _validate_savings_contribution(
+        session,
+        amount: int,
+        savings_target_id: int | None,
+        loan_id: int | None,
+        principal_amount: int | None,
+        cash_flow_id: int | None = None,
+    ) -> None:
+        if savings_target_id is None:
+            return
+        if loan_id is not None or principal_amount is not None:
+            raise ValueError("a cash-flow item can belong to only one goal")
+        if amount >= 0:
+            raise ValueError("savings contribution amount must be negative")
+        target = session.get(SavingsTarget, savings_target_id)
+        if target is None:
+            raise LookupError(f"savings target {savings_target_id} does not exist")
+        statement = select(
+            func.coalesce(func.sum(-CashFlow.amount), 0)
+        ).where(CashFlow.savings_target_id == savings_target_id)
+        if cash_flow_id is not None:
+            statement = statement.where(CashFlow.id != cash_flow_id)
+        accrued = session.scalar(statement) or 0
+        if abs(amount) > target.amount - accrued:
+            raise ValueError("savings contribution exceeds the remaining target amount")
 
     def create_loan(self, name: str, amount: int) -> LoanRecord:
         name = self._normalize_loan_name(name)
@@ -422,6 +519,78 @@ class Data:
                 )
                 for loan in loans
             ]
+
+    def create_savings_target(self, name: str, amount: int) -> SavingsTargetRecord:
+        name = self._normalize_savings_target_name(name)
+        self._validate_amount(amount)
+        if amount <= 0:
+            raise ValueError("savings target amount must be greater than zero")
+        with self.session_factory.begin() as session:
+            target = SavingsTarget(name=name, amount=amount)
+            session.add(target)
+            session.flush()
+            return self._savings_target_dict(target, [])
+
+    def get_savings_target(self, target_id: int) -> SavingsTargetRecord:
+        with self.session_factory() as session:
+            target = session.get(SavingsTarget, target_id)
+            if target is None:
+                raise LookupError(f"savings target {target_id} does not exist")
+            payments = session.scalars(
+                select(CashFlow)
+                .where(CashFlow.savings_target_id == target_id)
+                .order_by(CashFlow.occurred_at, CashFlow.id)
+            ).all()
+            return self._savings_target_dict(target, payments)
+
+    def list_savings_targets(self) -> list[SavingsTargetRecord]:
+        with self.session_factory() as session:
+            targets = session.scalars(
+                select(SavingsTarget).order_by(
+                    SavingsTarget.name, SavingsTarget.id
+                )
+            ).all()
+            return [
+                self._savings_target_dict(
+                    target,
+                    session.scalars(
+                        select(CashFlow)
+                        .where(CashFlow.savings_target_id == target.id)
+                        .order_by(CashFlow.occurred_at, CashFlow.id)
+                    ).all(),
+                )
+                for target in targets
+            ]
+
+    def get_financial_totals(self) -> FinancialTotalsRecord:
+        with self.session_factory() as session:
+            loans_pending = session.scalar(
+                select(
+                    func.coalesce(
+                        func.sum(
+                            Loan.amount
+                            - select(
+                                func.coalesce(func.sum(CashFlow.principal_amount), 0)
+                            )
+                            .where(CashFlow.loan_id == Loan.id)
+                            .scalar_subquery()
+                        ),
+                        0,
+                    )
+                )
+            )
+            savings_accrued = session.scalar(
+                select(
+                    func.coalesce(
+                        func.sum(-CashFlow.amount),
+                        0,
+                    )
+                ).where(CashFlow.savings_target_id.is_not(None))
+            )
+            return {
+                "loans_pending": loans_pending or 0,
+                "savings_accrued": savings_accrued or 0,
+            }
 
     @staticmethod
     def _normalize_category_symbol(symbol: str | None, name: str) -> str:
@@ -701,6 +870,7 @@ class Data:
         description: str | None = None,
         loan_id: int | None = None,
         principal_amount: int | None = None,
+        savings_target_id: int | None = None,
     ) -> CashFlowRecord:
         self._validate_amount(amount)
         if not isinstance(occurred_at, datetime):
@@ -711,6 +881,13 @@ class Data:
             self._validate_loan_payment(
                 session, amount, loan_id, principal_amount
             )
+            self._validate_savings_contribution(
+                session,
+                amount,
+                savings_target_id,
+                loan_id,
+                principal_amount,
+            )
             cash_flow = CashFlow(
                 amount=amount,
                 category_id=category_id,
@@ -718,6 +895,7 @@ class Data:
                 description=description,
                 loan_id=loan_id,
                 principal_amount=principal_amount,
+                savings_target_id=savings_target_id,
             )
             session.add(cash_flow)
             session.flush()
@@ -736,6 +914,7 @@ class Data:
         end_date: datetime | None = None,
         category_id: int | None = None,
         loan_id: int | None = None,
+        savings_target_id: int | None = None,
     ) -> list[CashFlowRecord]:
         if start_date is not None and not isinstance(start_date, datetime):
             raise TypeError("start_date must be a datetime instance")
@@ -752,6 +931,10 @@ class Data:
             statement = statement.where(CashFlow.category_id == category_id)
         if loan_id is not None:
             statement = statement.where(CashFlow.loan_id == loan_id)
+        if savings_target_id is not None:
+            statement = statement.where(
+                CashFlow.savings_target_id == savings_target_id
+            )
         statement = statement.order_by(CashFlow.occurred_at, CashFlow.id)
         with self.session_factory() as session:
             cash_flows = session.scalars(statement)
@@ -766,6 +949,7 @@ class Data:
         description: str | None = None,
         loan_id: int | None = None,
         principal_amount: int | None = None,
+        savings_target_id: int | None = None,
     ) -> CashFlowRecord:
         self._validate_amount(amount)
         if not isinstance(occurred_at, datetime):
@@ -783,12 +967,25 @@ class Data:
                 principal_amount,
                 cash_flow.id if loan_id == cash_flow.loan_id else None,
             )
+            self._validate_savings_contribution(
+                session,
+                amount,
+                savings_target_id,
+                loan_id,
+                principal_amount,
+                (
+                    cash_flow.id
+                    if savings_target_id == cash_flow.savings_target_id
+                    else None
+                ),
+            )
             cash_flow.amount = amount
             cash_flow.category_id = category_id
             cash_flow.occurred_at = occurred_at
             cash_flow.description = description
             cash_flow.loan_id = loan_id
             cash_flow.principal_amount = principal_amount
+            cash_flow.savings_target_id = savings_target_id
             session.flush()
             return self._cash_flow_dict(cash_flow)
 
