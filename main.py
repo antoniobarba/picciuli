@@ -433,6 +433,7 @@ def render_screen(
                         ("[v]", "report"),
                     ],
                 ),
+                ("Loans", [("[l]", "manage loans")]),
                 ("App", [("[u]", "currency"), ("[q]", "quit")]),
             ],
         )
@@ -1150,6 +1151,135 @@ def _manage_budgets(term: Terminal, data: Data) -> str:
                 notice = f"Could not delete budget: {error}"
 
 
+def _add_loan(term: Terminal, data: Data) -> tuple[str, int | None]:
+    name = _read_line(term, "Loan name (Esc cancels): ")
+    if name is None:
+        return "Loan creation cancelled.", None
+    amount_text = _read_line(term, "Total loan amount (e.g. 1200.00): ")
+    if amount_text is None:
+        return "Loan creation cancelled.", None
+    loan = data.create_loan(name, parse_amount(amount_text))
+    return f"Added loan {loan['name']}.", loan["id"]
+
+
+def _manage_loans(term: Terminal, data: Data) -> str:
+    loans = data.list_loans()
+    selected_id = loans[0]["id"] if loans else None
+    payment_offset = 0
+    notice = ""
+    while True:
+        loans = data.list_loans()
+        selected_index = next(
+            (index for index, loan in enumerate(loans) if loan["id"] == selected_id),
+            0,
+        )
+        selected = loans[selected_index] if loans else None
+        if selected is not None:
+            selected_id = selected["id"]
+        footer = _key_binding_footer(
+            term,
+            [
+                ("Loans", [("[j/k]", "select"), ("[a]", "add loan")]),
+                ("Payments", [("[↑/↓]", "scroll"), ("[PgUp/PgDn]", "page")]),
+                ("Return", [("[q/Esc]", "overview")]),
+            ],
+        )
+        header = [term.bold("Manage loans"), ""]
+        loan_rows: list[str] = []
+        if loans:
+            for loan in loans:
+                completed = loan["amount"] - loan["current_principal"]
+                completion_percent = (
+                    completed * 100 + loan["amount"] // 2
+                ) // loan["amount"]
+                bar_width = 20
+                filled_width = (
+                    completed * bar_width + loan["amount"] // 2
+                ) // loan["amount"]
+                progress_bar = (
+                    f"[{'#' * filled_width}{'-' * (bar_width - filled_width)}]"
+                )
+                loan_rows.extend(
+                    [
+                        f"{'>' if loan['id'] == selected_id else ' '} "
+                        f"{loan['name']} — "
+                        f"{format_amount(loan['current_principal'], data.get_currency())} / "
+                        f"{format_amount(loan['amount'], data.get_currency())} "
+                        f"({completion_percent}% completed)",
+                        f"  {progress_bar}",
+                    ]
+                )
+        else:
+            loan_rows = ["No loans yet."]
+        lines = header + loan_rows + [""]
+        payments: list[CashFlowRecord] = []
+        if selected is not None:
+            payments = list(
+                reversed(data.list_cash_flows(loan_id=selected["id"]))
+            )
+            lines.extend(
+                [
+                    term.bold(f"{selected['name']}"),
+                    f"Current principal: "
+                    f"{format_amount(selected['current_principal'], data.get_currency())}",
+                    f"Total interest paid: "
+                    f"{format_amount(selected['total_interest_paid'], data.get_currency())}",
+                    "",
+                    "Date       Total amount       Principal          Interest",
+                ]
+            )
+            if not payments:
+                lines.append("No payments recorded.")
+        page_size = max(1, term.height - len(lines) - len(footer) - 2)
+        payment_offset = min(
+            payment_offset,
+            max(0, len(payments) - page_size),
+        )
+        if payments:
+            for payment in payments[payment_offset : payment_offset + page_size]:
+                principal = payment["principal_amount"] or 0
+                interest = abs(payment["amount"]) - principal
+                lines.append(
+                    f"{payment['occurred_at']:%Y-%m-%d}   "
+                    f"{format_amount(abs(payment['amount']), data.get_currency()):>16}   "
+                    f"{format_amount(principal, data.get_currency()):>16}   "
+                    f"{format_amount(interest, data.get_currency()):>16}"
+                )
+        if notice:
+            lines.extend(["", term.bold(notice)])
+        lines.extend(["", *footer])
+        print(term.home + term.clear + "\n".join(lines), end="", flush=True)
+
+        key = term.inkey()
+        if key.name == "KEY_ESCAPE" or key == "\x1b" or key.lower() == "q":
+            return notice or "Loan management closed."
+        if key.lower() == "a":
+            try:
+                notice, selected_id = _add_loan(term, data)
+                payment_offset = 0
+            except (IntegrityError, LookupError, ValueError) as error:
+                notice = f"Could not create loan: {error}"
+            continue
+        if key.lower() in ("j", "k") and loans:
+            direction = 1 if key.lower() == "j" else -1
+            selected_index = (selected_index + direction) % len(loans)
+            selected_id = loans[selected_index]["id"]
+            payment_offset = 0
+            notice = ""
+        elif key.name in ("KEY_UP", "KEY_PAGE_UP"):
+            payment_offset = max(
+                0,
+                payment_offset - (page_size if key.name == "KEY_PAGE_UP" else 1),
+            )
+        elif key.name in ("KEY_DOWN", "KEY_PAGE_DOWN"):
+            payment_offset = min(
+                max(0, len(payments) - page_size),
+                payment_offset + (
+                    page_size if key.name == "KEY_PAGE_DOWN" else 1
+                ),
+            )
+
+
 def _markdown_cell(value: str) -> str:
     return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
 
@@ -1343,6 +1473,25 @@ def _period_report_content(
             f"**Allocated budget:** {format_amount(total_budget, currency)} — "
             f"{status}"
         )
+    active_loans = [
+        loan for loan in data.list_loans() if loan["current_principal"] > 0
+    ]
+    if active_loans:
+        lines.extend(
+            [
+                "",
+                "## Active loans",
+                "",
+                "| Loan | Principal remaining | Interest paid |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        for loan in active_loans:
+            lines.append(
+                f"| {_markdown_cell(loan['name'])} | "
+                f"{format_amount(loan['current_principal'], currency)} | "
+                f"{format_amount(loan['total_interest_paid'], currency)} |"
+            )
     lines.extend(
         [
             "",
@@ -1546,10 +1695,47 @@ def _add_cash_flow(
     description = _read_line(term, "Description (Esc cancels): ")
     if description is None:
         return "Cash-flow creation cancelled."
-    amount_text = _read_line(term, "Amount (+ income, - expense; e.g. 12.34): ")
+    active_loans = [
+        loan for loan in data.list_loans() if loan["current_principal"] > 0
+    ]
+    loan_id = None
+    if active_loans:
+        loan_options = "\n".join(
+            f"{index}. {loan['name']} "
+            f"({format_amount(loan['current_principal'], data.get_currency())} principal)"
+            for index, loan in enumerate(active_loans, start=1)
+        )
+        loan_text = _read_line(
+            term,
+            "Loan number (blank for regular cash flow): ",
+            prelude=f"Choose a loan or leave blank:\n{loan_options}\n",
+        )
+        if loan_text is None:
+            return "Cash-flow creation cancelled."
+        if loan_text:
+            try:
+                loan_id = active_loans[int(loan_text) - 1]["id"]
+            except (ValueError, IndexError):
+                raise ValueError("choose a valid loan number") from None
+
+    amount_text = _read_line(
+        term,
+        "Total payment amount (e.g. 12.34): "
+        if loan_id is not None
+        else "Amount (+ income, - expense; e.g. 12.34): ",
+    )
     if amount_text is None:
         return "Cash-flow creation cancelled."
     amount = parse_amount(amount_text)
+    principal_amount = None
+    if loan_id is not None:
+        if amount <= 0:
+            raise ValueError("loan payment amount must be greater than zero")
+        principal_text = _read_line(term, "Principal amount paid: ")
+        if principal_text is None:
+            return "Cash-flow creation cancelled."
+        principal_amount = parse_amount(principal_text)
+        amount = -amount
 
     category_options = "\n".join(
         f"{index}. "
@@ -1578,6 +1764,8 @@ def _add_cash_flow(
         category_id=category_id,
         occurred_at=datetime.combine(selected_day, time.min),
         description=description or None,
+        loan_id=loan_id,
+        principal_amount=principal_amount,
     )
     return f"Added cash flow: {format_amount(amount, data.get_currency())}."
 
@@ -1602,6 +1790,15 @@ def _edit_cash_flow(
     if amount_text is None:
         return "Cash-flow edit cancelled."
     amount = parse_amount(amount_text)
+    principal_amount = cash_flow["principal_amount"]
+    if cash_flow["loan_id"] is not None:
+        principal_default = f"{Decimal(principal_amount or 0) / 100:.2f}"
+        principal_text = _read_line(
+            term, "Principal amount paid: ", principal_default
+        )
+        if principal_text is None:
+            return "Cash-flow edit cancelled."
+        principal_amount = parse_amount(principal_text)
     options = "\n".join(
         f"{index}. [{category['symbol']}] "
         + (
@@ -1638,6 +1835,8 @@ def _edit_cash_flow(
         category_id,
         cash_flow["occurred_at"],
         description or None,
+        cash_flow["loan_id"],
+        principal_amount,
     )
     return "Cash-flow item updated."
 
@@ -1847,6 +2046,11 @@ def run_ui(database_path: Path) -> None:
                         notice = _manage_budgets(term, data)
                     except (IntegrityError, LookupError, ValueError) as error:
                         notice = f"Could not manage budgets: {error}"
+                elif key.lower() == "l":
+                    try:
+                        notice = _manage_loans(term, data)
+                    except (IntegrityError, LookupError, ValueError) as error:
+                        notice = f"Could not manage loans: {error}"
                 elif key.lower() == "v":
                     if selected_period is None:
                         notice = "Select a day inside a period first."

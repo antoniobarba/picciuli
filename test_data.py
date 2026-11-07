@@ -25,7 +25,7 @@ class DataTests(unittest.TestCase):
 
         self.assertEqual(
             set(inspector.get_table_names()),
-            {"categories", "cash_flows", "periods", "budgets", "settings"},
+            {"categories", "cash_flows", "periods", "budgets", "settings", "loans"},
         )
         self.assertIn(
             "parent_id",
@@ -41,7 +41,15 @@ class DataTests(unittest.TestCase):
         )
         self.assertEqual(
             {column["name"] for column in inspector.get_columns("cash_flows")},
-            {"id", "amount", "description", "category_id", "occurred_at"},
+            {
+                "id",
+                "amount",
+                "description",
+                "category_id",
+                "occurred_at",
+                "loan_id",
+                "principal_amount",
+            },
         )
         period_columns = {
             column["name"]: column
@@ -68,6 +76,68 @@ class DataTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "Use a new database file"):
             Data(old_database)
+
+    def test_existing_database_is_extended_for_loan_payments(self):
+        old_database = str(Path(self.temp_dir.name) / "existing.db")
+        connection = sqlite3.connect(old_database)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE settings (
+                    id INTEGER PRIMARY KEY,
+                    currency VARCHAR NOT NULL
+                );
+                CREATE TABLE categories (
+                    id INTEGER PRIMARY KEY,
+                    name VARCHAR NOT NULL UNIQUE,
+                    symbol VARCHAR(12) NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    parent_id INTEGER REFERENCES categories(id) ON DELETE RESTRICT
+                );
+                CREATE TABLE periods (
+                    id INTEGER PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    start_date DATETIME NOT NULL,
+                    end_date DATETIME
+                );
+                CREATE TABLE cash_flows (
+                    id INTEGER PRIMARY KEY,
+                    amount INTEGER NOT NULL,
+                    description VARCHAR,
+                    category_id INTEGER NOT NULL REFERENCES categories(id),
+                    occurred_at DATETIME NOT NULL
+                );
+                CREATE TABLE budgets (
+                    id INTEGER PRIMARY KEY,
+                    amount INTEGER NOT NULL,
+                    category_id INTEGER NOT NULL REFERENCES categories(id),
+                    period_id INTEGER NOT NULL REFERENCES periods(id)
+                );
+                INSERT INTO settings VALUES (1, '$');
+                INSERT INTO categories VALUES (1, 'Debt payment', 'D', 1, NULL);
+                INSERT INTO cash_flows VALUES (
+                    1, -10000, 'Existing item', 1, '2026-10-05 00:00:00'
+                );
+                """
+            )
+        finally:
+            connection.close()
+
+        upgraded = Data(old_database)
+        try:
+            self.assertEqual(upgraded.get_cash_flow(1)["description"], "Existing item")
+            loan = upgraded.create_loan("Car", 100_000)
+            upgraded.create_cash_flow(
+                -10_000,
+                1,
+                datetime(2026, 11, 5),
+                "Repayment",
+                loan["id"],
+                8_000,
+            )
+            self.assertEqual(upgraded.get_loan(loan["id"])["current_principal"], 92_000)
+        finally:
+            upgraded.close()
 
     def test_category_crud_and_ordering(self):
         food = self.data.create_category(" Food ")
@@ -396,6 +466,68 @@ class DataTests(unittest.TestCase):
         )
         with self.assertRaises(LookupError):
             self.data.get_cash_flow(second["id"])
+
+    def test_loans_track_linked_payments_and_reject_invalid_principal(self):
+        category = self.data.create_category("Debt payment")
+        loan = self.data.create_loan("Car", 100_000)
+        first_payment = self.data.create_cash_flow(
+            -10_000,
+            category["id"],
+            datetime(2026, 10, 5),
+            "Monthly payment",
+            loan["id"],
+            8_000,
+        )
+        self.data.create_cash_flow(
+            -5_000,
+            category["id"],
+            datetime(2026, 11, 5),
+            "Final payment",
+            loan["id"],
+            5_000,
+        )
+
+        self.assertEqual(
+            self.data.get_loan(loan["id"]),
+            {
+                "id": loan["id"],
+                "name": "Car",
+                "amount": 100_000,
+                "current_principal": 87_000,
+                "total_interest_paid": 2_000,
+            },
+        )
+        self.assertEqual(
+            [payment["id"] for payment in self.data.list_cash_flows(loan_id=loan["id"])],
+            [first_payment["id"], 2],
+        )
+
+        with self.assertRaises(ValueError):
+            self.data.create_cash_flow(
+                1_000, category["id"], datetime(2026, 12, 5), loan_id=loan["id"],
+                principal_amount=500,
+            )
+        with self.assertRaises(ValueError):
+            self.data.create_cash_flow(
+                -1_000, category["id"], datetime(2026, 12, 5), loan_id=loan["id"],
+                principal_amount=1_001,
+            )
+        with self.assertRaises(ValueError):
+            self.data.create_cash_flow(
+                -90_000, category["id"], datetime(2026, 12, 5), loan_id=loan["id"],
+                principal_amount=88_000,
+            )
+        with self.assertRaises(ValueError):
+            self.data.create_cash_flow(
+                -1_000, category["id"], datetime(2026, 12, 5), loan_id=loan["id"]
+            )
+        with self.assertRaises(ValueError):
+            self.data.create_loan("Zero", 0)
+        with self.assertRaises(ValueError):
+            self.data.create_loan("  ", 1_000)
+
+        self.data.delete_cash_flow(first_payment["id"])
+        self.assertEqual(self.data.get_loan(loan["id"])["current_principal"], 95_000)
 
     def test_cash_flow_rejects_missing_category_and_invalid_range(self):
         with self.assertRaises(LookupError):

@@ -1,3 +1,5 @@
+import contextlib
+import io
 import re
 import tempfile
 import unittest
@@ -7,6 +9,7 @@ from pathlib import Path
 from main import (
     _calendar_lines,
     _key_binding_footer,
+    _manage_loans,
     _period_report_content,
     _periods_for_day,
     _period_date,
@@ -117,6 +120,7 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("<yellow>[n]</yellow> new", screen)
         self.assertIn("<yellow>[c]</yellow> add category", screen)
         self.assertIn("<yellow>[v]</yellow> report", screen)
+        self.assertIn("<yellow>[l]</yellow> manage loans", screen)
         self.assertIn("-" * 80, screen)
 
     def test_key_binding_footer_wraps_long_groups_to_terminal_width(self):
@@ -416,6 +420,70 @@ class UiHelperTests(unittest.TestCase):
             finally:
                 data.close()
 
+    def test_period_report_lists_active_loans(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Loan payment")
+            period = data.create_period(
+                datetime(2026, 10, 1), datetime(2026, 10, 31)
+            )
+            loan = data.create_loan("Car", 100_000)
+            data.create_cash_flow(
+                -10_000,
+                category["id"],
+                datetime(2026, 10, 5),
+                "Payment",
+                loan["id"],
+                8_000,
+            )
+
+            markdown, _, _, _ = _period_report_content(data, period, "$")
+
+            self.assertIn("## Active loans", markdown)
+            self.assertIn("| Car | $920.00 | $20.00 |", markdown)
+        finally:
+            data.close()
+
+    def test_loan_screen_shows_newest_payments_and_balance_summary(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Loan payment")
+            loan = data.create_loan("Car", 100_000)
+            data.create_cash_flow(
+                -10_000, category["id"], datetime(2026, 10, 5), "Older", loan["id"], 8_000
+            )
+            data.create_cash_flow(
+                -5_000, category["id"], datetime(2026, 11, 5), "Newer", loan["id"], 5_000
+            )
+            repaid_loan = data.create_loan("Paid off", 1_000)
+            data.create_cash_flow(
+                -1_000,
+                category["id"],
+                datetime(2026, 12, 5),
+                "Final payment",
+                repaid_loan["id"],
+                1_000,
+            )
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = _manage_loans(ScriptedTerminal(["\x1b"]), data)
+
+            screen = output.getvalue()
+            self.assertIn("Current principal: $870.00", screen)
+            self.assertIn("Total interest paid: $20.00", screen)
+            self.assertIn("$870.00 / $1,000.00 (13% completed)", screen)
+            self.assertIn("[###-----------------]", screen)
+            self.assertIn(
+                "$0.00 / $10.00 (100% completed)",
+                screen,
+            )
+            self.assertIn("[####################]", screen)
+            self.assertLess(screen.index("2026-11-05"), screen.index("2026-10-05"))
+            self.assertEqual(result, "Loan management closed.")
+        finally:
+            data.close()
+
     def test_graph_category_selector_toggles_selected_category(self):
         categories = [
             (1, "Food", [0, -100]),
@@ -444,6 +512,8 @@ class UiHelperTests(unittest.TestCase):
             "description": "Market",
             "category_id": 2,
             "occurred_at": datetime(2026, 10, 27, 9, 15),
+            "loan_id": None,
+            "principal_amount": None,
         }
 
         screen = render_screen(

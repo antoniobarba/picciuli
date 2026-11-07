@@ -39,6 +39,16 @@ class CashFlowRecord(TypedDict):
     description: str | None
     category_id: int
     occurred_at: datetime
+    loan_id: int | None
+    principal_amount: int | None
+
+
+class LoanRecord(TypedDict):
+    id: int
+    name: str
+    amount: int
+    current_principal: int
+    total_interest_paid: int
 
 
 class CategoryBalance(TypedDict):
@@ -114,13 +124,37 @@ class Category(Base):
 
 class CashFlow(Base):
     __tablename__ = "cash_flows"
+    __table_args__ = (
+        CheckConstraint(
+            "(loan_id IS NULL AND principal_amount IS NULL) OR "
+            "(loan_id IS NOT NULL AND principal_amount IS NOT NULL "
+            "AND amount < 0 AND principal_amount >= 0 "
+            "AND principal_amount <= -amount)",
+            name="valid_loan_payment",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     amount: Mapped[int] = mapped_column(Integer)
     description: Mapped[str | None] = mapped_column(String)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     occurred_at: Mapped[datetime] = mapped_column(DateTime)
+    loan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("loans.id", ondelete="RESTRICT"), nullable=True
+    )
+    principal_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     category: Mapped[Category] = relationship(back_populates="cash_flows")
+    loan: Mapped["Loan | None"] = relationship(back_populates="payments")
+
+
+class Loan(Base):
+    __tablename__ = "loans"
+    __table_args__ = (CheckConstraint("amount > 0", name="positive_loan_amount"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    amount: Mapped[int] = mapped_column(Integer)
+    payments: Mapped[list[CashFlow]] = relationship(back_populates="loan")
 
 
 class Period(Base):
@@ -178,6 +212,29 @@ class Data:
             for table_name, missing in missing_columns.items()
             if missing
         }
+        if missing_columns == {
+            "cash_flows": {"loan_id", "principal_amount"}
+        }:
+            with self.engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "ALTER TABLE cash_flows ADD COLUMN loan_id "
+                    "INTEGER REFERENCES loans(id) ON DELETE RESTRICT"
+                )
+                connection.exec_driver_sql(
+                    "ALTER TABLE cash_flows ADD COLUMN principal_amount INTEGER"
+                )
+            with self.engine.connect() as connection:
+                inspector = inspect(connection)
+                missing_columns = {
+                    table_name: set(table.columns.keys())
+                    - {column["name"] for column in inspector.get_columns(table_name)}
+                    for table_name, table in Base.metadata.tables.items()
+                }
+        missing_columns = {
+            table_name: missing
+            for table_name, missing in missing_columns.items()
+            if missing
+        }
         if missing_columns:
             self.engine.dispose()
             details = "; ".join(
@@ -223,6 +280,23 @@ class Data:
             "description": cash_flow.description,
             "category_id": cash_flow.category_id,
             "occurred_at": cash_flow.occurred_at,
+            "loan_id": cash_flow.loan_id,
+            "principal_amount": cash_flow.principal_amount,
+        }
+
+    @staticmethod
+    def _loan_dict(loan: Loan, payments: list[CashFlow]) -> LoanRecord:
+        principal_paid = sum(payment.principal_amount or 0 for payment in payments)
+        interest_paid = sum(
+            abs(payment.amount) - (payment.principal_amount or 0)
+            for payment in payments
+        )
+        return {
+            "id": loan.id,
+            "name": loan.name,
+            "amount": loan.amount,
+            "current_principal": loan.amount - principal_paid,
+            "total_interest_paid": interest_paid,
         }
 
     @staticmethod
@@ -268,6 +342,86 @@ class Data:
         if not name:
             raise ValueError("category name cannot be empty")
         return name
+
+    @staticmethod
+    def _normalize_loan_name(name: str) -> str:
+        if not isinstance(name, str):
+            raise TypeError("loan name must be a string")
+        name = name.strip()
+        if not name:
+            raise ValueError("loan name cannot be empty")
+        return name
+
+    @staticmethod
+    def _validate_loan_payment(
+        session,
+        amount: int,
+        loan_id: int | None,
+        principal_amount: int | None,
+        cash_flow_id: int | None = None,
+    ) -> None:
+        if loan_id is None:
+            if principal_amount is not None:
+                raise ValueError("principal amount requires a loan")
+            return
+        if principal_amount is None:
+            raise ValueError("principal amount is required for a loan payment")
+        Data._validate_amount(principal_amount)
+        if amount >= 0:
+            raise ValueError("loan payment total amount must be negative")
+        if principal_amount < 0 or principal_amount > abs(amount):
+            raise ValueError(
+                "principal amount must be between zero and the total payment"
+            )
+        loan = session.get(Loan, loan_id)
+        if loan is None:
+            raise LookupError(f"loan {loan_id} does not exist")
+        statement = select(func.coalesce(func.sum(CashFlow.principal_amount), 0)).where(
+            CashFlow.loan_id == loan_id
+        )
+        if cash_flow_id is not None:
+            statement = statement.where(CashFlow.id != cash_flow_id)
+        principal_paid = session.scalar(statement) or 0
+        if principal_amount > loan.amount - principal_paid:
+            raise ValueError("principal amount exceeds the remaining loan principal")
+
+    def create_loan(self, name: str, amount: int) -> LoanRecord:
+        name = self._normalize_loan_name(name)
+        self._validate_amount(amount)
+        if amount <= 0:
+            raise ValueError("loan amount must be greater than zero")
+        with self.session_factory.begin() as session:
+            loan = Loan(name=name, amount=amount)
+            session.add(loan)
+            session.flush()
+            return self._loan_dict(loan, [])
+
+    def get_loan(self, loan_id: int) -> LoanRecord:
+        with self.session_factory() as session:
+            loan = session.get(Loan, loan_id)
+            if loan is None:
+                raise LookupError(f"loan {loan_id} does not exist")
+            payments = session.scalars(
+                select(CashFlow)
+                .where(CashFlow.loan_id == loan_id)
+                .order_by(CashFlow.occurred_at, CashFlow.id)
+            ).all()
+            return self._loan_dict(loan, payments)
+
+    def list_loans(self) -> list[LoanRecord]:
+        with self.session_factory() as session:
+            loans = session.scalars(select(Loan).order_by(Loan.name, Loan.id)).all()
+            return [
+                self._loan_dict(
+                    loan,
+                    session.scalars(
+                        select(CashFlow)
+                        .where(CashFlow.loan_id == loan.id)
+                        .order_by(CashFlow.occurred_at, CashFlow.id)
+                    ).all(),
+                )
+                for loan in loans
+            ]
 
     @staticmethod
     def _normalize_category_symbol(symbol: str | None, name: str) -> str:
@@ -545,6 +699,8 @@ class Data:
         category_id: int,
         occurred_at: datetime,
         description: str | None = None,
+        loan_id: int | None = None,
+        principal_amount: int | None = None,
     ) -> CashFlowRecord:
         self._validate_amount(amount)
         if not isinstance(occurred_at, datetime):
@@ -552,11 +708,16 @@ class Data:
         with self.session_factory.begin() as session:
             if session.get(Category, category_id) is None:
                 raise LookupError(f"category {category_id} does not exist")
+            self._validate_loan_payment(
+                session, amount, loan_id, principal_amount
+            )
             cash_flow = CashFlow(
                 amount=amount,
                 category_id=category_id,
                 occurred_at=occurred_at,
                 description=description,
+                loan_id=loan_id,
+                principal_amount=principal_amount,
             )
             session.add(cash_flow)
             session.flush()
@@ -574,6 +735,7 @@ class Data:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         category_id: int | None = None,
+        loan_id: int | None = None,
     ) -> list[CashFlowRecord]:
         if start_date is not None and not isinstance(start_date, datetime):
             raise TypeError("start_date must be a datetime instance")
@@ -588,6 +750,8 @@ class Data:
             statement = statement.where(CashFlow.occurred_at <= end_date)
         if category_id is not None:
             statement = statement.where(CashFlow.category_id == category_id)
+        if loan_id is not None:
+            statement = statement.where(CashFlow.loan_id == loan_id)
         statement = statement.order_by(CashFlow.occurred_at, CashFlow.id)
         with self.session_factory() as session:
             cash_flows = session.scalars(statement)
@@ -600,6 +764,8 @@ class Data:
         category_id: int,
         occurred_at: datetime,
         description: str | None = None,
+        loan_id: int | None = None,
+        principal_amount: int | None = None,
     ) -> CashFlowRecord:
         self._validate_amount(amount)
         if not isinstance(occurred_at, datetime):
@@ -610,10 +776,19 @@ class Data:
                 raise LookupError(f"cash flow {cash_flow_id} does not exist")
             if session.get(Category, category_id) is None:
                 raise LookupError(f"category {category_id} does not exist")
+            self._validate_loan_payment(
+                session,
+                amount,
+                loan_id,
+                principal_amount,
+                cash_flow.id if loan_id == cash_flow.loan_id else None,
+            )
             cash_flow.amount = amount
             cash_flow.category_id = category_id
             cash_flow.occurred_at = occurred_at
             cash_flow.description = description
+            cash_flow.loan_id = loan_id
+            cash_flow.principal_amount = principal_amount
             session.flush()
             return self._cash_flow_dict(cash_flow)
 

@@ -8,6 +8,9 @@ tracks budgets against spending.
 
 - Create, edit, and delete cash-flow items with a date, amount, description, and
   category.
+- Track loans with manually entered payments. Loan repayments are cash-flow
+  items whose total amount and principal portion are recorded separately;
+  interest is derived from their difference.
 - Use top-level categories and one level of subcategories; choose a symbol and
   display order for each category.
 - Create overlapping periods and view a period's balances for any selected
@@ -57,8 +60,15 @@ On the overview:
   use the arrow keys to select, `e` to edit, `d` to delete, `c` to add a
   top-level category, `s` to add a subcategory, and `j` / `k` to reorder
   categories within their group.
+- When adding a cash-flow item, choose a loan to record a repayment; enter the
+  total payment and principal amount separately. The payment is recorded as an
+  expense in the selected category.
+- Press `l` to add loans and review each loan's remaining principal, interest
+  paid, and payment history (newest first). Payments are entered manually;
+  automatic payments and interest calculations are not managed.
 - Press `p` to manage periods, `b` to manage budgets, `u` to change the
-  currency, or `v` to open a report for the selected period.
+  currency, or `v` to open a report for the selected period. Period reports
+  include loans with principal remaining.
 - Press `q` to quit.
 
 In the report screen, use `g` to choose which category lines appear in the
