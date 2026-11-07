@@ -42,6 +42,16 @@ python main.py finance.db
 The database is created at the path passed to the application. Keep using the
 same path to reopen your data.
 
+To create a separate example database showcasing categories, periods, budgets,
+reports, loan repayments, and savings contributions, run:
+
+```bash
+python main.py --demo demo.db
+python main.py demo.db
+```
+
+The demo command creates a new file and will not overwrite an existing one.
+
 ## Using the application
 
 The overview shows the selected month's calendar, cash-flow items for the

@@ -12,12 +12,16 @@ from main import (
     _manage_loans,
     _manage_savings_targets,
     _add_cash_flow,
+    main,
     _period_report_content,
     _periods_for_day,
     _period_date,
     _period_end_datetime,
+    _report_screen_line,
     _select_graph_categories,
     _save_period_report,
+    _screen_update,
+    _show_period_report,
     format_amount,
     month_grid,
     parse_amount,
@@ -32,6 +36,7 @@ class FakeTerminal:
     height = 40
     home = ""
     clear = ""
+    clear_eol = ""
     normal = ""
     reverse = ""
 
@@ -67,6 +72,10 @@ class FakeTerminal:
         }:
             return lambda text: f"<{name}>{text}</{name}>"
         raise AttributeError(name)
+
+    @staticmethod
+    def move_yx(row, column):
+        return f"<move:{row},{column}>"
 
 
 class FakeKey(str):
@@ -114,6 +123,7 @@ class UiHelperTests(unittest.TestCase):
         self.assertEqual(format_amount(-1_234), "-$12.34")
         self.assertEqual(format_amount(1_234, "USD"), "USD 12.34")
 
+
         with self.assertRaises(ValueError):
             parse_amount("1.234")
         with self.assertRaises(ValueError):
@@ -156,6 +166,78 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("Loans remaining: $12,345.00", plain_screen)
         self.assertIn("Savings accrued: $7,500.00", plain_screen)
         self.assertNotIn("Net worth", screen)
+        plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
+        self.assertIn("┌" + "─" * 98 + "┐", plain_screen)
+
+    def test_dashboard_boxes_wide_panels_to_match_manual_layout(self):
+        terminal = FakeTerminal()
+        terminal.width = 150
+        screen = render_screen(
+            terminal,
+            date(2026, 10, 27),
+            [],
+            None,
+        )
+
+        self.assertIn("╭─ CALENDAR", screen)
+        self.assertIn("╭─ CASH FLOWS", screen)
+        self.assertIn("╭─ PERIOD BALANCES", screen)
+        self.assertIn("╰", screen)
+        self.assertNotIn(" │ ", screen)
+
+    def test_dashboard_limits_many_categories_to_terminal_height(self):
+        terminal = FakeTerminal()
+        terminal.width = 150
+        terminal.height = 40
+        period = {
+            "id": 1,
+            "name": "Annual",
+            "start_date": datetime(2026, 1, 1),
+            "end_date": None,
+        }
+        categories = [
+            {
+                "category_id": category_id,
+                "category_name": f"Category {category_id}",
+                "parent_id": None,
+                "is_parent": False,
+                "balance": -100,
+            }
+            for category_id in range(1, 21)
+        ]
+        screen = render_screen(
+            terminal,
+            date(2026, 10, 27),
+            [period],
+            {"period": period, "categories": categories, "total": -2_000},
+        )
+
+        self.assertLessEqual(len(screen.splitlines()), terminal.height)
+        self.assertIn("more categories; press [v] for report", screen)
+        self.assertIn("Total", screen)
+
+    def test_screen_updates_only_changed_rows_without_clearing_terminal(self):
+        terminal = FakeTerminal()
+        terminal.home = "<home>"
+        terminal.clear = "<clear>"
+        terminal.clear_eol = "<clear-eol>"
+
+        initial, previous_lines = _screen_update(terminal, "first\nsecond", None)
+        unchanged, same_lines = _screen_update(
+            terminal, "first\nsecond", previous_lines
+        )
+        changed, changed_lines = _screen_update(
+            terminal, "first\nupdated\nthird", previous_lines
+        )
+
+        self.assertEqual(initial, "<home><clear>first\nsecond")
+        self.assertEqual(unchanged, "")
+        self.assertEqual(same_lines, previous_lines)
+        self.assertEqual(
+            changed,
+            "<move:1,0>updated<clear-eol><move:2,0>third<clear-eol>",
+        )
+        self.assertEqual(changed_lines, ["first", "updated", "third"])
 
     def test_key_binding_footer_wraps_long_groups_to_terminal_width(self):
         terminal = FakeTerminal()
@@ -206,7 +288,7 @@ class UiHelperTests(unittest.TestCase):
             None,
         )
 
-        self.assertIn("<on_green>", screen)
+        self.assertIn("<green>", screen)
         self.assertIn(
             "Period: <yellow><</yellow>Payday (1/1)<yellow>></yellow>",
             screen,
@@ -226,7 +308,7 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn(" 27*", "\n".join(lines))
         self.assertIn("* Cash-flow items", lines)
 
-    def test_calendar_uses_two_rows_for_the_first_two_overlapping_periods(self):
+    def test_calendar_uses_one_row_and_lists_overlapping_periods(self):
         periods = [
             {
                 "id": 1,
@@ -249,11 +331,14 @@ class UiHelperTests(unittest.TestCase):
         ]
 
         lines = _calendar_lines(FakeTerminal(), date(2026, 10, 2), periods)
-        first_week = lines[2:4]
+        first_week = lines[2]
 
-        self.assertIn("<on_green>  2 ", first_week[0])
-        self.assertIn("<on_magenta>    ", first_week[1])
-        self.assertNotIn("<on_cyan>", "".join(first_week))
+        self.assertIn("<green>  2 ", first_week)
+        self.assertNotIn("<magenta>", first_week)
+        self.assertNotIn("<cyan>", first_week)
+        self.assertIn("Earlier", "\n".join(lines))
+        self.assertIn("Second", "\n".join(lines))
+        self.assertIn("Third", "\n".join(lines))
 
     def test_balance_panel_shows_selected_period_index_when_periods_overlap(self):
         terminal = FakeTerminal()
@@ -356,9 +441,9 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("Essentials", screen)
         self.assertIn("└─ Groceries", screen)
         self.assertIn("<red>-€150.00</red>", screen)
-        plain_screen = re.sub(r"</?red>", "", screen)
+        plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
         balance_rows = [
-            line.split(" │ ")[-1]
+            line.split("│")[1]
             for line in plain_screen.splitlines()
             if "Essentials" in line or "Groceries" in line
         ]
@@ -377,11 +462,7 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("(€100.00/€250.00 left)", balance_rows[0])
         self.assertIn("(€0.00/€50.00 left)", balance_rows[1])
         self.assertIn("Personal finance  ·  €", plain_screen)
-        lines = screen.splitlines()
-        travel_index = next(
-            index for index, line in enumerate(lines) if "Travel" in line
-        )
-        self.assertEqual(lines[travel_index - 1].split(" │ ")[-1], "")
+        self.assertIn("Travel", screen)
 
     def test_period_report_groups_transactions_budgets_and_exports_png(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -475,6 +556,77 @@ class UiHelperTests(unittest.TestCase):
 
             self.assertIn("## Active loans", markdown)
             self.assertIn("| Car | $920.00 | $20.00 |", markdown)
+        finally:
+            data.close()
+
+    def test_period_report_renders_transactions_as_readable_items(self):
+        terminal = FakeTerminal()
+        line = _report_screen_line(
+            terminal,
+            r"| 2026-10-02 | Direct \| item | -€5.00 |",
+        )
+
+        self.assertEqual(
+            re.sub(r"</?[a-z_]+>", "", line),
+            "  2026-10-02  Direct | item  -€5.00",
+        )
+        self.assertEqual(
+            _report_screen_line(terminal, "| Date | Description | Amount |"),
+            "",
+        )
+
+    def test_period_report_renders_active_loans_as_readable_items(self):
+        terminal = FakeTerminal()
+        line = _report_screen_line(
+            terminal,
+            "| Car | $920.00 | $20.00 |",
+        )
+
+        self.assertEqual(
+            re.sub(r"</?[a-z_]+>", "", line),
+            "  Car  · Remaining: $920.00  · Interest paid: $20.00",
+        )
+        self.assertEqual(
+            _report_screen_line(
+                terminal,
+                "| Loan | Principal remaining | Interest paid |",
+            ),
+            "",
+        )
+
+    def test_period_report_screen_uses_overview_panels_and_scrolls(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Food")
+            period = data.create_period(
+                datetime(2026, 10, 1),
+                datetime(2026, 10, 31, 23, 59, 59),
+                "October",
+            )
+            data.create_budget(20_000, category["id"], period["id"])
+            data.create_cash_flow(
+                -5_000,
+                category["id"],
+                datetime(2026, 10, 5),
+                "Groceries",
+            )
+            terminal = ScriptedTerminal(["down", "down", "q"])
+            terminal.width = 100
+            terminal.height = 18
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = _show_period_report(terminal, data, period)
+
+            screen = output.getvalue()
+            plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
+            self.assertIn("PICCIULI  /  PERIOD REPORT", plain_screen)
+            self.assertIn("Cash flow total: -$50.00", plain_screen)
+            self.assertIn("Budget remaining:", plain_screen)
+            self.assertIn("╭─ REPORT DETAILS", plain_screen)
+            self.assertIn("╰", plain_screen)
+            self.assertIn("<move:", screen)
+            self.assertLessEqual(len(plain_screen.splitlines()), terminal.height)
+            self.assertEqual(result, "Period report closed.")
         finally:
             data.close()
 
@@ -642,6 +794,59 @@ class UiHelperTests(unittest.TestCase):
         )
 
         self.assertIn("No cash flows for this day.", screen)
+
+
+class DemoProjectTests(unittest.TestCase):
+    def test_demo_option_creates_a_populated_project(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "showcase.db"
+            self.assertEqual(main(["--demo", str(database_path)]), 0)
+
+            data = Data(str(database_path))
+            try:
+                categories = data.list_categories()
+                self.assertTrue(
+                    any(category["parent_id"] is not None for category in categories)
+                )
+                periods = data.list_periods()
+                self.assertEqual(len(periods), 5)
+                current_period = next(
+                    period
+                    for period in periods
+                    if period["name"] == date.today().strftime("%B %Y")
+                )
+                self.assertIsNone(current_period["end_date"])
+                self.assertTrue(data.list_budgets(current_period["id"]))
+
+                cash_flows = data.list_cash_flows()
+                self.assertGreaterEqual(len(cash_flows), 30)
+                self.assertTrue(
+                    any(flow["loan_id"] is not None for flow in cash_flows)
+                )
+                self.assertTrue(
+                    any(
+                        flow["savings_target_id"] is not None
+                        for flow in cash_flows
+                    )
+                )
+                self.assertGreater(data.list_loans()[0]["total_interest_paid"], 0)
+                self.assertGreater(
+                    data.list_savings_targets()[0]["accrued_amount"], 0
+                )
+            finally:
+                data.close()
+
+    def test_demo_option_does_not_overwrite_an_existing_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "existing.db"
+            database_path.write_text("keep this file")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = main(["--demo", str(database_path)])
+
+            self.assertEqual(result, 1)
+            self.assertEqual(database_path.read_text(), "keep this file")
+            self.assertIn("already exists", output.getvalue())
 
 
 if __name__ == "__main__":

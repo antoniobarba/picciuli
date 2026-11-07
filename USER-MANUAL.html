@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Picciuli user manual: installation, daily use, reports, budgets, loans, and savings goals.">
+  <title>Picciuli User Manual</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172433;
+      --muted: #526579;
+      --paper: #f4f7f8;
+      --card: #fff;
+      --line: #d7e0e5;
+      --teal: #087e83;
+      --teal-dark: #075c61;
+      --gold: #f1c96a;
+      --terminal: #101923;
+      --terminal-ink: #dce8ee;
+      --terminal-dim: #95a9b5;
+      --green: #63d69a;
+      --red: #ff8282;
+      --blue: #8bc8ff;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    a { color: var(--teal-dark); }
+    .hero {
+      padding: 3.8rem max(1.25rem, calc((100% - 1120px) / 2)) 3.4rem;
+      color: #f7fbfc;
+      background:
+        radial-gradient(ellipse at 82% 15%, #21969a 0, transparent 37%),
+        linear-gradient(125deg, #102b3b, #075e64 72%, #087e83);
+    }
+    .hero .eyebrow {
+      margin: 0 0 .45rem;
+      color: #a9e7dc;
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1 { max-width: 760px; margin: 0; font-size: clamp(2.4rem, 6vw, 4.7rem); line-height: 1.05; }
+    .hero p { max-width: 690px; margin: 1rem 0 0; color: #d8eaed; font-size: 1.15rem; }
+    .hero .stamp {
+      display: inline-block;
+      margin-top: 1.4rem;
+      padding: .35rem .7rem;
+      border: 1px solid #78c8c0;
+      border-radius: 999px;
+      color: #e9fffb;
+      font-size: .86rem;
+    }
+    .hero code { background: transparent; color: inherit; font-size: inherit; }
+    .layout {
+      display: grid;
+      grid-template-columns: 230px minmax(0, 1fr);
+      gap: 2rem;
+      max-width: 1160px;
+      margin: 2.5rem auto;
+      padding: 0 1.25rem;
+    }
+    nav {
+      align-self: start;
+      position: sticky;
+      top: 1rem;
+      padding: 1.15rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--card);
+    }
+    nav strong { display: block; margin-bottom: .45rem; color: var(--teal-dark); }
+    nav a { display: block; padding: .3rem 0; color: var(--muted); font-size: .92rem; text-decoration: none; }
+    nav a:hover, nav a:focus { color: var(--teal-dark); text-decoration: underline; }
+    main { min-width: 0; }
+    section {
+      margin: 0 0 1.2rem;
+      padding: clamp(1.25rem, 3vw, 2rem);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      box-shadow: 0 5px 20px #1730470b;
+      scroll-margin-top: 1rem;
+    }
+    h2 { margin: 0 0 .7rem; font-size: clamp(1.55rem, 3vw, 2rem); line-height: 1.2; }
+    h3 { margin: 1.6rem 0 .45rem; font-size: 1.16rem; }
+    h4 { margin: 1.15rem 0 .25rem; }
+    p { margin: .55rem 0; }
+    ul, ol { padding-left: 1.4rem; }
+    li { margin: .28rem 0; }
+    .lead { max-width: 780px; color: var(--muted); font-size: 1.05rem; }
+    .callout {
+      margin: 1rem 0;
+      padding: .85rem 1rem;
+      border-left: 4px solid var(--teal);
+      border-radius: 0 9px 9px 0;
+      background: #eaf6f4;
+    }
+    .callout.warning { border-color: #d28a24; background: #fff7e7; }
+    code, kbd, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    code { padding: .08rem .3rem; border-radius: 4px; background: #edf2f4; font-size: .92em; }
+    pre.command {
+      overflow-x: auto;
+      margin: .7rem 0;
+      padding: 1rem 1.1rem;
+      border-radius: 10px;
+      background: #12202b;
+      color: #e4eff4;
+      font-size: .92rem;
+      line-height: 1.55;
+    }
+    pre.command code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+    kbd {
+      display: inline-block;
+      min-width: 1.55em;
+      padding: .04rem .32rem;
+      border: 1px solid #c9d4db;
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      background: #f5f8f9;
+      color: #243746;
+      text-align: center;
+      font-size: .88em;
+      white-space: nowrap;
+    }
+    table {
+      width: 100%;
+      margin: .8rem 0;
+      border-collapse: collapse;
+      font-size: .94rem;
+    }
+    th, td { padding: .58rem .65rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #f0f5f6; color: #334b5b; }
+    .screenshot {
+      overflow: hidden;
+      margin: 1.15rem 0 .45rem;
+      border: 1px solid #273c4d;
+      border-radius: 12px;
+      background: var(--terminal);
+      box-shadow: 0 10px 24px #10212d1c;
+    }
+    .screenshot svg { display: block; width: 100%; height: auto; }
+    figure { margin: 1.1rem 0; }
+    figcaption { margin-top: .48rem; color: var(--muted); font-size: .88rem; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .7rem;
+      margin: 1rem 0;
+    }
+    .stat { padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfc; }
+    .stat b { display: block; color: var(--teal-dark); font-size: 1.16rem; }
+    .stat span { color: var(--muted); font-size: .84rem; }
+    .tip { color: var(--muted); font-size: .92rem; }
+    .footer { max-width: 1160px; margin: 0 auto 2rem; padding: 0 1.25rem; color: var(--muted); font-size: .9rem; }
+    @media (max-width: 850px) {
+      .layout { grid-template-columns: 1fr; gap: 1rem; margin-top: 1rem; }
+      nav { position: static; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 .8rem; }
+      nav strong { grid-column: 1 / -1; }
+    }
+    @media (max-width: 560px) {
+      .hero { padding-top: 2.6rem; padding-bottom: 2.6rem; }
+      nav { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      table { font-size: .86rem; }
+      th, td { padding: .45rem .35rem; }
+    }
+    @media print {
+      body { background: white; font-size: 11pt; }
+      .hero { padding: 1.5rem; print-color-adjust: exact; }
+      .layout { display: block; margin: 1rem auto; }
+      nav { display: none; }
+      section { margin-bottom: .8rem; box-shadow: none; break-inside: avoid; }
+      .screenshot { print-color-adjust: exact; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <p class="eyebrow">Picciuli · Personal finance, in your terminal</p>
+    <h1>User manual</h1>
+    <p>Install Picciuli, learn the overview, and work through categories, periods, budgets, loans, savings goals, and shareable reports.</p>
+    <span class="stamp">Worked examples use the included <code>demo.db</code> data snapshot</span>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="Manual contents">
+      <strong>In this guide</strong>
+      <a href="#about">About Picciuli</a>
+      <a href="#install">Install and launch</a>
+      <a href="#overview">Read the overview</a>
+      <a href="#cash-flows">Cash-flow items</a>
+      <a href="#categories">Categories</a>
+      <a href="#periods">Periods and balances</a>
+      <a href="#budgets">Budgets</a>
+      <a href="#loans">Loans</a>
+      <a href="#savings">Savings targets</a>
+      <a href="#reports">Reports and exports</a>
+      <a href="#settings">Currency and data</a>
+      <a href="#reference">Key reference</a>
+      <a href="#pdf">Optional PDF</a>
+    </nav>
+
+    <main>
+      <section id="about">
+        <h2>About Picciuli</h2>
+        <p class="lead">Picciuli is an offline, terminal-based personal finance tracker. It stores data in a SQLite file you choose, and summarizes cash flows by category and reporting period.</p>
+        <div class="stats" aria-label="Example database summary">
+          <div class="stat"><b>33</b><span>example cash-flow items</span></div>
+          <div class="stat"><b>16</b><span>categories, including subcategories</span></div>
+          <div class="stat"><b>5</b><span>overlapping reporting periods</span></div>
+          <div class="stat"><b>$11,070</b><span>remaining example loan principal</span></div>
+        </div>
+        <p>All monetary amounts are stored as integer cents. Positive cash flows are income; negative cash flows are expenses. A category balance is the signed sum of its cash-flow items. Parent categories roll up their children in period summaries.</p>
+        <div class="callout warning"><b>Demo data is illustrative.</b> The manual’s figures reflect <code>demo.db</code> as generated for November 2026. Your dates and balances will differ if you generate a fresh demo at another time or edit the database.</div>
+      </section>
+
+      <section id="install">
+        <h2>Install and launch</h2>
+        <h3>Requirements</h3>
+        <ul>
+          <li>Python 3.10 or later</li>
+          <li>A terminal with keyboard input and ANSI color support</li>
+          <li>The Python dependencies listed in <code>requirements.txt</code> (Blessed, SQLAlchemy, and Matplotlib)</li>
+        </ul>
+        <p>Open a terminal in the Picciuli project folder. Create and activate a virtual environment, install dependencies, and start a database:</p>
+        <pre class="command"><code>python3 -m venv .env
+source .env/bin/activate
+python -m pip install -r requirements.txt
+python main.py finance.db</code></pre>
+        <p>On Windows PowerShell, use the platform-specific activation command:</p>
+        <pre class="command"><code>py -m venv .env
+.\.env\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python main.py finance.db</code></pre>
+        <p>The database is created automatically the first time you open it. Reuse <code>finance.db</code> on later launches to continue with the same data. To make the showcase database instead, create it once and then open it normally:</p>
+        <pre class="command"><code>python main.py --demo demo.db
+python main.py demo.db</code></pre>
+        <p>The <code>--demo</code> command exits after creating the database. It refuses to overwrite an existing file; choose another filename or move the existing file yourself.</p>
+        <div class="callout">Keep a backup by copying the database file while Picciuli is closed. Treat that file as your financial record; it is not uploaded or synchronized by the application.</div>
+      </section>
+
+      <section id="overview">
+        <h2>Read the overview</h2>
+        <p>The overview is the main screen. It shows the selected date, days with cash flows, transactions on the selected day, balances in the selected period, budget room where budgets are assigned, and separate loan and savings totals.</p>
+        <figure class="screenshot">
+          <svg viewBox="0 0 1400 720" role="img" aria-labelledby="overview-title overview-desc" xmlns="http://www.w3.org/2000/svg">
+            <title id="overview-title">Picciuli overview using November 7, 2026 demo data</title>
+            <desc id="overview-desc">A terminal screen with November calendar, seven selected-day transactions, category balances, and loan and savings totals.</desc>
+            <rect width="1400" height="720" fill="#101923"/>
+            <circle cx="23" cy="21" r="6" fill="#ff7777"/><circle cx="44" cy="21" r="6" fill="#f1c96a"/><circle cx="65" cy="21" r="6" fill="#63d69a"/>
+            <text x="700" y="26" text-anchor="middle" fill="#95a9b5" font-family="monospace" font-size="13">picciuli — demo.db</text>
+            <g fill="none" stroke-width="1">
+              <path d="M28 278V638H440V278" stroke="#8bc8ff"/>
+              <path d="M465 278V638H930V278" stroke="#63d69a"/>
+              <path d="M950 278V638H1372V278" stroke="#c59bff"/>
+            </g>
+            <g font-family="ui-monospace, Consolas, monospace" font-size="15" fill="#dce8ee">
+              <text x="28" y="65" fill="#63d69a">╭──────────────────────────────────────────────────────────────────────╮</text>
+              <text x="28" y="88" fill="#8bc8ff">│</text><text x="48" y="88">PICCIULI  /  OVERVIEW</text>
+              <text x="28" y="111" fill="#8bc8ff">│</text><text x="48" y="111" fill="#95a9b5">Personal finance  ·  $</text>
+              <text x="28" y="134" fill="#63d69a">╰──────────────────────────────────────────────────────────────────────╯</text>
+              <text x="35" y="171" fill="#f1c96a">SELECTED DAY</text><text x="180" y="171">Saturday, 07 November 2026</text>
+              <rect x="28" y="188" width="1344" height="45" rx="6" fill="#192935" stroke="#304655"/>
+              <text x="48" y="216" fill="#ff8282">Loans remaining:</text><text x="203" y="216">$11,070.00</text>
+              <text x="440" y="216" fill="#63d69a">Savings accrued:</text><text x="602" y="216">$750.00</text>
+              <text x="30" y="265" fill="#8bc8ff">╭─ CALENDAR ───────────────────────╮</text>
+              <text x="490" y="265" fill="#63d69a">╭─ CASH FLOWS ───────────────────────────╮</text>
+              <text x="970" y="265" fill="#c59bff">╭─ PERIOD BALANCES ───────────────────────╮</text>
+              <text x="64" y="296">November 2026</text>
+              <text x="48" y="322" fill="#95a9b5"> Mo  Tu  We  Th  Fr  Sa  Su</text>
+              <text x="48" y="350">                      1*</text>
+              <text x="48" y="378">  2   3*  4   5   6   7*  8</text>
+              <text x="48" y="406">  9  10  11  12  13  14  15</text>
+              <text x="48" y="434"> 16  17  18  19  20  21  22</text>
+              <text x="48" y="462"> 23  24  25  26  27  28  29</text>
+              <text x="48" y="490"> 30</text>
+              <text x="48" y="535" fill="#95a9b5">Year overview</text>
+              <text x="48" y="558" fill="#95a9b5">November 2026</text>
+              <text x="48" y="581" fill="#f1c96a">* Cash-flow items</text>
+              <text x="505" y="296" fill="#f1c96a">&gt; [GROC] -$440.00 - Weekly groceries</text>
+              <text x="505" y="322">  [BUS]  -$120.00 - Transit pass</text>
+              <text x="505" y="348">  [UTIL] -$135.00 - Utilities bill</text>
+              <text x="505" y="374">  [DINE] -$150.00 - Dinner out</text>
+              <text x="505" y="400" fill="#63d69a">  [FREE]  $480.00 - Design project</text>
+              <text x="505" y="426">  [DEBT] -$350.00 - Car loan payment</text>
+              <text x="505" y="452">  [SAVE] -$250.00 - Emergency fund contribution</text>
+              <text x="985" y="296">Period: &lt;November 2026 (2/2)&gt;</text>
+              <text x="985" y="319" fill="#95a9b5">01 Nov 2026 - Open</text>
+              <text x="985" y="352">Income                       $3,730</text>
+              <text x="985" y="375" fill="#95a9b5">  └─ Salary                  $3,250</text>
+              <text x="985" y="398" fill="#95a9b5">  └─ Freelance                 $480</text>
+              <text x="985" y="431">Home                        -$1,285</text>
+              <text x="985" y="454" fill="#95a9b5">  └─ Rent                   -$1,150</text>
+              <text x="985" y="477" fill="#95a9b5">  └─ Utilities                -$135</text>
+              <text x="985" y="510">Food                          -$590</text>
+              <text x="985" y="533" fill="#95a9b5">Transport                     -$120</text>
+              <text x="985" y="556" fill="#95a9b5">Goals                         -$600</text>
+              <text x="985" y="579" fill="#95a9b5">Health                           $0</text>
+              <path d="M985 595h375" stroke="#95a9b5"/>
+              <text x="985" y="619" fill="#63d69a">Total                       $1,135.00</text>
+              <text x="30" y="672" fill="#95a9b5">Navigate [←/→] day [↑/↓] week   [a] add   [j/k] select   [v] report   [q] quit</text>
+            </g>
+          </svg>
+        </figure>
+        <figcaption>Overview snapshot reconstructed from the selected day and balances in <code>demo.db</code>. Asterisks mark dates with cash-flow items. Category balances are signed; negative amounts are expenses.</figcaption>
+        <h3>Move around the calendar</h3>
+        <ul>
+          <li>Use <kbd>←</kbd>/<kbd>→</kbd> to move one day and <kbd>↑</kbd>/<kbd>↓</kbd> to move one week.</li>
+          <li>Use <kbd>[</kbd> and <kbd>]</kbd> to move to the previous or next month.</li>
+          <li>If more than one period includes the selected date, use <kbd>&lt;</kbd> or <kbd>&gt;</kbd> to switch the balance panel between them. The demo’s November date is in both “Year overview” and “November 2026”.</li>
+          <li>The selected date’s transactions appear in the middle panel. Use <kbd>j</kbd>/<kbd>k</kbd> to select among them.</li>
+        </ul>
+        <p>The overview reports loans pending and savings accrued separately. These values are not combined into a net-worth calculation.</p>
+      </section>
+
+      <section id="cash-flows">
+        <h2>Add, edit, and delete cash-flow items</h2>
+        <p>A cash-flow item is an income or expense on a date, assigned to a category. Choose a day with the calendar, press <kbd>a</kbd>, then enter a description, amount, and category. Use positive numbers for income and negative numbers for expenses; amounts can have up to two decimal places.</p>
+        <ol>
+          <li>Navigate to the date of the transaction.</li>
+          <li>Press <kbd>a</kbd> and enter a description (you can leave it blank).</li>
+          <li>Enter the signed amount, such as <code>48.00</code> for income or <code>-12.50</code> for spending.</li>
+          <li>Choose a category by its number from the displayed list.</li>
+          <li>Press <kbd>j</kbd>/<kbd>k</kbd> to select an item on the day. Press <kbd>e</kbd> to edit or <kbd>d</kbd> to delete it; confirm deletion by typing <code>y</code>.</li>
+        </ol>
+        <p>In the demo, the November 7 “Design project” payment is <code>+$480.00</code>, while groceries are <code>-$440.00</code>. The selected date’s category symbol is shown beside each item.</p>
+        <div class="callout">Loan payments and savings contributions also appear here as expenses. Link one to a goal when creating the item; do not enter a second ordinary expense for the same payment.</div>
+      </section>
+
+      <section id="categories">
+        <h2>Organize spending with categories</h2>
+        <p>Categories group the cash flows shown in the overview and reports. Picciuli supports top-level categories and one level of subcategories. Each category has a short display symbol, and list order is used in summaries and selection menus.</p>
+        <ol>
+          <li>Press <kbd>c</kbd> on the overview to add a top-level category.</li>
+          <li>Press <kbd>m</kbd> to open category management.</li>
+          <li>In management, use the arrow keys to select a category. Press <kbd>c</kbd> to add a top-level category or <kbd>s</kbd> to add a subcategory under the selected parent.</li>
+          <li>Use <kbd>e</kbd> to edit or <kbd>d</kbd> to delete. Use <kbd>j</kbd>/<kbd>k</kbd> to reorder within the category’s group.</li>
+        </ol>
+        <p>The demo uses top-level categories such as Income, Home, Food, Transport, Goals, and Health. For example, Groceries and Dining roll up into Food; Rent and Utilities roll up into Home. Reports show the parent subtotal and the child detail without double-counting the total.</p>
+        <p class="tip">Delete child categories before deleting their parent. A category with cash flows cannot be removed until those cash flows are reassigned or deleted.</p>
+      </section>
+
+      <section id="periods">
+        <h2>Periods and category balances</h2>
+        <p>A period defines the date range used to summarize cash flows and budgets. Periods can overlap, which lets you compare a month against a year-to-date or other custom range.</p>
+        <ul>
+          <li>Press <kbd>n</kbd> on the overview to start a period on the selected day.</li>
+          <li>Press <kbd>r</kbd> to rename a period that covers the selected day.</li>
+          <li>Press <kbd>p</kbd> to manage all periods: arrow keys select; <kbd>a</kbd> adds; <kbd>e</kbd> edits; <kbd>d</kbd> deletes.</li>
+          <li>For an open-ended range, leave the end date blank when prompted. A new period beginning later closes an earlier open period that started before it.</li>
+          <li>Use <kbd>&lt;</kbd>/<kbd>&gt;</kbd> on the overview to switch between overlapping periods for that date.</li>
+        </ul>
+        <p>The demo contains “Year overview” for 2026 and monthly periods from August through November. On November 7, the selected date belongs to the year period and the open-ended November period. The current monthly balance totals <strong>$1,135.00</strong>: $3,730.00 of income offset by $2,595.00 of expenses recorded through that date.</p>
+      </section>
+
+      <section id="budgets">
+        <h2>Plan with budgets</h2>
+        <p>Press <kbd>b</kbd> to manage budgets. Press <kbd>a</kbd>, choose a period and category from the numbered lists, then enter a non-negative amount. Select a row to edit it with <kbd>e</kbd> or delete it with <kbd>d</kbd> and confirm with <code>y</code>.</p>
+        <p>On the overview, an assigned budget is shown beside its category balance as “left / budget left.” A parent category’s balance and budget include its subcategories. In a report, the budget status shows the assigned amount and remaining or overspent amount. Because cash flows are signed, income in a budgeted category offsets its expenses.</p>
+        <table>
+          <thead><tr><th>November demo budget</th><th>Assigned</th><th>Spent to date</th><th>Remaining</th></tr></thead>
+          <tbody>
+            <tr><td>Home</td><td>$1,350.00</td><td>$1,285.00</td><td>$65.00</td></tr>
+            <tr><td>Food</td><td>$700.00</td><td>$590.00</td><td>$110.00</td></tr>
+            <tr><td>Transport</td><td>$250.00</td><td>$120.00</td><td>$130.00</td></tr>
+            <tr><td>Goals</td><td>$600.00</td><td>$600.00</td><td>$0.00</td></tr>
+            <tr><td>Health</td><td>$200.00</td><td>$0.00</td><td>$200.00</td></tr>
+          </tbody>
+        </table>
+        <p class="tip">The figures above use category totals through November 7. Parent category budgets include the expenses filed under their child categories.</p>
+      </section>
+
+      <section id="loans">
+        <h2>Track loans and manual repayments</h2>
+        <p>Press <kbd>l</kbd> to open loan management. Use the up/down arrows to select a loan; press <kbd>a</kbd> to add one. The screen shows remaining principal, original amount, percent repaid, total interest paid, and payment history. Use <kbd>j</kbd>/<kbd>k</kbd> or Page Up/Page Down to scroll the history.</p>
+        <figure class="screenshot">
+          <svg viewBox="0 0 1080 440" role="img" aria-labelledby="loan-title loan-desc" xmlns="http://www.w3.org/2000/svg">
+            <title id="loan-title">Loan screen with demo car loan and payment history</title>
+            <desc id="loan-desc">The demo car loan has 1,107 dollars remaining, 1,200 dollars original principal, and three manually recorded payments.</desc>
+            <rect width="1080" height="440" fill="#101923"/>
+            <circle cx="23" cy="21" r="6" fill="#ff7777"/><circle cx="44" cy="21" r="6" fill="#f1c96a"/><circle cx="65" cy="21" r="6" fill="#63d69a"/>
+            <text x="540" y="26" text-anchor="middle" fill="#95a9b5" font-family="monospace" font-size="13">picciuli — LOANS</text>
+            <g font-family="ui-monospace, Consolas, monospace" font-size="16" fill="#dce8ee">
+              <text x="32" y="72" fill="#c59bff">╭──────────────────────────────────────────────────────────────────╮</text>
+              <text x="32" y="97" fill="#c59bff">│</text><text x="53" y="97">PICCIULI  /  LOANS</text>
+              <text x="32" y="122" fill="#c59bff">│</text><text x="53" y="122" fill="#95a9b5">Track principal and manual repayments</text>
+              <text x="32" y="147" fill="#c59bff">╰──────────────────────────────────────────────────────────────────╯</text>
+              <text x="42" y="188" fill="#f1c96a">&gt; Car loan — $11,070.00 / $12,000.00 (8% completed)</text>
+              <text x="65" y="217" fill="#63d69a">[##------------------]</text>
+              <text x="42" y="265" font-weight="bold">Car loan</text>
+              <text x="42" y="292">Current principal: $11,070.00</text>
+              <text x="42" y="319">Total interest paid: $120.00</text>
+              <text x="42" y="359" fill="#95a9b5">Date         Total amount       Principal          Interest</text>
+              <text x="42" y="386">2026-11-07       $350.00          $310.00            $40.00</text>
+              <text x="42" y="413">2026-10-12       $350.00          $310.00            $40.00</text>
+            </g>
+          </svg>
+        </figure>
+        <figcaption>The linked $350 payment is an expense in the selected category. In the demo, $310 reduces principal and the remaining $40 is recorded as interest.</figcaption>
+        <h3>Record a repayment</h3>
+        <ol>
+          <li>Create the loan from <kbd>l</kbd> → <kbd>a</kbd> by entering a name and original amount.</li>
+          <li>Return to the overview, choose the payment date, and press <kbd>a</kbd>.</li>
+          <li>Enter a description, select the loan from the goal list, and enter the total payment amount.</li>
+          <li>Enter the principal portion, then choose a category such as Goals → Debt repayment.</li>
+        </ol>
+        <p>Enter the total payment and principal separately. Interest is derived as total payment minus principal. Picciuli records payments manually; it does not calculate interest schedules, due dates, or automatic payments.</p>
+      </section>
+
+      <section id="savings">
+        <h2>Save toward a target</h2>
+        <p>Press <kbd>t</kbd> to manage savings targets. Use the arrow keys to select a target, <kbd>a</kbd> to add one, and <kbd>j</kbd>/<kbd>k</kbd> or Page Up/Page Down to review contributions.</p>
+        <figure class="screenshot">
+          <svg viewBox="0 0 1080 405" role="img" aria-labelledby="savings-title savings-desc" xmlns="http://www.w3.org/2000/svg">
+            <title id="savings-title">Savings target screen with emergency fund progress</title>
+            <desc id="savings-desc">The demo emergency fund goal has 750 dollars saved toward a 5,000 dollar target and three contributions.</desc>
+            <rect width="1080" height="405" fill="#101923"/>
+            <circle cx="23" cy="21" r="6" fill="#ff7777"/><circle cx="44" cy="21" r="6" fill="#f1c96a"/><circle cx="65" cy="21" r="6" fill="#63d69a"/>
+            <text x="540" y="26" text-anchor="middle" fill="#95a9b5" font-family="monospace" font-size="13">picciuli — SAVINGS TARGETS</text>
+            <g font-family="ui-monospace, Consolas, monospace" font-size="16" fill="#dce8ee">
+              <text x="32" y="72" fill="#63d69a">╭──────────────────────────────────────────────────────────────────╮</text>
+              <text x="32" y="97" fill="#63d69a">│</text><text x="53" y="97">PICCIULI  /  SAVINGS TARGETS</text>
+              <text x="32" y="122" fill="#63d69a">│</text><text x="53" y="122" fill="#95a9b5">Build toward your goals with manual contributions</text>
+              <text x="32" y="147" fill="#63d69a">╰──────────────────────────────────────────────────────────────────╯</text>
+              <text x="42" y="189" fill="#f1c96a">&gt; Emergency fund — $750.00 / $5,000.00 (15% completed)</text>
+              <text x="65" y="218" fill="#63d69a">[###-----------------]</text>
+              <text x="42" y="268" font-weight="bold">Emergency fund</text>
+              <text x="42" y="295">Accrued: $750.00</text>
+              <text x="42" y="322">Target:  $5,000.00</text>
+              <text x="42" y="359" fill="#95a9b5">Date         Contribution</text>
+              <text x="42" y="384">2026-11-07   $250.00       2026-10-15   $250.00       2026-09-15   $250.00</text>
+            </g>
+          </svg>
+        </figure>
+        <figcaption>Contributions are linked negative cash-flow items, so they appear as expenses in the selected category and are counted toward the target only once.</figcaption>
+        <h3>Record a contribution</h3>
+        <ol>
+          <li>Create a target from <kbd>t</kbd> → <kbd>a</kbd> by entering its name and goal amount.</li>
+          <li>On the overview, select the contribution date and press <kbd>a</kbd>.</li>
+          <li>Enter a description, choose the target, enter the positive contribution amount, then choose a category such as Goals → Savings.</li>
+        </ol>
+        <p>The application records the contribution as a negative cash flow. Its target screen shows the positive amount accrued and the remaining progress. A contribution cannot exceed the remaining target amount.</p>
+      </section>
+
+      <section id="reports">
+        <h2>Read and export period reports</h2>
+        <p>On a day covered by a period, press <kbd>v</kbd> to open that period’s report. The report groups transactions by top-level categories and subcategories, shows signed subtotals and budget status, and lists loans with principal remaining.</p>
+        <p>Use the up/down arrows to scroll the report. Press <kbd>g</kbd> to choose which category series appear in the graph; the total series always includes every category. Press <kbd>s</kbd> to export the report as Markdown and the cumulative-balance graph as PNG under <code>reports/</code>.</p>
+        <figure class="screenshot">
+          <svg viewBox="0 0 1080 490" role="img" aria-labelledby="report-title report-desc" xmlns="http://www.w3.org/2000/svg">
+            <title id="report-title">November 2026 report excerpt from demo.db</title>
+            <desc id="report-desc">A report excerpt shows income and housing subtotals, transactions, budget remaining, and overall period total.</desc>
+            <rect width="1080" height="490" fill="#101923"/>
+            <circle cx="23" cy="21" r="6" fill="#ff7777"/><circle cx="44" cy="21" r="6" fill="#f1c96a"/><circle cx="65" cy="21" r="6" fill="#63d69a"/>
+            <text x="540" y="26" text-anchor="middle" fill="#95a9b5" font-family="monospace" font-size="13">picciuli — PERIOD REPORT · November 2026</text>
+            <g font-family="ui-monospace, Consolas, monospace" font-size="15" fill="#dce8ee">
+              <text x="38" y="70" fill="#8bc8ff" font-size="19" font-weight="bold"># Period report: November 2026</text>
+              <text x="38" y="98" fill="#95a9b5">Dates: 2026-11-01 – Open</text>
+              <text x="38" y="141" fill="#c59bff" font-size="17">## [IN] Income</text>
+              <text x="38" y="166" fill="#63d69a">Subtotal: $3,730.00</text>
+              <text x="58" y="194">[SAL] Salary — $3,250.00</text>
+              <text x="74" y="219" fill="#95a9b5">2026-11-01  Monthly salary                         $3,250.00</text>
+              <text x="58" y="247">[FREE] Freelance — $480.00</text>
+              <text x="74" y="272" fill="#95a9b5">2026-11-07  Design project                           $480.00</text>
+              <text x="38" y="315" fill="#c59bff" font-size="17">## [HOME] Home</text>
+              <text x="38" y="340" fill="#ff8282">Subtotal: -$1,285.00 — Budget $1,350.00; remaining $65.00</text>
+              <text x="58" y="369">[RENT] Rent — -$1,150.00</text>
+              <text x="74" y="394" fill="#95a9b5">2026-11-03  Apartment rent                         -$1,150.00</text>
+              <path d="M38 415h1005" stroke="#536878"/>
+              <text x="38" y="444" fill="#63d69a" font-size="17">Period cash-flow total: $1,135.00</text>
+              <text x="38" y="470" fill="#95a9b5">Graph: cumulative balance over time · category lines selectable with [g]</text>
+            </g>
+          </svg>
+        </figure>
+        <figcaption>Report values are calculated from the demo database through November 7, 2026. The current period is open-ended.</figcaption>
+        <p>The report graph plots cumulative balance over time. In the demo, the total changes from $3,250 after salary on November 1, to $2,100 after rent on November 3, and to $1,135 after the other dated items by November 7.</p>
+        <h3>Optional PDF export</h3>
+        <p>Markdown and PNG are the built-in report exports. To make a PDF, install Pandoc and XeLaTeX, then use the project helper described in <a href="#pdf">Optional PDF</a>.</p>
+      </section>
+
+      <section id="settings">
+        <h2>Currency, database, and practical notes</h2>
+        <ul>
+          <li>Press <kbd>u</kbd> on the overview to change the currency label. It changes how amounts are displayed; it does not convert or recalculate stored values.</li>
+          <li>The database is a SQLite file at the path provided on the command line. Use the same path to reopen it.</li>
+          <li>To create a showcase database, use <code>python main.py --demo demo.db</code>. This command requires a new file path and will not replace existing data.</li>
+          <li>Keep regular backups of your database file. Close the app before copying it for a consistent backup.</li>
+          <li>Loan payments and savings contributions are entered manually. Picciuli does not connect to banks, schedule transfers, or calculate interest accrual.</li>
+        </ul>
+      </section>
+
+      <section id="reference">
+        <h2>Keyboard reference</h2>
+        <h3>Overview</h3>
+        <table>
+          <thead><tr><th>Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>Previous / next day</td></tr>
+            <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Previous / next week</td></tr>
+            <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Previous / next month</td></tr>
+            <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Select a cash flow on the selected day</td></tr>
+            <tr><td><kbd>a</kbd>, <kbd>e</kbd>, <kbd>d</kbd></td><td>Add, edit, or delete a cash-flow item</td></tr>
+            <tr><td><kbd>n</kbd>, <kbd>r</kbd>, <kbd>p</kbd></td><td>New period, rename current period, manage periods</td></tr>
+            <tr><td><kbd>&lt;</kbd> / <kbd>&gt;</kbd></td><td>Switch between overlapping periods</td></tr>
+            <tr><td><kbd>c</kbd> / <kbd>m</kbd></td><td>Add category / manage categories</td></tr>
+            <tr><td><kbd>b</kbd>, <kbd>l</kbd>, <kbd>t</kbd></td><td>Manage budgets, loans, or savings targets</td></tr>
+            <tr><td><kbd>v</kbd></td><td>View a report for the selected period</td></tr>
+            <tr><td><kbd>u</kbd></td><td>Change displayed currency</td></tr>
+            <tr><td><kbd>q</kbd></td><td>Quit Picciuli</td></tr>
+          </tbody>
+        </table>
+        <h3>Management screens</h3>
+        <p>Periods and budgets use the arrow keys to select entries, <kbd>a</kbd> to add, <kbd>e</kbd> to edit, and <kbd>d</kbd> to delete. Category management also uses <kbd>c</kbd> for a top-level category, <kbd>s</kbd> for a subcategory, and <kbd>j</kbd>/<kbd>k</kbd> to reorder. Loan and savings screens use <kbd>a</kbd> to add a goal and <kbd>j</kbd>/<kbd>k</kbd> or Page Up/Page Down to scroll history. Press <kbd>Esc</kbd> or <kbd>q</kbd> to return from a management screen.</p>
+      </section>
+
+      <section id="pdf">
+        <h2>Optional: create a PDF report</h2>
+        <p>The report screen saves Markdown and PNG. The included PDF helper uses Pandoc and XeLaTeX. On Debian or Ubuntu, install them with:</p>
+        <pre class="command"><code>sudo apt install pandoc texlive-xetex fonts-dejavu-core</code></pre>
+        <p>Convert an exported report (the graph is resolved relative to its Markdown file):</p>
+        <pre class="command"><code>scripts/report-to-pdf.sh reports/period-5-November-2026.md</code></pre>
+        <p>The PDF is written beside the Markdown file. To choose another destination, supply a second argument:</p>
+        <pre class="command"><code>scripts/report-to-pdf.sh reports/period-5-November-2026.md ~/Documents/november.pdf</code></pre>
+        <p>Use the actual Markdown filename created by your export; it may differ if you changed the period name.</p>
+      </section>
+    </main>
+  </div>
+  <footer class="footer">Picciuli User Manual · Standalone HTML · Examples based on <code>demo.db</code></footer>
+</body>
+</html>
