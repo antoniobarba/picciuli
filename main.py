@@ -61,13 +61,45 @@ def format_amount(amount: int, currency: str = "$") -> str:
     return f"{sign}{currency}{separator}{Decimal(abs(amount)) / 100:,.2f}"
 
 
+def _accent(term: Terminal, color: str, text: str) -> str:
+    return getattr(term, color)(text)
+
+
+def _screen_header(
+    term: Terminal,
+    title: str,
+    subtitle: str = "",
+    color: str = "cyan",
+) -> list[str]:
+    width = min(max(24, term.width), 80)
+    border = "─" * max(0, width - 2)
+    lines = [
+        _accent(term, color, f"╭{border}╮"),
+        f"{_accent(term, color, '│')} "
+        f"{term.bold(_accent(term, 'white', f'PICCIULI  /  {title}'))}",
+    ]
+    if subtitle:
+        lines.append(
+            f"{_accent(term, color, '│')} "
+            f"{_accent(term, 'bright_black', subtitle)}"
+        )
+    lines.append(_accent(term, color, f"╰{border}╯"))
+    return lines
+
+
+def _selected_row(term: Terminal, selected: bool, text: str) -> str:
+    if not selected:
+        return text
+    return f"{term.reverse}{term.bold(text)}{term.normal}"
+
+
 def _key_binding_footer(
     term: Terminal,
     groups: Sequence[tuple[str, Sequence[tuple[str, str]]]],
 ) -> list[str]:
-    lines = ["-" * min(term.width, 80)]
+    lines = [_accent(term, "cyan", "─" * min(term.width, 80))]
     for label, bindings in groups:
-        prefix = f"{term.bold(label)}: "
+        prefix = f"{term.bold(_accent(term, 'green', label))}: "
         continuation = " " * len(label + ": ")
         line = prefix
         has_binding = False
@@ -185,7 +217,7 @@ def _cash_flow_lines(
         category["id"]: category["symbol"] for category in categories
     }
     if not cash_flows:
-        return ["No cash flows for this day."]
+        return [_accent(term, "bright_black", "No cash flows for this day.")]
 
     content_width = max(12, width)
     for cash_flow in cash_flows:
@@ -194,11 +226,15 @@ def _cash_flow_lines(
             amount = term.red(amount)
         symbol = category_symbols.get(cash_flow["category_id"], "?")
         description = cash_flow["description"] or "(no description)"
-        prefix = ">" if cash_flow["id"] == selected_cash_flow_id else " "
+        is_selected = cash_flow["id"] == selected_cash_flow_id
+        prefix = ">" if is_selected else " "
         line = f"{prefix} [{symbol}] {amount} - {description}"
         if term.length(line) > content_width:
             line = line[: max(0, content_width - 1)] + "…"
-        lines.append(line)
+        line = line.replace(
+            f"[{symbol}]", f"[{_accent(term, 'cyan', symbol)}]", 1
+        )
+        lines.append(_selected_row(term, is_selected, line))
     return lines
 
 
@@ -217,7 +253,9 @@ def render_screen(
     financial_totals: FinancialTotalsRecord | None = None,
 ) -> str:
     left_width = 30
-    title = term.bold(f"Picciuli - Personal Finance ({currency})")
+    screen_header = _screen_header(
+        term, "OVERVIEW", f"Personal finance  ·  {currency}"
+    )
     calendar_panel = _calendar_lines(
         term,
         selected_day,
@@ -358,7 +396,7 @@ def render_screen(
                 )
             balance_panel.extend(
                 [
-                    "-" * min(balance_width, 32),
+                    _accent(term, "magenta", "─" * min(balance_width, 32)),
                     f"{'Total':<{name_width}} "
                     f"{' ' * max(0, amount_width - term.length(total))}{total}"
                     f"{' ' * (budget_width + (1 if budget_width else 0))}",
@@ -370,18 +408,20 @@ def render_screen(
         "savings_accrued": 0,
     }
     summary = (
-        f"Loans remaining: {format_amount(totals['loans_pending'], currency)}"
-        f"   Savings accrued: "
-        f"{format_amount(totals['savings_accrued'], currency)}"
+        f"{_accent(term, 'red', 'Loans remaining:')} "
+        f"{_accent(term, 'white', format_amount(totals['loans_pending'], currency))}"
+        f"   {_accent(term, 'green', 'Savings accrued:')} "
+        f"{_accent(term, 'white', format_amount(totals['savings_accrued'], currency))}"
     )
-    summary_border = "─" * (term.length(summary) + 2)
+    summary_border = _accent(term, "cyan", "─" * (term.length(summary) + 2))
     lines = [
-        term.center(title),
+        *screen_header,
         "",
-        f"Selected day: {selected_day:%A, %d %B %Y}",
+        f"{_accent(term, 'yellow', 'SELECTED DAY')}  "
+        f"{term.bold(selected_day.strftime('%A, %d %B %Y'))}",
         "",
         f"┌{summary_border}┐",
-        f"│ {summary} │",
+        f"{_accent(term, 'cyan', '│')} {summary} {_accent(term, 'cyan', '│')}",
         f"└{summary_border}┘",
         "",
     ]
@@ -392,8 +432,9 @@ def render_screen(
             (balance_panel, balance_width),
         )
         lines.append(
-            f"{'Calendar':<{left_width}} │ "
-            f"{'Cash flows':<{cash_width}} │ Period balances"
+            f"{_accent(term, 'cyan', '╭─ CALENDAR ─'.ljust(left_width))} │ "
+            f"{_accent(term, 'green', '╭─ CASH FLOWS ─'.ljust(cash_width))} │ "
+            f"{_accent(term, 'magenta', '╭─ PERIOD BALANCES ─')}"
         )
         row_count = max(len(panel) for panel, _ in columns)
         for index in range(row_count):
@@ -411,13 +452,18 @@ def render_screen(
             ("Cash flows", cash_panel),
             ("Period balances", balance_panel),
         ):
-            lines.append(term.bold(heading))
+            color = {
+                "Calendar": "cyan",
+                "Cash flows": "green",
+                "Period balances": "magenta",
+            }[heading]
+            lines.append(term.bold(_accent(term, color, f"╭─ {heading} ─")))
             lines.extend(panel)
             lines.append("")
 
     if notice:
         lines.append("")
-        lines.append(term.bold(notice))
+        lines.append(term.bold(_accent(term, "yellow", f"◆ {notice}")))
     lines.append("")
     lines.extend(
         _key_binding_footer(
@@ -474,7 +520,9 @@ def _read_line(
     value = ""
     while True:
         shown = value if value else (default or "")
-        display_prompt = prompt.replace("Esc", term.yellow("Esc"))
+        display_prompt = _accent(
+            term, "cyan", prompt.replace("Esc", term.yellow("Esc"))
+        )
         print(
             term.home + term.clear + prelude + display_prompt + shown,
             end="",
@@ -554,21 +602,22 @@ def _manage_categories(term: Terminal, data: Data) -> str:
             selected_id = selected["id"]
         rows = (
             [
-                f"{'>' if category['id'] == selected_id else ' '} "
-                + (
-                    f"└─ [{category['symbol']}] {category['name']}"
-                    if category["parent_id"] is not None
-                    else f"[{category['symbol']}] {category['name']}"
+                _selected_row(
+                    term,
+                    category["id"] == selected_id,
+                    f"{'>' if category['id'] == selected_id else ' '} "
+                    + (
+                        f"└─ [{category['symbol']}] {category['name']}"
+                        if category["parent_id"] is not None
+                        else f"[{category['symbol']}] {category['name']}"
+                    ),
                 )
                 for category in categories
             ]
             if categories
             else [f"No categories yet. Press {term.yellow('[c]')} to add one."]
         )
-        header = [
-            term.bold("Manage categories"),
-            "",
-        ]
+        header = _screen_header(term, "CATEGORIES", "Organize your cash-flow groups")
         footer = _key_binding_footer(
             term,
             [
@@ -591,7 +640,7 @@ def _manage_categories(term: Terminal, data: Data) -> str:
             max(0, selected_index - visible_rows + 1),
             max(0, len(rows) - visible_rows),
         )
-        lines = header + rows[first_row : first_row + visible_rows]
+        lines = header + [""] + rows[first_row : first_row + visible_rows]
         if notice:
             lines.extend(["", term.bold(notice)])
         lines.extend(["", *footer])
@@ -898,16 +947,20 @@ def _manage_periods(term: Terminal, data: Data) -> str:
             selected_id = selected["id"]
         rows = (
             [
-                f"{'>' if period['id'] == selected_id else ' '} "
-                f"{period['start_date']:%Y-%m-%d} - "
-                f"{period['end_date'].strftime('%Y-%m-%d') if period['end_date'] else 'Open'} "
-                f"| {period['name']}"
+                _selected_row(
+                    term,
+                    period["id"] == selected_id,
+                    f"{'>' if period['id'] == selected_id else ' '} "
+                    f"{period['start_date']:%Y-%m-%d} - "
+                    f"{period['end_date'].strftime('%Y-%m-%d') if period['end_date'] else 'Open'} "
+                    f"| {period['name']}",
+                )
                 for period in periods
             ]
             if periods
             else ["No periods yet."]
         )
-        header = [term.bold("Manage periods"), ""]
+        header = _screen_header(term, "PERIODS", "Manage reporting date ranges")
         footer = _key_binding_footer(
             term,
             [
@@ -921,7 +974,7 @@ def _manage_periods(term: Terminal, data: Data) -> str:
             max(0, selected_index - visible_rows + 1),
             max(0, len(rows) - visible_rows),
         )
-        lines = header + rows[first_row : first_row + visible_rows]
+        lines = header + [""] + rows[first_row : first_row + visible_rows]
         if notice:
             lines.extend(["", term.bold(notice)])
         lines.extend(["", *footer])
@@ -1099,10 +1152,14 @@ def _manage_budgets(term: Terminal, data: Data) -> str:
             selected_id = selected["id"]
         rows = (
             [
-                f"{'>' if budget['id'] == selected_id else ' '} "
-                f"{period_names[budget['period_id']]} / "
-                f"{category_names[budget['category_id']]} - "
-                f"{format_amount(budget['amount'], data.get_currency())}"
+                _selected_row(
+                    term,
+                    budget["id"] == selected_id,
+                    f"{'>' if budget['id'] == selected_id else ' '} "
+                    f"{period_names[budget['period_id']]} / "
+                    f"{category_names[budget['category_id']]} - "
+                    f"{format_amount(budget['amount'], data.get_currency())}",
+                )
                 for budget in budgets
             ]
             if budgets
@@ -1116,13 +1173,13 @@ def _manage_budgets(term: Terminal, data: Data) -> str:
                 ("Return", [("[Esc/q]", "overview")]),
             ],
         )
-        header = [term.bold("Manage budgets"), ""]
+        header = _screen_header(term, "BUDGETS", "Plan spending by period and category")
         visible_rows = max(1, term.height - len(header) - len(footer) - 2)
         first_row = min(
             max(0, selected_index - visible_rows + 1),
             max(0, len(rows) - visible_rows),
         )
-        lines = header + rows[first_row : first_row + visible_rows]
+        lines = header + [""] + rows[first_row : first_row + visible_rows]
         if notice:
             lines.extend(["", term.bold(notice)])
         lines.extend(["", *footer])
@@ -1203,12 +1260,12 @@ def _manage_loans(term: Terminal, data: Data) -> str:
         footer = _key_binding_footer(
             term,
             [
-                ("Loans", [("[j/k]", "select"), ("[a]", "add loan")]),
-                ("Payments", [("[↑/↓]", "scroll"), ("[PgUp/PgDn]", "page")]),
+                ("Loans", [("[↑/↓]", "select"), ("[a]", "add loan")]),
+                ("Payments", [("[j/k]", "scroll"), ("[PgUp/PgDn]", "page")]),
                 ("Return", [("[q/Esc]", "overview")]),
             ],
         )
-        header = [term.bold("Manage loans"), ""]
+        header = _screen_header(term, "LOANS", "Track principal and manual repayments")
         loan_rows: list[str] = []
         if loans:
             for loan in loans:
@@ -1225,17 +1282,21 @@ def _manage_loans(term: Terminal, data: Data) -> str:
                 )
                 loan_rows.extend(
                     [
-                        f"{'>' if loan['id'] == selected_id else ' '} "
-                        f"{loan['name']} — "
-                        f"{format_amount(loan['current_principal'], data.get_currency())} / "
-                        f"{format_amount(loan['amount'], data.get_currency())} "
-                        f"({completion_percent}% completed)",
-                        f"  {progress_bar}",
+                        _selected_row(
+                            term,
+                            loan["id"] == selected_id,
+                            f"{'>' if loan['id'] == selected_id else ' '} "
+                            f"{loan['name']} — "
+                            f"{format_amount(loan['current_principal'], data.get_currency())} / "
+                            f"{format_amount(loan['amount'], data.get_currency())} "
+                            f"({completion_percent}% completed)",
+                        ),
+                        f"  {_accent(term, 'green', progress_bar)}",
                     ]
                 )
         else:
             loan_rows = ["No loans yet."]
-        lines = header + loan_rows + [""]
+        lines = header + [""] + loan_rows + [""]
         payments: list[CashFlowRecord] = []
         if selected is not None:
             payments = list(
@@ -1284,23 +1345,26 @@ def _manage_loans(term: Terminal, data: Data) -> str:
             except (IntegrityError, LookupError, ValueError) as error:
                 notice = f"Could not create loan: {error}"
             continue
-        if key.lower() in ("j", "k") and loans:
-            direction = 1 if key.lower() == "j" else -1
+        if key.name in ("KEY_UP", "KEY_DOWN") and loans:
+            direction = 1 if key.name == "KEY_DOWN" else -1
             selected_index = (selected_index + direction) % len(loans)
             selected_id = loans[selected_index]["id"]
             payment_offset = 0
             notice = ""
-        elif key.name in ("KEY_UP", "KEY_PAGE_UP"):
-            payment_offset = max(
-                0,
-                payment_offset - (page_size if key.name == "KEY_PAGE_UP" else 1),
-            )
-        elif key.name in ("KEY_DOWN", "KEY_PAGE_DOWN"):
+        elif key.lower() in ("j", "k"):
             payment_offset = min(
                 max(0, len(payments) - page_size),
-                payment_offset + (
-                    page_size if key.name == "KEY_PAGE_DOWN" else 1
-                ),
+                max(0, payment_offset + (1 if key.lower() == "j" else -1)),
+            )
+        elif key.name == "KEY_PAGE_UP":
+            payment_offset = max(
+                0,
+                payment_offset - page_size,
+            )
+        elif key.name == "KEY_PAGE_DOWN":
+            payment_offset = min(
+                max(0, len(payments) - page_size),
+                payment_offset + page_size,
             )
 
 
@@ -1334,12 +1398,14 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
         footer = _key_binding_footer(
             term,
             [
-                ("Savings targets", [("[j/k]", "select"), ("[a]", "add target")]),
-                ("Contributions", [("[↑/↓]", "scroll"), ("[PgUp/PgDn]", "page")]),
+                ("Savings targets", [("[↑/↓]", "select"), ("[a]", "add target")]),
+                ("Contributions", [("[j/k]", "scroll"), ("[PgUp/PgDn]", "page")]),
                 ("Return", [("[q/Esc]", "overview")]),
             ],
         )
-        lines = [term.bold("Manage savings targets"), ""]
+        lines = _screen_header(
+            term, "SAVINGS TARGETS", "Build toward your goals with manual contributions"
+        ) + [""]
         if targets:
             for target in targets:
                 completed = target["accrued_amount"]
@@ -1358,12 +1424,16 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
                 )
                 lines.extend(
                     [
-                        f"{'>' if target['id'] == selected_id else ' '} "
-                        f"{target['name']} — "
-                        f"{format_amount(completed, data.get_currency())} / "
-                        f"{format_amount(target['amount'], data.get_currency())} "
-                        f"({completion_percent}% completed)",
-                        f"  {progress_bar}",
+                        _selected_row(
+                            term,
+                            target["id"] == selected_id,
+                            f"{'>' if target['id'] == selected_id else ' '} "
+                            f"{target['name']} — "
+                            f"{format_amount(completed, data.get_currency())} / "
+                            f"{format_amount(target['amount'], data.get_currency())} "
+                            f"({completion_percent}% completed)",
+                        ),
+                        f"  {_accent(term, 'green', progress_bar)}",
                     ]
                 )
         else:
@@ -1411,23 +1481,26 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
             except (IntegrityError, LookupError, ValueError) as error:
                 notice = f"Could not create savings target: {error}"
             continue
-        if key.lower() in ("j", "k") and targets:
-            direction = 1 if key.lower() == "j" else -1
+        if key.name in ("KEY_UP", "KEY_DOWN") and targets:
+            direction = 1 if key.name == "KEY_DOWN" else -1
             selected_index = (selected_index + direction) % len(targets)
             selected_id = targets[selected_index]["id"]
             payment_offset = 0
             notice = ""
-        elif key.name in ("KEY_UP", "KEY_PAGE_UP"):
-            payment_offset = max(
-                0,
-                payment_offset - (page_size if key.name == "KEY_PAGE_UP" else 1),
-            )
-        elif key.name in ("KEY_DOWN", "KEY_PAGE_DOWN"):
+        elif key.lower() in ("j", "k"):
             payment_offset = min(
                 max(0, len(payments) - page_size),
-                payment_offset + (
-                    page_size if key.name == "KEY_PAGE_DOWN" else 1
-                ),
+                max(0, payment_offset + (1 if key.lower() == "j" else -1)),
+            )
+        elif key.name == "KEY_PAGE_UP":
+            payment_offset = max(
+                0,
+                payment_offset - page_size,
+            )
+        elif key.name == "KEY_PAGE_DOWN":
+            payment_offset = min(
+                max(0, len(payments) - page_size),
+                payment_offset + page_size,
             )
 
 
@@ -1665,8 +1738,12 @@ def _select_graph_categories(
     index = 0
     while True:
         rows = [
-            f"{'>' if row_index == index else ' '} "
-            f"{'[x]' if category_id in selection else '[ ]'} {label}"
+            _selected_row(
+                term,
+                row_index == index,
+                f"{'>' if row_index == index else ' '} "
+                f"{'[x]' if category_id in selection else '[ ]'} {label}",
+            )
             for row_index, (category_id, label, _) in enumerate(categories)
         ]
         footer = _key_binding_footer(
@@ -1683,7 +1760,7 @@ def _select_graph_categories(
             max(0, len(rows) - visible_rows),
         )
         lines = [
-            term.bold("Graph categories"),
+            *_screen_header(term, "GRAPH CATEGORIES", "Choose series for the report"),
             "",
             *rows[first_row : first_row + visible_rows],
             "",
@@ -1799,9 +1876,28 @@ def _show_period_report(
         page_size = max(1, term.height - len(footer) - 5)
         offset = min(offset, max(0, len(lines) - page_size))
         visible = lines[offset : offset + page_size]
-        screen_lines = [term.bold(f"Report: {period['name']}"), "", *visible]
+        screen_lines = [
+            *_screen_header(
+                term,
+                "PERIOD REPORT",
+                f"{period['name']}  ·  {period['start_date']:%Y-%m-%d}",
+                "magenta",
+            ),
+            "",
+        ]
+        for line in visible:
+            if line.startswith("#"):
+                screen_lines.append(term.bold(_accent(term, "cyan", line)))
+            elif line.startswith("|"):
+                screen_lines.append(_accent(term, "bright_black", line))
+            elif line.startswith("**"):
+                screen_lines.append(_accent(term, "green", line))
+            else:
+                screen_lines.append(line)
         if notice:
-            screen_lines.extend(["", term.bold(notice)])
+            screen_lines.extend(
+                ["", term.bold(_accent(term, "yellow", f"◆ {notice}"))]
+            )
         screen_lines.extend(["", *footer])
         print(term.home + term.clear + "\n".join(screen_lines), end="", flush=True)
         key = term.inkey()

@@ -67,11 +67,13 @@ On the overview:
   expense in the selected category.
 - Press `l` to add loans and review each loan's remaining principal, interest
   paid, and payment history (newest first). Payments are entered manually;
-  automatic payments and interest calculations are not managed.
+  automatic payments and interest calculations are not managed. Use the
+  up/down arrows to select a loan and `j` / `k` to scroll its payment history.
 - Press `t` to add savings targets and review progress and contributions.
   When adding a cash-flow item, choose a savings target and enter its
   contribution amount; contributions are recorded as expenses in the selected
-  category.
+  category. Use the up/down arrows to select a target and `j` / `k` to scroll
+  its contribution history.
 - The overview separately displays outstanding loan principal and total
   savings accrued. These values are not combined into a net-worth figure.
 - Press `p` to manage periods, `b` to manage budgets, `u` to change the

@@ -58,6 +58,14 @@ class FakeTerminal:
     def __getattr__(self, name):
         if name.startswith("on_"):
             return f"<{name}>"
+        if name in {
+            "cyan",
+            "green",
+            "magenta",
+            "white",
+            "bright_black",
+        }:
+            return lambda text: f"<{name}>{text}</{name}>"
         raise AttributeError(name)
 
 
@@ -121,14 +129,15 @@ class UiHelperTests(unittest.TestCase):
         )
 
         self.assertIn("Tuesday, 27 October 2026", screen)
-        self.assertIn("Navigate:", screen)
-        self.assertIn("Cash flows:", screen)
+        plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
+        self.assertIn("Navigate:", plain_screen)
+        self.assertIn("Cash flows:", plain_screen)
         self.assertIn("<yellow>[n]</yellow> new", screen)
         self.assertIn("<yellow>[c]</yellow> add category", screen)
         self.assertIn("<yellow>[v]</yellow> report", screen)
         self.assertIn("<yellow>[l]</yellow> manage loans", screen)
         self.assertIn("<yellow>[t]</yellow> savings targets", screen)
-        self.assertIn("-" * 80, screen)
+        self.assertIn("─" * 80, screen)
 
     def test_dashboard_shows_separate_loan_and_savings_totals(self):
         screen = render_screen(
@@ -143,8 +152,9 @@ class UiHelperTests(unittest.TestCase):
         )
 
         self.assertIn("┌", screen)
-        self.assertIn("Loans remaining: $12,345.00", screen)
-        self.assertIn("Savings accrued: $7,500.00", screen)
+        plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
+        self.assertIn("Loans remaining: $12,345.00", plain_screen)
+        self.assertIn("Savings accrued: $7,500.00", plain_screen)
         self.assertNotIn("Net worth", screen)
 
     def test_key_binding_footer_wraps_long_groups_to_terminal_width(self):
@@ -366,7 +376,7 @@ class UiHelperTests(unittest.TestCase):
         self.assertEqual(budget_ends[0], budget_ends[1])
         self.assertIn("(€100.00/€250.00 left)", balance_rows[0])
         self.assertIn("(€0.00/€50.00 left)", balance_rows[1])
-        self.assertIn("(€)", screen)
+        self.assertIn("Personal finance  ·  €", plain_screen)
         lines = screen.splitlines()
         travel_index = next(
             index for index, line in enumerate(lines) if "Travel" in line
@@ -610,12 +620,18 @@ class UiHelperTests(unittest.TestCase):
         )
 
         self.assertIn("Cash flows", screen)
-        plain_screen = re.sub(r"</?red>", "", screen)
+        plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
         self.assertIn("[GRO] -€12.50 - Market", plain_screen)
-        self.assertIn("> [GRO]", screen)
+        self.assertIn("> [GRO]", plain_screen)
         self.assertIn("<red>-€12.50</red>", screen)
-        self.assertLess(screen.index("Calendar"), screen.index("Cash flows"))
-        self.assertLess(screen.index("Cash flows"), screen.index("Period balances"))
+        self.assertLess(
+            plain_screen.index("CALENDAR"),
+            plain_screen.index("CASH FLOWS"),
+        )
+        self.assertLess(
+            plain_screen.index("CASH FLOWS"),
+            plain_screen.index("PERIOD BALANCES"),
+        )
 
     def test_cash_flow_panel_shows_empty_day_message(self):
         screen = render_screen(
