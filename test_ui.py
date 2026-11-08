@@ -9,6 +9,7 @@ from pathlib import Path
 from main import (
     _calendar_lines,
     _key_binding_footer,
+    _loan_completion_estimate,
     _manage_loans,
     _manage_savings_targets,
     _add_cash_flow,
@@ -403,8 +404,22 @@ class UiHelperTests(unittest.TestCase):
                     "is_parent": False,
                     "balance": 0,
                 },
+                {
+                    "category_id": 4,
+                    "category_name": "Transport",
+                    "parent_id": None,
+                    "is_parent": True,
+                    "balance": -3_000,
+                },
+                {
+                    "category_id": 5,
+                    "category_name": "Transit",
+                    "parent_id": 4,
+                    "is_parent": False,
+                    "balance": -2_500,
+                },
             ],
-            "total": -15_000,
+            "total": -18_000,
         }
         budget_report = {
             "period": period,
@@ -423,10 +438,17 @@ class UiHelperTests(unittest.TestCase):
                     "balance": -5_000,
                     "remaining": 0,
                 },
+                {
+                    "category_id": 5,
+                    "category_name": "Transit",
+                    "budget": 10_000,
+                    "balance": -2_500,
+                    "remaining": 7_500,
+                },
             ],
-            "total_budget": 25_000,
-            "total_balance": -15_000,
-            "total_remaining": 10_000,
+            "total_budget": 35_000,
+            "total_balance": -17_500,
+            "total_remaining": 17_500,
         }
 
         screen = render_screen(
@@ -440,7 +462,7 @@ class UiHelperTests(unittest.TestCase):
 
         self.assertIn("Essentials", screen)
         self.assertIn("└─ Groceries", screen)
-        self.assertIn("<red>-€150.00</red>", screen)
+        self.assertIn("<red>-€100.00</red>", screen)
         plain_screen = re.sub(r"</?[a-z_]+>", "", screen)
         balance_rows = [
             line.split("│")[1]
@@ -452,15 +474,20 @@ class UiHelperTests(unittest.TestCase):
         self.assertIn("Groceries", balance_rows[1])
         amount_ends = [
             line.index(amount) + len(amount)
-            for line, amount in zip(balance_rows, ("-€150.00", "-€50.00"))
+            for line, amount in zip(balance_rows, ("-€100.00", "-€50.00"))
         ]
         self.assertEqual(amount_ends[0], amount_ends[1])
         budget_ends = [
             line.index(" left)") + len(" left)") for line in balance_rows
         ]
         self.assertEqual(budget_ends[0], budget_ends[1])
-        self.assertIn("(€100.00/€250.00 left)", balance_rows[0])
+        self.assertIn("(€100.00/€200.00 left)", balance_rows[0])
         self.assertIn("(€0.00/€50.00 left)", balance_rows[1])
+        transport_row = next(
+            line for line in plain_screen.splitlines() if "Transport" in line
+        )
+        self.assertIn("-€5.00", transport_row)
+        self.assertNotIn("left)", transport_row)
         self.assertIn("Personal finance  ·  €", plain_screen)
         self.assertIn("Travel", screen)
 
@@ -650,6 +677,7 @@ class UiHelperTests(unittest.TestCase):
                 repaid_loan["id"],
                 1_000,
             )
+            data.create_loan("Longer student loan", 50_000)
 
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
@@ -658,17 +686,100 @@ class UiHelperTests(unittest.TestCase):
             screen = output.getvalue()
             self.assertIn("Current principal: $870.00", screen)
             self.assertIn("Total interest paid: $20.00", screen)
-            self.assertIn("$870.00 / $1,000.00 (13% completed)", screen)
+            self.assertIn("Remaining / Total", screen)
+            self.assertIn("Progress", screen)
+            self.assertIn("Completion", screen)
+            self.assertIn("$870.00 / $1,000.00", screen)
             self.assertIn("[###-----------------]", screen)
-            self.assertIn(
-                "$0.00 / $10.00 (100% completed)",
-                screen,
+            self.assertIn("Total principal: $1,370.00 remaining / $1,510.00", screen)
+            self.assertIn("Total interest paid: $20.00", screen)
+            self.assertIn("Overall progress: 9% completed", screen)
+            plain_rows = [
+                re.sub(r"</?[a-z_]+>", "", line)
+                for line in screen.splitlines()
+                if re.search(r"\[[#-]{20}\]", line)
+            ]
+            header_row = next(
+                re.sub(r"</?[a-z_]+>", "", line)
+                for line in screen.splitlines()
+                if "Remaining / Total" in line
             )
+            self.assertEqual(len(plain_rows), 3)
+            self.assertEqual(
+                {line.index("[") for line in plain_rows},
+                {plain_rows[0].index("[")},
+            )
+            completion_column = header_row.index("Completion")
+            self.assertEqual(
+                {line.rindex("Jan 2028") if "Jan 2028" in line else
+                 line.rindex("N/A") if "N/A" in line else line.rindex("Paid off")
+                 for line in plain_rows},
+                {completion_column},
+            )
+            progress_end = header_row.index("Progress") + len("Progress")
+            principal_start = header_row.index("Remaining / Total")
+            principal_end = header_row.index("Progress") - 2
+            for line in plain_rows:
+                progress_match = re.search(r"\s+(\d+%)\s{2}", line)
+                self.assertIsNotNone(progress_match)
+                assert progress_match is not None
+                self.assertEqual(
+                    progress_match.start(1) + len(progress_match.group(1)),
+                    progress_end,
+                )
+                principal_cell = line[principal_start:principal_end]
+                self.assertEqual(principal_cell.rstrip(), principal_cell)
+            self.assertIn("Jan 2028", screen)
+            self.assertIn("N/A", screen)
+            self.assertIn("Paid off", screen)
             self.assertIn("[####################]", screen)
             self.assertLess(screen.index("2026-11-05"), screen.index("2026-10-05"))
             self.assertEqual(result, "Loan management closed.")
         finally:
             data.close()
+
+    def test_loan_completion_estimate_uses_average_monthly_principal(self):
+        loan = {
+            "id": 1,
+            "name": "Car",
+            "amount": 100_000,
+            "current_principal": 87_000,
+            "total_interest_paid": 2_000,
+        }
+        payments = [
+            {
+                "id": 1,
+                "amount": -10_000,
+                "description": "First",
+                "category_id": 1,
+                "occurred_at": datetime(2026, 10, 5),
+                "loan_id": 1,
+                "principal_amount": 8_000,
+            },
+            {
+                "id": 2,
+                "amount": -5_000,
+                "description": "Second",
+                "category_id": 1,
+                "occurred_at": datetime(2026, 11, 5),
+                "loan_id": 1,
+                "principal_amount": 5_000,
+            },
+        ]
+
+        self.assertEqual(
+            _loan_completion_estimate(loan, payments, date(2026, 11, 7)),
+            "Jan 2028",
+        )
+        self.assertEqual(
+            _loan_completion_estimate(loan, [], date(2026, 11, 7)),
+            "N/A",
+        )
+        loan["current_principal"] = 0
+        self.assertEqual(
+            _loan_completion_estimate(loan, payments, date(2026, 11, 7)),
+            "Paid off",
+        )
 
     def test_savings_target_screen_shows_progress_and_contributions(self):
         data = Data(":memory:")
@@ -682,6 +793,7 @@ class UiHelperTests(unittest.TestCase):
                 "Monthly",
                 savings_target_id=target["id"],
             )
+            data.create_savings_target("Z Emergency reserve", 1_000_000)
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 result = _manage_savings_targets(
@@ -689,8 +801,38 @@ class UiHelperTests(unittest.TestCase):
                 )
 
             screen = output.getvalue()
-            self.assertIn("$2,500.00 / $15,000.00 (17% completed)", screen)
+            self.assertIn("Total savings: $2,500.00 / $25,000.00", screen)
+            self.assertIn("Overall progress: 10% completed", screen)
+            self.assertIn("Accrued / Target", screen)
+            self.assertIn("Progress", screen)
+            self.assertIn("$2,500.00 / $15,000.00", screen)
+            self.assertIn("$0.00 / $10,000.00", screen)
             self.assertIn("[###-----------------]", screen)
+            plain_rows = [
+                re.sub(r"</?[a-z_]+>", "", line)
+                for line in screen.splitlines()
+                if re.search(r"\[[#-]{20}\]", line)
+            ]
+            self.assertEqual(len(plain_rows), 2)
+            header_row = next(
+                re.sub(r"</?[a-z_]+>", "", line)
+                for line in screen.splitlines()
+                if "Accrued / Target" in line
+            )
+            self.assertEqual(
+                {line.index("[") for line in plain_rows},
+                {plain_rows[0].index("[")},
+            )
+            target_column_end = (
+                header_row.index("Accrued / Target")
+                + len("Accrued / Target")
+            )
+            for value in ("$2,500.00 / $15,000.00", "$0.00 / $10,000.00"):
+                matching_row = next(line for line in plain_rows if value in line)
+                self.assertEqual(
+                    matching_row.index(value) + len(value),
+                    target_column_end,
+                )
             self.assertIn("Accrued: $2,500.00", screen)
             self.assertIn("2026-11-05", screen)
             self.assertEqual(result, "Savings-target management closed.")

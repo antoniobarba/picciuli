@@ -15,6 +15,7 @@ from data import (
     Data,
     BudgetRecord,
     FinancialTotalsRecord,
+    LoanRecord,
     PeriodBalanceReport,
     PeriodBudgetReport,
     PeriodRecord,
@@ -104,6 +105,71 @@ def _selected_row(term: Terminal, selected: bool, text: str) -> str:
     if not selected:
         return text
     return f"{term.reverse}{term.bold(text)}{term.normal}"
+
+
+def _progress_table_rows(
+    term: Terminal,
+    name_heading: str,
+    value_headings: Sequence[str],
+    items: Sequence[tuple[bool, str, Sequence[str], str]],
+    left_aligned_columns: frozenset[int] = frozenset(),
+) -> list[str]:
+    if not items:
+        return []
+
+    value_widths = [
+        max(
+            term.length(heading),
+            *(
+                term.length(values[index])
+                for _, _, values, _ in items
+            ),
+        )
+        for index, heading in enumerate(value_headings)
+    ]
+    bar_width = max(
+        term.length("Progress bar"),
+        *(term.length(bar) for _, _, _, bar in items),
+    )
+    name_width = max(
+        1,
+        term.width
+        - sum(value_widths)
+        - bar_width
+        - 2 * (len(value_widths) + 1)
+        - 4,
+    )
+
+    def row(
+        name: str,
+        values: Sequence[str],
+        bar: str,
+        selected: bool = False,
+    ) -> str:
+        clipped_name = _clip_line(term, name, name_width)
+        name_cell = clipped_name + " " * max(
+            0, name_width - term.length(clipped_name)
+        )
+        cells = f"  {name_cell}"
+        for index, (value, width) in enumerate(zip(values, value_widths)):
+            aligned_value = (
+                f"{value:<{width}}"
+                if index in left_aligned_columns
+                else f"{value:>{width}}"
+            )
+            cells += f"  {aligned_value}"
+        return (
+            f"{_selected_row(term, selected, cells)}  "
+            f"{_accent(term, 'green', bar)}"
+        )
+
+    return [
+        row(name_heading, value_headings, "Progress bar"),
+        *[
+            row(name, values, bar, selected)
+            for selected, name, values, bar in items
+        ],
+    ]
 
 
 def _clip_line(term: Terminal, line: str, width: int) -> str:
@@ -431,10 +497,13 @@ def render_screen(
                 item["category_id"]: item["budget"]
                 for item in budget_report["categories"]
             } if budget_report is not None else {}
-            category_parent_ids = {
-                item["category_id"]: item["parent_id"]
-                for item in report_categories
-            }
+            child_balances_by_parent: dict[int, int] = {}
+            for item in report_categories:
+                if item["parent_id"] is not None:
+                    parent_id = item["parent_id"]
+                    child_balances_by_parent[parent_id] = (
+                        child_balances_by_parent.get(parent_id, 0) + item["balance"]
+                    )
             balance_rows: list[tuple[str, str, str]] = []
             if not report_categories:
                 balance_panel.append(
@@ -447,26 +516,18 @@ def render_screen(
                         if item["parent_id"] is not None
                         else item["category_name"]
                     )
-                    amount = format_amount(item["balance"], currency)
-                    if item["balance"] < 0:
-                        amount = term.red(amount)
-                    budget_category_ids = [item["category_id"]]
+                    category_balance = item["balance"]
                     if item["parent_id"] is None:
-                        budget_category_ids.extend(
-                            category_id
-                            for category_id, parent_id in category_parent_ids.items()
-                            if parent_id == item["category_id"]
+                        category_balance -= child_balances_by_parent.get(
+                            item["category_id"], 0
                         )
-                    allocated_budget = sum(
-                        budget_amounts.get(category_id, 0)
-                        for category_id in budget_category_ids
-                    )
-                    has_budget = any(
-                        category_id in budget_amounts
-                        for category_id in budget_category_ids
-                    )
+                    amount = format_amount(category_balance, currency)
+                    if category_balance < 0:
+                        amount = term.red(amount)
+                    allocated_budget = budget_amounts.get(item["category_id"], 0)
+                    has_budget = item["category_id"] in budget_amounts
                     if has_budget:
-                        remaining_amount = allocated_budget + item["balance"]
+                        remaining_amount = allocated_budget + category_balance
                         remaining = format_amount(remaining_amount, currency)
                         if remaining_amount < 0:
                             remaining = term.red(remaining)
@@ -1392,6 +1453,43 @@ def _add_loan(term: Terminal, data: Data) -> tuple[str, int | None]:
     return f"Added loan {loan['name']}.", loan["id"]
 
 
+def _loan_completion_estimate(
+    loan: LoanRecord,
+    payments: Sequence[CashFlowRecord],
+    as_of: date | None = None,
+) -> str:
+    if loan["current_principal"] == 0:
+        return "Paid off"
+    today = as_of or date.today()
+    principal_payments = [
+        payment
+        for payment in payments
+        if (payment["principal_amount"] or 0) > 0
+        and payment["occurred_at"].date() <= today
+    ]
+    principal_paid = sum(
+        payment["principal_amount"] or 0 for payment in principal_payments
+    )
+    if not principal_payments or principal_paid == 0:
+        return "N/A"
+
+    first_payment = min(
+        payment["occurred_at"].date() for payment in principal_payments
+    )
+    months_observed = (
+        (today.year - first_payment.year) * 12
+        + today.month
+        - first_payment.month
+        + 1
+    )
+    months_remaining = (
+        loan["current_principal"] * months_observed + principal_paid - 1
+    ) // principal_paid
+    completion_month = today.year * 12 + today.month - 1 + months_remaining
+    completion_year, completion_month = divmod(completion_month, 12)
+    return date(completion_year, completion_month + 1, 1).strftime("%b %Y")
+
+
 def _manage_loans(term: Terminal, data: Data) -> str:
     loans = data.list_loans()
     selected_id = loans[0]["id"] if loans else None
@@ -1415,8 +1513,28 @@ def _manage_loans(term: Terminal, data: Data) -> str:
             ],
         )
         header = _screen_header(term, "LOANS", "Track principal and manual repayments")
-        loan_rows: list[str] = []
+        loan_items: list[tuple[bool, str, Sequence[str], str]] = []
         if loans:
+            total_principal = sum(loan["amount"] for loan in loans)
+            remaining_principal = sum(
+                loan["current_principal"] for loan in loans
+            )
+            total_interest = sum(loan["total_interest_paid"] for loan in loans)
+            overall_progress = (
+                (total_principal - remaining_principal) * 100
+                + total_principal // 2
+            ) // total_principal
+            lines = [
+                *header,
+                "",
+                f"Total principal: "
+                f"{format_amount(remaining_principal, data.get_currency())} "
+                f"remaining / {format_amount(total_principal, data.get_currency())}",
+                f"Total interest paid: "
+                f"{format_amount(total_interest, data.get_currency())}",
+                f"Overall progress: {overall_progress}% completed",
+                "",
+            ]
             for loan in loans:
                 completed = loan["amount"] - loan["current_principal"]
                 completion_percent = (
@@ -1429,23 +1547,35 @@ def _manage_loans(term: Terminal, data: Data) -> str:
                 progress_bar = (
                     f"[{'#' * filled_width}{'-' * (bar_width - filled_width)}]"
                 )
-                loan_rows.extend(
-                    [
-                        _selected_row(
-                            term,
-                            loan["id"] == selected_id,
-                            f"{'>' if loan['id'] == selected_id else ' '} "
-                            f"{loan['name']} — "
-                            f"{format_amount(loan['current_principal'], data.get_currency())} / "
-                            f"{format_amount(loan['amount'], data.get_currency())} "
-                            f"({completion_percent}% completed)",
-                        ),
-                        f"  {_accent(term, 'green', progress_bar)}",
-                    ]
+                loan_payments = data.list_cash_flows(loan_id=loan["id"])
+                completion_estimate = _loan_completion_estimate(
+                    loan, loan_payments
                 )
+                loan_items.append(
+                    (
+                        loan["id"] == selected_id,
+                        f"{'> ' if loan['id'] == selected_id else '  '}{loan['name']}",
+                        (
+                            f"{format_amount(loan['current_principal'], data.get_currency())} / "
+                            f"{format_amount(loan['amount'], data.get_currency())}",
+                            f"{completion_percent}%",
+                            completion_estimate,
+                        ),
+                        progress_bar,
+                    )
+                )
+            loan_rows = _progress_table_rows(
+                term,
+                "Loan",
+                ("Remaining / Total", "Progress", "Completion"),
+                loan_items,
+                frozenset({2}),
+            )
+            lines.extend(loan_rows)
         else:
             loan_rows = ["No loans yet."]
-        lines = header + [""] + loan_rows + [""]
+            lines = header + [""] + loan_rows
+        lines.append("")
         payments: list[CashFlowRecord] = []
         if selected is not None:
             payments = list(
@@ -1556,6 +1686,22 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
             term, "SAVINGS TARGETS", "Build toward your goals with manual contributions"
         ) + [""]
         if targets:
+            total_accrued = sum(target["accrued_amount"] for target in targets)
+            total_target = sum(target["amount"] for target in targets)
+            overall_progress = min(
+                100,
+                (total_accrued * 100 + total_target // 2) // total_target,
+            )
+            lines.extend(
+                [
+                    f"Total savings: "
+                    f"{format_amount(total_accrued, data.get_currency())} / "
+                    f"{format_amount(total_target, data.get_currency())}",
+                    f"Overall progress: {overall_progress}% completed",
+                    "",
+                ]
+            )
+            table_items: list[tuple[bool, str, Sequence[str], str]] = []
             for target in targets:
                 completed = target["accrued_amount"]
                 completion_percent = min(
@@ -1571,20 +1717,26 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
                 progress_bar = (
                     f"[{'#' * filled_width}{'-' * (bar_width - filled_width)}]"
                 )
-                lines.extend(
-                    [
-                        _selected_row(
-                            term,
-                            target["id"] == selected_id,
-                            f"{'>' if target['id'] == selected_id else ' '} "
-                            f"{target['name']} — "
+                table_items.append(
+                    (
+                        target["id"] == selected_id,
+                        f"{'> ' if target['id'] == selected_id else '  '}{target['name']}",
+                        (
                             f"{format_amount(completed, data.get_currency())} / "
-                            f"{format_amount(target['amount'], data.get_currency())} "
-                            f"({completion_percent}% completed)",
+                            f"{format_amount(target['amount'], data.get_currency())}",
+                            f"{completion_percent}%",
                         ),
-                        f"  {_accent(term, 'green', progress_bar)}",
-                    ]
+                        progress_bar,
+                    )
                 )
+            lines.extend(
+                _progress_table_rows(
+                    term,
+                    "Target",
+                    ("Accrued / Target", "Progress"),
+                    table_items,
+                )
+            )
         else:
             lines.append("No savings targets yet.")
 
