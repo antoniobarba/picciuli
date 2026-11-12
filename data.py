@@ -141,13 +141,13 @@ class CashFlow(Base):
             "(loan_id IS NULL AND principal_amount IS NULL) OR "
             "(loan_id IS NOT NULL AND principal_amount IS NOT NULL "
             "AND savings_target_id IS NULL AND amount < 0 "
-            "AND principal_amount >= 0 "
+            "AND principal_amount >= amount "
             "AND principal_amount <= -amount)",
             name="valid_loan_payment",
         ),
         CheckConstraint(
             "savings_target_id IS NULL OR "
-            "(loan_id IS NULL AND principal_amount IS NULL AND amount < 0)",
+            "(loan_id IS NULL AND principal_amount IS NULL AND amount != 0)",
             name="valid_savings_contribution",
         ),
     )
@@ -295,9 +295,85 @@ class Data:
                 f"({details}); automatic migrations are not supported. "
                 "Use a new database file."
             )
+        self._migrate_cash_flow_constraints()
         with self.session_factory.begin() as session:
             if session.get(CurrencySetting, 1) is None:
                 session.add(CurrencySetting(id=1, currency="$"))
+
+    def _migrate_cash_flow_constraints(self) -> None:
+        with self.engine.connect() as connection:
+            constraints = inspect(connection).get_check_constraints("cash_flows")
+        constraints_by_name = {
+            constraint["name"]: "".join(
+                (constraint["sqltext"] or "").lower().split()
+            )
+            for constraint in constraints
+        }
+        old_loan_constraint = (
+            "valid_loan_payment" in constraints_by_name
+            and "principal_amount>=0" in constraints_by_name["valid_loan_payment"]
+        )
+        old_savings_constraint = (
+            "valid_savings_contribution" in constraints_by_name
+            and "amount<0" in constraints_by_name["valid_savings_contribution"]
+        )
+        if not old_loan_constraint and not old_savings_constraint:
+            return
+
+        with self.engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+            try:
+                with connection.begin():
+                    connection.exec_driver_sql(
+                        """
+                        CREATE TABLE cash_flows_new (
+                            id INTEGER NOT NULL PRIMARY KEY,
+                            amount INTEGER NOT NULL,
+                            description VARCHAR,
+                            category_id INTEGER NOT NULL
+                                REFERENCES categories(id),
+                            occurred_at DATETIME NOT NULL,
+                            loan_id INTEGER REFERENCES loans(id)
+                                ON DELETE RESTRICT,
+                            principal_amount INTEGER,
+                            savings_target_id INTEGER
+                                REFERENCES savings_targets(id)
+                                ON DELETE RESTRICT,
+                            CONSTRAINT valid_loan_payment CHECK (
+                                (loan_id IS NULL AND principal_amount IS NULL) OR
+                                (loan_id IS NOT NULL AND principal_amount IS NOT NULL
+                                 AND savings_target_id IS NULL AND amount < 0
+                                 AND principal_amount >= amount
+                                 AND principal_amount <= -amount)
+                            ),
+                            CONSTRAINT valid_savings_contribution CHECK (
+                                savings_target_id IS NULL OR
+                                (loan_id IS NULL AND principal_amount IS NULL
+                                 AND amount != 0)
+                            )
+                        )
+                        """
+                    )
+                    connection.exec_driver_sql(
+                        """
+                        INSERT INTO cash_flows_new (
+                            id, amount, description, category_id, occurred_at,
+                            loan_id, principal_amount, savings_target_id
+                        )
+                        SELECT
+                            id, amount, description, category_id, occurred_at,
+                            loan_id, principal_amount, savings_target_id
+                        FROM cash_flows
+                        """
+                    )
+                    connection.exec_driver_sql("DROP TABLE cash_flows")
+                    connection.exec_driver_sql(
+                        "ALTER TABLE cash_flows_new RENAME TO cash_flows"
+                    )
+            finally:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
 
     def close(self) -> None:
         self.engine.dispose()
@@ -338,7 +414,7 @@ class Data:
     def _loan_dict(loan: Loan, payments: list[CashFlow]) -> LoanRecord:
         principal_paid = sum(payment.principal_amount or 0 for payment in payments)
         interest_paid = sum(
-            abs(payment.amount) - (payment.principal_amount or 0)
+            abs(payment.amount) - abs(payment.principal_amount or 0)
             for payment in payments
         )
         return {
@@ -357,7 +433,7 @@ class Data:
             "id": target.id,
             "name": target.name,
             "amount": target.amount,
-            "accrued_amount": sum(abs(payment.amount) for payment in payments),
+            "accrued_amount": sum(-payment.amount for payment in payments),
         }
 
     @staticmethod
@@ -439,9 +515,10 @@ class Data:
         Data._validate_amount(principal_amount)
         if amount >= 0:
             raise ValueError("loan payment total amount must be negative")
-        if principal_amount < 0 or principal_amount > abs(amount):
+        if principal_amount < amount or principal_amount > abs(amount):
             raise ValueError(
-                "principal amount must be between zero and the total payment"
+                "principal change must be between the negative and positive "
+                "total payment"
             )
         loan = session.get(Loan, loan_id)
         if loan is None:
@@ -468,8 +545,8 @@ class Data:
             return
         if loan_id is not None or principal_amount is not None:
             raise ValueError("a cash-flow item can belong to only one goal")
-        if amount >= 0:
-            raise ValueError("savings contribution amount must be negative")
+        if amount == 0:
+            raise ValueError("savings contribution amount cannot be zero")
         target = session.get(SavingsTarget, savings_target_id)
         if target is None:
             raise LookupError(f"savings target {savings_target_id} does not exist")
@@ -479,8 +556,11 @@ class Data:
         if cash_flow_id is not None:
             statement = statement.where(CashFlow.id != cash_flow_id)
         accrued = session.scalar(statement) or 0
-        if abs(amount) > target.amount - accrued:
+        change = -amount
+        if change > target.amount - accrued:
             raise ValueError("savings contribution exceeds the remaining target amount")
+        if change < -accrued:
+            raise ValueError("savings withdrawal exceeds the accrued amount")
 
     def create_loan(self, name: str, amount: int) -> LoanRecord:
         name = self._normalize_loan_name(name)

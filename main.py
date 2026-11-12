@@ -1461,30 +1461,30 @@ def _loan_completion_estimate(
     if loan["current_principal"] == 0:
         return "Paid off"
     today = as_of or date.today()
-    principal_payments = [
+    principal_changes = [
         payment
         for payment in payments
-        if (payment["principal_amount"] or 0) > 0
+        if (payment["principal_amount"] or 0) != 0
         and payment["occurred_at"].date() <= today
     ]
-    principal_paid = sum(
-        payment["principal_amount"] or 0 for payment in principal_payments
+    net_principal_paid = sum(
+        payment["principal_amount"] or 0 for payment in principal_changes
     )
-    if not principal_payments or principal_paid == 0:
+    if not principal_changes or net_principal_paid <= 0:
         return "N/A"
 
-    first_payment = min(
-        payment["occurred_at"].date() for payment in principal_payments
+    first_change = min(
+        payment["occurred_at"].date() for payment in principal_changes
     )
     months_observed = (
-        (today.year - first_payment.year) * 12
+        (today.year - first_change.year) * 12
         + today.month
-        - first_payment.month
+        - first_change.month
         + 1
     )
     months_remaining = (
-        loan["current_principal"] * months_observed + principal_paid - 1
-    ) // principal_paid
+        loan["current_principal"] * months_observed + net_principal_paid - 1
+    ) // net_principal_paid
     completion_month = today.year * 12 + today.month - 1 + months_remaining
     completion_year, completion_month = divmod(completion_month, 12)
     return date(completion_year, completion_month + 1, 1).strftime("%b %Y")
@@ -1512,7 +1512,9 @@ def _manage_loans(term: Terminal, data: Data) -> str:
                 ("Return", [("[q/Esc]", "overview")]),
             ],
         )
-        header = _screen_header(term, "LOANS", "Track principal and manual repayments")
+        header = _screen_header(
+            term, "LOANS", "Track balances, repayments, and new borrowing"
+        )
         loan_items: list[tuple[bool, str, Sequence[str], str]] = []
         if loans:
             total_principal = sum(loan["amount"] for loan in loans)
@@ -1520,10 +1522,17 @@ def _manage_loans(term: Terminal, data: Data) -> str:
                 loan["current_principal"] for loan in loans
             )
             total_interest = sum(loan["total_interest_paid"] for loan in loans)
-            overall_progress = (
-                (total_principal - remaining_principal) * 100
-                + total_principal // 2
-            ) // total_principal
+            overall_progress = max(
+                0,
+                min(
+                    100,
+                    (
+                        (total_principal - remaining_principal) * 100
+                        + total_principal // 2
+                    )
+                    // total_principal,
+                ),
+            )
             lines = [
                 *header,
                 "",
@@ -1537,13 +1546,23 @@ def _manage_loans(term: Terminal, data: Data) -> str:
             ]
             for loan in loans:
                 completed = loan["amount"] - loan["current_principal"]
-                completion_percent = (
-                    completed * 100 + loan["amount"] // 2
-                ) // loan["amount"]
+                completion_percent = max(
+                    0,
+                    min(
+                        100,
+                        (completed * 100 + loan["amount"] // 2)
+                        // loan["amount"],
+                    ),
+                )
                 bar_width = 20
-                filled_width = (
-                    completed * bar_width + loan["amount"] // 2
-                ) // loan["amount"]
+                filled_width = max(
+                    0,
+                    min(
+                        bar_width,
+                        (completed * bar_width + loan["amount"] // 2)
+                        // loan["amount"],
+                    ),
+                )
                 progress_bar = (
                     f"[{'#' * filled_width}{'-' * (bar_width - filled_width)}]"
                 )
@@ -1589,7 +1608,7 @@ def _manage_loans(term: Terminal, data: Data) -> str:
                     f"Total interest paid: "
                     f"{format_amount(selected['total_interest_paid'], data.get_currency())}",
                     "",
-                    "Date       Total amount       Principal          Interest",
+                    "Date       Total amount       Principal change   Interest",
                 ]
             )
             if not payments:
@@ -1678,7 +1697,7 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
             term,
             [
                 ("Savings targets", [("[↑/↓]", "select"), ("[a]", "add target")]),
-                ("Contributions", [("[j/k]", "scroll"), ("[PgUp/PgDn]", "page")]),
+                ("Transactions", [("[j/k]", "scroll"), ("[PgUp/PgDn]", "page")]),
                 ("Return", [("[q/Esc]", "overview")]),
             ],
         )
@@ -1755,17 +1774,17 @@ def _manage_savings_targets(term: Terminal, data: Data) -> str:
                     f"{format_amount(selected['accrued_amount'], data.get_currency())}",
                     f"Target: {format_amount(selected['amount'], data.get_currency())}",
                     "",
-                    "Date       Contribution",
+                    "Date       Savings change",
                 ]
             )
             if not payments:
-                lines.append("No contributions recorded.")
+                lines.append("No transactions recorded.")
         page_size = max(1, term.height - len(lines) - len(footer) - 2)
         payment_offset = min(payment_offset, max(0, len(payments) - page_size))
         for payment in payments[payment_offset : payment_offset + page_size]:
             lines.append(
                 f"{payment['occurred_at']:%Y-%m-%d}   "
-                f"{format_amount(abs(payment['amount']), data.get_currency())}"
+                f"{format_amount(-payment['amount'], data.get_currency())}"
             )
         if notice:
             lines.extend(["", term.bold(notice)])
@@ -2345,14 +2364,8 @@ def _add_cash_flow(
     description = _read_line(term, "Description (Esc cancels): ")
     if description is None:
         return "Cash-flow creation cancelled."
-    active_loans = [
-        loan for loan in data.list_loans() if loan["current_principal"] > 0
-    ]
-    active_targets = [
-        target
-        for target in data.list_savings_targets()
-        if target["accrued_amount"] < target["amount"]
-    ]
+    active_loans = data.list_loans()
+    active_targets = data.list_savings_targets()
     loan_id = None
     savings_target_id = None
     available_goals = [
@@ -2390,9 +2403,9 @@ def _add_cash_flow(
 
     amount_text = _read_line(
         term,
-        "Total payment amount (e.g. 12.34): "
+        "Payment or charge amount (e.g. 12.34): "
         if loan_id is not None
-        else "Savings contribution (e.g. 12.34): "
+        else "Savings change (+ deposit, - withdrawal; e.g. 12.34): "
         if savings_target_id is not None
         else "Amount (+ income, - expense; e.g. 12.34): ",
     )
@@ -2402,15 +2415,17 @@ def _add_cash_flow(
     principal_amount = None
     if loan_id is not None:
         if amount <= 0:
-            raise ValueError("loan payment amount must be greater than zero")
-        principal_text = _read_line(term, "Principal amount paid: ")
+            raise ValueError("loan payment or charge amount must be greater than zero")
+        principal_text = _read_line(
+            term, "Principal change (+ repayment, - new borrowing): "
+        )
         if principal_text is None:
             return "Cash-flow creation cancelled."
         principal_amount = parse_amount(principal_text)
         amount = -amount
     elif savings_target_id is not None:
-        if amount <= 0:
-            raise ValueError("savings contribution must be greater than zero")
+        if amount == 0:
+            raise ValueError("savings change cannot be zero")
         amount = -amount
 
     category_options = "\n".join(
@@ -2459,10 +2474,10 @@ def _edit_cash_flow(
     if description is None:
         return "Cash-flow edit cancelled."
     is_savings_contribution = cash_flow["savings_target_id"] is not None
-    amount_default = f"{Decimal(abs(cash_flow['amount']) if is_savings_contribution else cash_flow['amount']) / 100:.2f}"
+    amount_default = f"{Decimal(-cash_flow['amount'] if is_savings_contribution else cash_flow['amount']) / 100:.2f}"
     amount_text = _read_line(
         term,
-        "Savings contribution amount: "
+        "Savings change (+ deposit, - withdrawal): "
         if is_savings_contribution
         else "Amount (+ income, - expense): ",
         amount_default,
@@ -2471,14 +2486,16 @@ def _edit_cash_flow(
         return "Cash-flow edit cancelled."
     amount = parse_amount(amount_text)
     if is_savings_contribution:
-        if amount <= 0:
-            raise ValueError("savings contribution must be greater than zero")
+        if amount == 0:
+            raise ValueError("savings change cannot be zero")
         amount = -amount
     principal_amount = cash_flow["principal_amount"]
     if cash_flow["loan_id"] is not None:
         principal_default = f"{Decimal(principal_amount or 0) / 100:.2f}"
         principal_text = _read_line(
-            term, "Principal amount paid: ", principal_default
+            term,
+            "Principal change (+ repayment, - new borrowing): ",
+            principal_default,
         )
         if principal_text is None:
             return "Cash-flow edit cancelled."

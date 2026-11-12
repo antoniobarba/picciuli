@@ -775,11 +775,54 @@ class UiHelperTests(unittest.TestCase):
             _loan_completion_estimate(loan, [], date(2026, 11, 7)),
             "N/A",
         )
+        self.assertEqual(
+            _loan_completion_estimate(
+                loan,
+                payments
+                + [
+                    {
+                        "id": 3,
+                        "amount": -20_000,
+                        "description": "New borrowing",
+                        "category_id": 1,
+                        "occurred_at": datetime(2026, 11, 6),
+                        "loan_id": 1,
+                        "principal_amount": -20_000,
+                    }
+                ],
+                date(2026, 11, 7),
+            ),
+            "N/A",
+        )
         loan["current_principal"] = 0
         self.assertEqual(
             _loan_completion_estimate(loan, payments, date(2026, 11, 7)),
             "Paid off",
         )
+
+    def test_loan_screen_clamps_progress_after_new_borrowing(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Credit card")
+            loan = data.create_loan("Credit line", 1_000)
+            data.create_cash_flow(
+                -2_000,
+                category["id"],
+                datetime(2026, 11, 5),
+                "Purchase",
+                loan["id"],
+                -2_000,
+            )
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                _manage_loans(ScriptedTerminal(["\x1b"]), data)
+
+            screen = output.getvalue()
+            self.assertIn("Current principal: $30.00", screen)
+            self.assertIn("[--------------------]", screen)
+            self.assertIn("0%", screen)
+        finally:
+            data.close()
 
     def test_savings_target_screen_shows_progress_and_contributions(self):
         data = Data(":memory:")
@@ -866,6 +909,113 @@ class UiHelperTests(unittest.TestCase):
             self.assertEqual(payment["amount"], -250_000)
             self.assertEqual(payment["savings_target_id"], target["id"])
             self.assertEqual(message, "Added cash flow: -$2,500.00.")
+        finally:
+            data.close()
+
+    def test_cash_flow_entry_links_savings_target_withdrawal(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Savings")
+            target = data.create_savings_target("Emergency fund", 100_000)
+            data.create_cash_flow(
+                -75_000,
+                category["id"],
+                datetime(2026, 11, 4),
+                "Deposit",
+                savings_target_id=target["id"],
+            )
+            keys = [
+                *"Emergency withdrawal",
+                "\r",
+                "1",
+                "\r",
+                *"-500.00",
+                "\r",
+                "1",
+                "\r",
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                message = _add_cash_flow(
+                    ScriptedTerminal(keys),
+                    data,
+                    date(2026, 11, 5),
+                    [category],
+                )
+
+            withdrawal = data.list_cash_flows(savings_target_id=target["id"])[1]
+            self.assertEqual(withdrawal["amount"], 50_000)
+            self.assertEqual(
+                data.get_savings_target(target["id"])["accrued_amount"],
+                25_000,
+            )
+            self.assertEqual(message, "Added cash flow: $500.00.")
+        finally:
+            data.close()
+
+    def test_savings_target_history_displays_signed_net_changes(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Savings")
+            target = data.create_savings_target("Emergency fund", 100_000)
+            data.create_cash_flow(
+                -75_000,
+                category["id"],
+                datetime(2026, 11, 4),
+                "Deposit",
+                savings_target_id=target["id"],
+            )
+            data.create_cash_flow(
+                25_000,
+                category["id"],
+                datetime(2026, 11, 5),
+                "Withdrawal",
+                savings_target_id=target["id"],
+            )
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                _manage_savings_targets(ScriptedTerminal(["\x1b"]), data)
+
+            screen = output.getvalue()
+            self.assertIn("Accrued: $500.00", screen)
+            self.assertIn("Savings change", screen)
+            self.assertIn("-$250.00", screen)
+            self.assertIn("$750.00", screen)
+        finally:
+            data.close()
+
+    def test_cash_flow_entry_links_loan_with_new_borrowing(self):
+        data = Data(":memory:")
+        try:
+            category = data.create_category("Credit card")
+            loan = data.create_loan("Credit line", 100_000)
+            keys = [
+                *"New purchase",
+                "\r",
+                "1",
+                "\r",
+                *"250.00",
+                "\r",
+                *"-250.00",
+                "\r",
+                "1",
+                "\r",
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                message = _add_cash_flow(
+                    ScriptedTerminal(keys),
+                    data,
+                    date(2026, 11, 5),
+                    [category],
+                )
+
+            purchase = data.list_cash_flows(loan_id=loan["id"])[0]
+            self.assertEqual(purchase["amount"], -25_000)
+            self.assertEqual(purchase["principal_amount"], -25_000)
+            self.assertEqual(
+                data.get_loan(loan["id"])["current_principal"],
+                125_000,
+            )
+            self.assertEqual(message, "Added cash flow: -$250.00.")
         finally:
             data.close()
 

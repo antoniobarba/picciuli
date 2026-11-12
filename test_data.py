@@ -148,6 +148,98 @@ class DataTests(unittest.TestCase):
         finally:
             upgraded.close()
 
+    def test_existing_goal_constraints_are_migrated_for_signed_transactions(self):
+        database_path = str(Path(self.temp_dir.name) / "signed-goals.db")
+        existing = Data(database_path)
+        category = existing.create_category("Goals")
+        loan = existing.create_loan("Credit line", 10_000)
+        target = existing.create_savings_target("Emergency fund", 5_000)
+        existing.create_cash_flow(
+            -1_000,
+            category["id"],
+            datetime(2026, 10, 1),
+            loan_id=loan["id"],
+            principal_amount=500,
+        )
+        existing.create_cash_flow(
+            -2_000,
+            category["id"],
+            datetime(2026, 10, 2),
+            savings_target_id=target["id"],
+        )
+        existing.close()
+
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute("PRAGMA foreign_keys=OFF")
+            connection.executescript(
+                """
+                CREATE TABLE cash_flows_old (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    amount INTEGER NOT NULL,
+                    description VARCHAR,
+                    category_id INTEGER NOT NULL REFERENCES categories(id),
+                    occurred_at DATETIME NOT NULL,
+                    loan_id INTEGER REFERENCES loans(id) ON DELETE RESTRICT,
+                    principal_amount INTEGER,
+                    savings_target_id INTEGER
+                        REFERENCES savings_targets(id) ON DELETE RESTRICT,
+                    CONSTRAINT valid_loan_payment CHECK (
+                        (loan_id IS NULL AND principal_amount IS NULL) OR
+                        (loan_id IS NOT NULL AND principal_amount IS NOT NULL
+                         AND savings_target_id IS NULL AND amount < 0
+                         AND principal_amount >= 0
+                         AND principal_amount <= -amount)
+                    ),
+                    CONSTRAINT valid_savings_contribution CHECK (
+                        savings_target_id IS NULL OR
+                        (loan_id IS NULL AND principal_amount IS NULL
+                         AND amount < 0)
+                    )
+                );
+                INSERT INTO cash_flows_old
+                    SELECT * FROM cash_flows;
+                DROP TABLE cash_flows;
+                ALTER TABLE cash_flows_old RENAME TO cash_flows;
+                """
+            )
+        finally:
+            connection.close()
+
+        migrated = Data(database_path)
+        try:
+            self.assertEqual(
+                migrated.get_loan(loan["id"])["current_principal"],
+                9_500,
+            )
+            self.assertEqual(
+                migrated.get_savings_target(target["id"])["accrued_amount"],
+                2_000,
+            )
+            migrated.create_cash_flow(
+                -500,
+                category["id"],
+                datetime(2026, 10, 3),
+                loan_id=loan["id"],
+                principal_amount=-500,
+            )
+            migrated.create_cash_flow(
+                1_000,
+                category["id"],
+                datetime(2026, 10, 4),
+                savings_target_id=target["id"],
+            )
+            self.assertEqual(
+                migrated.get_loan(loan["id"])["current_principal"],
+                10_000,
+            )
+            self.assertEqual(
+                migrated.get_savings_target(target["id"])["accrued_amount"],
+                1_000,
+            )
+        finally:
+            migrated.close()
+
     def test_category_crud_and_ordering(self):
         food = self.data.create_category(" Food ")
         housing = self.data.create_category("Housing")
@@ -535,8 +627,19 @@ class DataTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.data.create_loan("  ", 1_000)
 
+        borrowing = self.data.create_cash_flow(
+            -20_000,
+            category["id"],
+            datetime(2026, 12, 5),
+            "Credit card purchase",
+            loan["id"],
+            -20_000,
+        )
+        self.assertEqual(borrowing["principal_amount"], -20_000)
+        self.assertEqual(self.data.get_loan(loan["id"])["current_principal"], 107_000)
+
         self.data.delete_cash_flow(first_payment["id"])
-        self.assertEqual(self.data.get_loan(loan["id"])["current_principal"], 95_000)
+        self.assertEqual(self.data.get_loan(loan["id"])["current_principal"], 115_000)
 
     def test_savings_targets_track_contributions_and_financial_totals(self):
         category = self.data.create_category("Savings contribution")
@@ -577,7 +680,7 @@ class DataTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             self.data.create_cash_flow(
-                100, category["id"], datetime(2026, 10, 6),
+                250_001, category["id"], datetime(2026, 10, 6),
                 savings_target_id=target["id"],
             )
         with self.assertRaises(ValueError):
@@ -603,6 +706,26 @@ class DataTests(unittest.TestCase):
         self.assertEqual(
             self.data.get_financial_totals(),
             {"loans_pending": 90_000, "savings_accrued": 1_500_000},
+        )
+        withdrawal = self.data.create_cash_flow(
+            250_000,
+            category["id"],
+            datetime(2026, 11, 6),
+            "Savings withdrawal",
+            savings_target_id=target["id"],
+        )
+        self.assertEqual(
+            self.data.get_savings_target(target["id"])["accrued_amount"],
+            1_250_000,
+        )
+        self.assertEqual(
+            self.data.get_financial_totals(),
+            {"loans_pending": 90_000, "savings_accrued": 1_250_000},
+        )
+        self.data.delete_cash_flow(withdrawal["id"])
+        self.assertEqual(
+            self.data.get_savings_target(target["id"])["accrued_amount"],
+            1_500_000,
         )
         self.data.delete_cash_flow(contribution["id"])
         self.assertEqual(
