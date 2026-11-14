@@ -23,4 +23,5 @@ What it handles:
   spending.
 
 Start with [Getting started](getting-started.md), then read
-[Concepts](concepts.md) to understand the accounting model.
+[Concepts](concepts.md) to understand the accounting model. To use Picciuli
+from a terminal, see the [Console interface](tui.md).

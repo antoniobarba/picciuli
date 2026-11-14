@@ -4,10 +4,10 @@ Picciuli is a personal budgeting and money tracking engine. It is a Python
 library backed by a single SQLite file, designed to be shared by several user
 interfaces: console, desktop, web and mobile.
 
-> **Status:** version 2 is a complete rewrite. This repository currently
-> contains the core library, a migration tool for v1 databases, and the
-> documentation. The original console application is preserved under the git
-> tag `v1-legacy`; a new console UI will be built on top of the library.
+> **Status:** version 2 is a complete rewrite. This repository contains the
+> core library, a console user interface built on it, a migration tool for v1
+> databases, and the documentation. The original console application is
+> preserved under the git tag `v1-legacy`.
 
 ## Features
 
@@ -47,6 +47,17 @@ with Book.open("finance.db") as book:
     )
     print(book.accounts.balance(checking.id))  # -4250 (amounts are in cents)
 ```
+
+## Console interface
+
+```bash
+pip install -e apps/tui
+picciuli-tui --demo demo.db      # create a demonstration book
+picciuli-tui demo.db             # open it; press ? for the keys
+```
+
+A calendar-centred overview shows each day's net flow, the selected period with
+its budgets, and your balances. See [docs/tui.md](docs/tui.md).
 
 ## Migrating a v1 database
 
