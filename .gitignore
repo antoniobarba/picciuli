@@ -1,5 +1,20 @@
-.env/
-reports/
-data/
+# Python
 __pycache__/
+*.egg-info/
+.venv/
+.env/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Generated documentation
+site/
+
+# Local data
 *.db
+data/
+reports/

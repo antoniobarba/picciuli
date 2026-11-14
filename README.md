@@ -1,126 +1,85 @@
 # Picciuli
 
-Picciuli is a terminal-based personal finance tracker. It organizes cash-flow
-items into categories and periods, calculates category and total balances, and
-tracks budgets against spending.
+Picciuli is a personal budgeting and money tracking engine. It is a Python
+library backed by a single SQLite file, designed to be shared by several user
+interfaces: console, desktop, web and mobile.
+
+> **Status:** version 2 is a complete rewrite. This repository currently
+> contains the core library, a migration tool for v1 databases, and the
+> documentation. The original console application is preserved under the git
+> tag `v1-legacy`; a new console UI will be built on top of the library.
 
 ## Features
 
-- Create, edit, and delete cash-flow items with a date, amount, description, and
-  category.
-- Track loans with manually entered payments and new borrowing. Loan-linked
-  expenses record the total amount and signed principal change separately;
-  interest is derived from their difference.
-- Track savings targets with deposits and withdrawals linked to cash-flow
-  items, and see the net accrued savings against each target.
-- Use top-level categories and one level of subcategories; choose a symbol and
-  display order for each category.
-- Create overlapping periods and view a period's balances for any selected
-  day. Use `<` and `>` to switch between periods covering that day.
-- Assign budgets to categories for a period. Parent category balances and
-  budgets include their subcategories.
-- Generate a period report with categorized transactions, subtotals, budget
-  status, and a selectable cumulative-balance graph.
-- Export the report as Markdown and PNG, and optionally convert it to PDF.
+- Multiple accounts: checking, savings, cash, investment, credit card, loan,
+  mortgage and others. Each account has an opening balance and an optional goal,
+  and can be closed when no longer used.
+- Balanced split transactions, one model for all cases:
+  - income and expenses;
+  - transfers between your accounts;
+  - loan payments split into principal and interest;
+  - purchases split across several categories.
+- External cash flows can be categorized or left uncategorized.
+- A two-level category tree.
+- User-defined, possibly overlapping periods, with summaries per period.
+- Budgets per category and period that roll up subcategories.
+- Net worth and account registers with running balances.
+- Typed, documented and fully tested API: frozen dataclasses for results,
+  explicit error classes, and all-or-nothing `Book.atomic()` blocks.
 
-## Requirements
-
-- Python 3.10 or later
-- A terminal that supports keyboard input and ANSI colors
-
-## Install and run
-
-From the project directory:
+## Quick start
 
 ```bash
-python3 -m venv .env
-source .env/bin/activate
-python -m pip install -r requirements.txt
-python main.py finance.db
+python -m venv .venv
+source .venv/bin/activate              # Windows: .venv\Scripts\activate
+pip install -e "packages/picciuli[dev,docs]"
 ```
 
-The database is created at the path passed to the application. Keep using the
-same path to reopen your data.
+```python
+import datetime as dt
+from picciuli import AccountType, Book
 
-To create a separate example database showcasing categories, periods, budgets,
-reports, loan repayments, and savings contributions, run:
+with Book.open("finance.db") as book:
+    checking = book.accounts.create("Checking", AccountType.CHECKING)
+    food = book.categories.create("Food")
+    book.transactions.record_expense(
+        dt.date.today(), 4250, account_id=checking.id, category_id=food.id
+    )
+    print(book.accounts.balance(checking.id))  # -4250 (amounts are in cents)
+```
+
+## Migrating a v1 database
 
 ```bash
-python main.py --demo demo.db
-python main.py demo.db
+python tools/migrate_v1.py finance.db finance-v2.db
 ```
 
-The demo command creates a new file and will not overwrite an existing one.
+See [docs/migration.md](docs/migration.md) for the mapping rules.
 
-## Using the application
+## Documentation
 
-The overview shows the selected month's calendar, cash-flow items for the
-selected day, and balances for the selected period. An asterisk (`*`) in the
-calendar marks a day with one or more cash-flow items. Key bindings are shown
-in labeled groups at the bottom of each screen.
-
-On the overview:
-
-- Use the arrow keys to move by day or week, and `[` / `]` to move by month.
-- Press `a` to add a cash-flow item. Use positive amounts for income and
-  negative amounts for expenses.
-- Use `j` / `k` to select a day's item, `e` to edit it, and `d` to delete it.
-- Press `n` to create a period starting on the selected day, or `r` to rename
-  the period. If periods overlap on the selected day, press `<` / `>` to switch
-  the balance panel between them.
-- Press `c` to add a category; `m` opens category management. In that screen,
-  use the arrow keys to select, `e` to edit, `d` to delete, `c` to add a
-  top-level category, `s` to add a subcategory, and `j` / `k` to reorder
-  categories within their group.
-- When adding a cash-flow item, choose a loan to record a repayment or new
-  borrowing; enter the expense amount and principal change separately. Use a
-  positive principal change for repayment and a negative one for new borrowing.
-- Press `l` to add loans and review each loan's remaining principal, interest
-  paid, and payment history (newest first). Repayments and new borrowing are
-  entered manually; automatic payments and interest calculations are not
-  managed. Use the
-  up/down arrows to select a loan and `j` / `k` to scroll its payment history.
-- Press `t` to add savings targets and review progress and transactions.
-  When adding a cash-flow item, choose a savings target and enter a positive
-  amount for a deposit or a negative amount for a withdrawal. Deposits are
-  recorded as expenses and withdrawals as income in the selected category.
-  Use the up/down arrows to select a target and `j` / `k` to scroll its history.
-- The overview separately displays outstanding loan principal and total
-  savings accrued. These values are not combined into a net-worth figure.
-- Press `p` to manage periods, `b` to manage budgets, `u` to change the
-  currency, or `v` to open a report for the selected period. Period reports
-  include loans with principal remaining.
-- Press `q` to quit.
-
-In the report screen, use `g` to choose which category lines appear in the
-graph and `s` to save the Markdown report and PNG graph under `reports/`.
-The total graph line always includes all categories.
-
-## Create a PDF report (optional)
-
-The PDF helper uses Pandoc and XeLaTeX. On Debian or Ubuntu, install them with:
+The documentation is generated with MkDocs from the Markdown pages in `docs/`
+and the docstrings of the code:
 
 ```bash
-sudo apt install pandoc texlive-xetex fonts-dejavu-core
+mkdocs serve          # http://127.0.0.1:8000
 ```
 
-Convert a saved report (the graph is resolved relative to the Markdown file):
+Recommended reading order:
+
+- [Concepts](docs/concepts.md): the accounting model;
+- [Getting started](docs/getting-started.md): practical examples;
+- [Development](docs/development.md): repository layout, commands and the
+  versioning rules.
+
+## Development
 
 ```bash
-scripts/report-to-pdf.sh reports/period-1-Example.md
+pytest --cov      # tests and coverage
+ruff check .      # lint
+mypy              # strict type checking
 ```
 
-By default, the PDF is written beside the Markdown file with the same base
-name. An optional second argument specifies another output path:
+## License
 
-```bash
-scripts/report-to-pdf.sh reports/period-1-Example.md ~/Documents/period.pdf
-```
-
-## Tests
-
-With the project environment active, run:
-
-```bash
-python -m unittest
-```
+MIT, see [LICENSE](LICENSE).

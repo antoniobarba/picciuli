@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "picciuli"
+version = "2.0.0.dev0"
+description = "Personal budgeting and money tracking engine: accounts, transactions, categories, periods and budgets on SQLite."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Antonio Barba" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",
+    "Topic :: Office/Business :: Financial :: Accounting",
+]
+dependencies = ["SQLAlchemy>=2.0,<3.0"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "mypy>=1.10",
+    "ruff>=0.5",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/picciuli"]
