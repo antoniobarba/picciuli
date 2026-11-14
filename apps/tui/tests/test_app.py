@@ -241,14 +241,14 @@ def test_transaction_lifecycle(
         assert isinstance(form, TransactionForm)
         form.query_one("#kind", Select).value = EntryKind.SPLIT
         await pilot.pause()
-        assert len(form.query(SplitLineRow)) == 2
+        assert len(form.query(SplitLineRow)) == 3
         assert "Balanced" in str(form.query_one("#difference").render())
         await press(pilot, "ctrl+n")
         rows = form.query(SplitLineRow)
-        assert len(rows) == 3
+        assert len(rows) == 4
         await pilot.click(rows.last().query_one(".line-remove"))
         await pilot.pause()
-        assert len(form.query(SplitLineRow)) == 2
+        assert len(form.query(SplitLineRow)) == 3
         form.query(".line-amount").first(Input).value = "-1"
         await press(pilot, "ctrl+s")
         assert isinstance(app.screen, TransactionForm)
@@ -261,7 +261,7 @@ def test_transaction_lifecycle(
         assert app.screen.query_one("#kind", Select).value is EntryKind.SPLIT
         await pilot.click("#add-line")
         await pilot.pause()
-        assert len(app.screen.query(SplitLineRow)) == 3
+        assert len(app.screen.query(SplitLineRow)) == 4
         await pilot.click("#save")
         await pilot.pause()
         assert isinstance(app.screen, OverviewScreen)

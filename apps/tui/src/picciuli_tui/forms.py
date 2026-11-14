@@ -231,13 +231,22 @@ def draft_splits(draft: TransactionDraft, money: MoneyFormat) -> list[Split]:
     return simple_splits(draft, money)
 
 
+SPLIT_EDITOR_LINES = 3
+"""Minimum number of lines shown when switching to the split editor."""
+
+
 def simple_lines(draft: TransactionDraft, money: MoneyFormat) -> list[LineDraft]:
-    """Convert a simple draft into split lines, for switching to the split editor."""
+    """Convert a simple draft into split lines, for switching to the split editor.
+
+    Empty lines are added up to `SPLIT_EDITOR_LINES`: a typical split takes money
+    from one account and sends it to two places.
+    """
     try:
-        splits = simple_splits(draft, money)
+        lines = _lines(simple_splits(draft, money), money)
     except (InputError, ValueError):
-        return [LineDraft(account_target(draft.account_id or NONE_ID)), LineDraft()]
-    return _lines(splits, money)
+        lines = [LineDraft(account_target(draft.account_id or NONE_ID))]
+    padding = max(0, SPLIT_EDITOR_LINES - len(lines))
+    return lines + [LineDraft() for _ in range(padding)]
 
 
 def _lines(splits: Sequence[Split], money: MoneyFormat) -> list[LineDraft]:

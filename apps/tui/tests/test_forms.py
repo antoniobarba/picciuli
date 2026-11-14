@@ -250,10 +250,12 @@ def test_line_helpers(money: MoneyFormat, checking: Account, food: Category) -> 
     assert simple_lines(simple, money) == [
         LineDraft(account_target(checking.id), "-2.00"),
         LineDraft(category_target(food.id), "-2.00"),
+        LineDraft(),
     ]
     incomplete = TransactionDraft(EntryKind.EXPENSE, account_id=checking.id)
     assert simple_lines(incomplete, money) == [
         LineDraft(account_target(checking.id)),
+        LineDraft(),
         LineDraft(),
     ]
 

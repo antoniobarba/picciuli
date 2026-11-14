@@ -77,7 +77,8 @@ The transaction form has four kinds:
   in, `-` money out); the other lines are income (`+`) or expenses (`-`) with
   a category. A live line shows both totals; they must match (see
   [Concepts](concepts.md#transactions-and-splits)). `ctrl+n` adds a line, and
-  switching to Split pre-fills the lines from the simple form.
+  switching to Split pre-fills the lines from the simple form, with at least
+  three lines (one source account and two destinations is the common case).
 
 Editing a transaction opens the simple form when it is a plain expense, income
 or transfer, and the split editor otherwise. Transactions of closed accounts
