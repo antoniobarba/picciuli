@@ -8,7 +8,7 @@ import { BudgetTransactions } from '../components/TransactionsModal';
 import { Amount, Empty, Loading, onEnter, PageHeader, ProgressBar, RowMenu } from '../components/ui';
 import { covers } from '../lib/calendar';
 import { todayDay } from '../lib/dates';
-import { categoryTree, periodRange } from '../lib/format';
+import { byId, categoryLabel, categoryTree, periodRange } from '../lib/format';
 import { InputError, requiredId } from '../lib/forms';
 import { useHotkeys } from '../lib/useHotkeys';
 
@@ -145,13 +145,13 @@ export function Budgets() {
                       <tr
                         key={line.budget.id}
                         tabIndex={0}
-                        className={line.budget.id === selectedId ? 'selected' : ''}
+                        className={`${line.category.parent_id !== null ? 'child' : ''}${line.budget.id === selectedId ? ' selected' : ''}`}
                         onFocus={() => setSelectedId(line.budget.id)}
                         onClick={() => setDialog({ kind: 'transactions', line })}
                         onKeyDown={onEnter(() => setDialog({ kind: 'transactions', line }))}
                       >
                         <td>
-                          {line.category.parent_id !== null ? `└ ${line.category.name}` : line.category.name}
+                          {line.category.name}
                           <span className="show-sm">
                             <ProgressBar fraction={used} over={line.remaining < 0} />
                           </span>
@@ -228,9 +228,11 @@ function BudgetForm({
   const [categoryId, setCategoryId] = useState<number | null>(line?.category.id ?? null);
   const [amount, setAmount] = useState(line ? money.plain(line.budget.amount) : '');
   const taken = new Set(categoriesInUse.map((l) => l.category.id));
-  const options = categoryTree(categories.data ?? []).map((c) => ({
+  const tree = categoryTree(categories.data ?? []);
+  const names = byId(tree);
+  const options = tree.map((c) => ({
     value: c.id,
-    label: c.parent_id !== null ? `   └ ${c.name}` : c.name,
+    label: categoryLabel(c.id, names),
     disabled: taken.has(c.id) && c.id !== line?.category.id,
   }));
   const save = useApiMutation(async (api) => {

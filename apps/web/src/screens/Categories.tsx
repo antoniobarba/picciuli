@@ -8,7 +8,7 @@ import { errorMessage, FormDialog, SelectField, TextField } from '../components/
 import { DragHandle, useSortable } from '../components/SortableList';
 import { CategoryTransactions } from '../components/TransactionsModal';
 import { Empty, Loading, onEnter, PageHeader, RowMenu } from '../components/ui';
-import { categoryTree } from '../lib/format';
+import { byId, categoryLabel, categoryTree } from '../lib/format';
 import { NONE_ID, optionalText } from '../lib/forms';
 import { useHotkeys } from '../lib/useHotkeys';
 
@@ -125,7 +125,7 @@ export function Categories() {
                     <td className="handle-cell" onClick={(e) => e.stopPropagation()}>
                       <DragHandle {...sortable.handleProps(category)} />
                     </td>
-                    <td>{category.parent_id !== null ? `└ ${category.name}` : <strong>{category.name}</strong>}</td>
+                    <td>{category.parent_id !== null ? category.name : <strong>{category.name}</strong>}</td>
                     <td className="muted">{category.symbol}</td>
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
                       <RowMenu
@@ -231,6 +231,7 @@ function DeleteCategory({
   onClose: () => void;
 }) {
   const [target, setTarget] = useState<number>(NONE_ID);
+  const names = byId(targets);
   const remove = useApiMutation((api) =>
     unwrap(
       api.DELETE('/api/v1/categories/{category_id}', {
@@ -257,7 +258,7 @@ function DeleteCategory({
           value={target}
           options={[
             { value: NONE_ID, label: 'Uncategorized' },
-            ...targets.map((c) => ({ value: c.id, label: c.parent_id !== null ? `   └ ${c.name}` : c.name })),
+            ...targets.map((c) => ({ value: c.id, label: categoryLabel(c.id, names) })),
           ]}
           onChange={setTarget}
         />

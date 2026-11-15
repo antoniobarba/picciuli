@@ -124,3 +124,20 @@ describe('item transactions', () => {
     expect(within(dialog).getByText('Budget remaining').parentElement).toHaveTextContent('€458.00');
   });
 });
+
+describe('subcategories', () => {
+  it('are indented rows without a tree glyph', async () => {
+    render(<Categories />);
+    const row = (await screen.findByText('Groceries')).closest('tr')!;
+    expect(row).toHaveClass('child');
+    expect(row).not.toHaveTextContent('└');
+  });
+
+  it('are named after their parent in the budget category picker', async () => {
+    const user = userEvent.setup();
+    render(<Budgets />);
+    await user.click(await screen.findByRole('button', { name: '+ New budget' }));
+    const picker = await screen.findByLabelText('Category');
+    expect(within(picker).getByRole('option', { name: 'Food › Groceries' })).toBeInTheDocument();
+  });
+});
