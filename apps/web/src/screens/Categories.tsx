@@ -6,12 +6,14 @@ import type { Category } from '../api/types';
 import { useNotify } from '../components/feedback';
 import { errorMessage, FormDialog, SelectField, TextField } from '../components/forms';
 import { DragHandle, useSortable } from '../components/SortableList';
-import { Empty, Loading, PageHeader, RowMenu } from '../components/ui';
+import { CategoryTransactions } from '../components/TransactionsModal';
+import { Empty, Loading, onEnter, PageHeader, RowMenu } from '../components/ui';
 import { categoryTree } from '../lib/format';
 import { NONE_ID, optionalText } from '../lib/forms';
 import { useHotkeys } from '../lib/useHotkeys';
 
 type Dialog =
+  | { kind: 'transactions'; category: Category }
   | { kind: 'edit'; category: Category | null; parentId: number | null }
   | { kind: 'delete'; category: Category; inUse: boolean }
   | null;
@@ -109,6 +111,7 @@ export function Categories() {
             <tbody>
               {tree.map((category) => {
                 const edit = () => setDialog({ kind: 'edit', category, parentId: category.parent_id });
+                const open = () => setDialog({ kind: 'transactions', category });
                 return (
                   <tr
                     key={category.id}
@@ -116,10 +119,10 @@ export function Categories() {
                     tabIndex={0}
                     className={`${category.parent_id !== null ? 'child' : 'parent'}${category.id === selectedId ? ' selected' : ''} ${sortable.rowClass(category)}`}
                     onFocus={() => setSelectedId(category.id)}
-                    onClick={edit}
-                    onKeyDown={(e) => e.key === 'Enter' && edit()}
+                    onClick={open}
+                    onKeyDown={onEnter(open)}
                   >
-                    <td className="handle-cell">
+                    <td className="handle-cell" onClick={(e) => e.stopPropagation()}>
                       <DragHandle {...sortable.handleProps(category)} />
                     </td>
                     <td>{category.parent_id !== null ? `└ ${category.name}` : <strong>{category.name}</strong>}</td>
@@ -144,6 +147,9 @@ export function Categories() {
           {sortable.status}
         </div>
       )}
+      {dialog?.kind === 'transactions' ? (
+        <CategoryTransactions category={dialog.category} onClose={() => setDialog(null)} />
+      ) : null}
       {dialog?.kind === 'edit' ? (
         <CategoryForm
           category={dialog.category}

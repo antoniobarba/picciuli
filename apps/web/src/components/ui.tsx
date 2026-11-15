@@ -1,6 +1,19 @@
 import * as Menu from '@radix-ui/react-dropdown-menu';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { MoneyFormat } from '../lib/money';
+
+/**
+ * `onKeyDown` for a focusable row: Enter on the row itself (not on its handle
+ * or menu) opens it. The key is consumed so that it does not also press a
+ * button in the dialog the row opens.
+ */
+export function onEnter(open: () => void) {
+  return (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Enter' || event.target !== event.currentTarget) return;
+    event.preventDefault();
+    open();
+  };
+}
 
 export function Amount({
   value,

@@ -38,6 +38,9 @@ when you are offline.
 On wide screens the tabs at the top switch screens; on phones the bar at the
 bottom shows Overview, Accounts, Budgets and Investments, and **More** has the
 rest. Every list row opens when clicked; its **⋯** menu has the other actions.
+A category, period or budget opens its transactions with their total and what
+is left of the budget (`e` or **⋯ › Edit** edits it); a transaction there opens
+in the editor.
 Accounts and categories are reordered by dragging the **⠿** handle at the
 start of their row, with the mouse or a finger; a subcategory moves only among
 the subcategories of the same parent, and a category takes its subcategories
@@ -47,9 +50,9 @@ along.
 |--------|-----------------|
 | Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions; the period's categories against their budgets; balances and net worth at the end of the day, where a balance row opens that account's **register**. Swipe the calendar to change month on a phone. |
 | Accounts | Accounts with balance, market value, goal and progress; create, edit, close or reopen, reorder (drag the handle) and delete. A row opens the **register** with running balances. |
-| Categories | The two-level tree: create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). |
-| Periods | Create, edit and delete periods. |
-| Budgets | Budgets of a period with their progress; copy them from another period. |
+| Categories | The two-level tree: create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). A row shows the category's transactions (a top-level category includes its subcategories), their total and what is left of its budget in the period covering today. |
+| Periods | Create, edit and delete periods. A row shows the transactions dated in the period, their net total and what is left of all its budgets. |
+| Budgets | Budgets of a period with their progress; copy them from another period. A row shows the transactions of the budget's category (and subcategories, for a top-level one) in the period, their total and what is left. |
 | Investments | Holdings at market value, securities and their latest prices; find a security online, buy, sell (with a preview of the cost basis and gain), enter prices, refresh prices, download the price history, live prices. |
 | Settings | Currency, decimal digits, currency code, cost method and providers; export your data as a SQLite file (it opens with the console interface); import a SQLite file, such as the database of the console interface, choosing to **merge** it with your data or to **replace** your data; delete all your data, sign out. |
 

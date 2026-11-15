@@ -4,7 +4,8 @@ import { useApiMutation, usePeriods } from '../api/queries';
 import type { Period } from '../api/types';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
-import { Empty, Loading, PageHeader, RowMenu } from '../components/ui';
+import { PeriodTransactions } from '../components/TransactionsModal';
+import { Empty, Loading, onEnter, PageHeader, RowMenu } from '../components/ui';
 import { covers } from '../lib/calendar';
 import { daysBetween, shortDate, todayDay } from '../lib/dates';
 import { useHotkeys } from '../lib/useHotkeys';
@@ -16,6 +17,7 @@ export function Periods() {
   const notify = useNotify();
   const today = todayDay();
   const [editing, setEditing] = useState<{ period: Period | null } | null>(null);
+  const [viewing, setViewing] = useState<Period | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const list = useMemo(
     () => [...(periods.data ?? [])].sort((a, b) => b.start.localeCompare(a.start) || b.id - a.id),
@@ -76,8 +78,8 @@ export function Periods() {
                   tabIndex={0}
                   className={period.id === selectedId ? 'selected' : ''}
                   onFocus={() => setSelectedId(period.id)}
-                  onClick={() => setEditing({ period })}
-                  onKeyDown={(e) => e.key === 'Enter' && setEditing({ period })}
+                  onClick={() => setViewing(period)}
+                  onKeyDown={onEnter(() => setViewing(period))}
                 >
                   <td>{covers(period, today) ? <span className="badge" title="Covers today">●</span> : null}</td>
                   <td className="strong">{period.name}</td>
@@ -98,6 +100,7 @@ export function Periods() {
           </table>
         </div>
       )}
+      {viewing ? <PeriodTransactions period={viewing} onClose={() => setViewing(null)} /> : null}
       {editing ? <PeriodForm open period={editing.period} onClose={() => setEditing(null)} /> : null}
     </div>
   );
