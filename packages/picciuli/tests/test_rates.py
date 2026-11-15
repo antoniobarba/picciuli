@@ -119,6 +119,21 @@ def test_caching_rate_provider() -> None:
     assert cached.history("USD", "EUR", day, day) == [RatePoint(day, Decimal(2))]
 
 
+def test_caching_rate_provider_is_bounded() -> None:
+    calls: list[str] = []
+
+    class Counting(Fixed):
+        def latest(self, currency: str, base: str) -> RateQuote:
+            calls.append(currency)
+            return super().latest(currency, base)
+
+    cached = CachingRateProvider(Counting(), ttl=60, clock=lambda: 0.0, max_size=2)
+    for currency in ("USD", "GBP", "USD", "CHF", "USD", "GBP"):
+        cached.latest(currency, "EUR")
+    assert calls == ["USD", "GBP", "CHF", "GBP"]
+    assert len(cached._rates) == 2
+
+
 class TestYahooRates:
     def test_latest_and_history(self) -> None:
         urls: list[str] = []

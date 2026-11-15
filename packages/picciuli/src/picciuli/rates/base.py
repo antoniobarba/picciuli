@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import abc
 import datetime as dt
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -91,10 +93,14 @@ class ExchangeRateProvider(abc.ABC):
 class CachingRateProvider(ExchangeRateProvider):
     """Wrap a rate provider and reuse its latest rates for a while.
 
+    At most `max_size` currency pairs are kept; the least recently used are
+    dropped.
+
     Args:
         provider: The provider to wrap.
         ttl: How long a rate stays fresh, in seconds.
         clock: Monotonic clock (injectable for tests).
+        max_size: Largest number of cached rates.
     """
 
     def __init__(
@@ -103,24 +109,35 @@ class CachingRateProvider(ExchangeRateProvider):
         *,
         ttl: float = 60.0,
         clock: Callable[[], float] = time.monotonic,
+        max_size: int = 1024,
     ) -> None:
         self.provider = provider
         self.id = provider.id
         self.name = provider.name
         self.description = provider.description
         self.ttl = ttl
+        self.max_size = max_size
         self._clock = clock
-        self._rates: dict[tuple[str, str], tuple[float, RateQuote]] = {}
+        self._lock = threading.Lock()
+        self._rates: OrderedDict[tuple[str, str], tuple[float, RateQuote]] = (
+            OrderedDict()
+        )
 
     def latest(self, currency: str, base: str) -> RateQuote:
         """Return a cached rate if still fresh, otherwise ask the provider."""
         now = self._clock()
         key = (currency, base)
-        cached = self._rates.get(key)
-        if cached is not None and now - cached[0] < self.ttl:
-            return cached[1]
+        with self._lock:
+            cached = self._rates.get(key)
+            if cached is not None and now - cached[0] < self.ttl:
+                self._rates.move_to_end(key)
+                return cached[1]
         quote = self.provider.latest(currency, base)
-        self._rates[key] = (now, quote)
+        with self._lock:
+            self._rates[key] = (now, quote)
+            self._rates.move_to_end(key)
+            while len(self._rates) > self.max_size:
+                self._rates.popitem(last=False)
         return quote
 
     def history(

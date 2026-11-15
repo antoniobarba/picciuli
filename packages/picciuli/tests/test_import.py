@@ -348,7 +348,7 @@ _FIRST_EXPENSES = (
         ("UPDATE prices SET price = -1", "greater than zero"),
         (
             f"UPDATE splits SET amount = -4611686018427387904 WHERE {_FIRST_EXPENSES}",
-            "too large",
+            "amount cannot exceed",
         ),
     ],
 )

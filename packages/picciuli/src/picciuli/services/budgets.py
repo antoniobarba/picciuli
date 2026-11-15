@@ -25,10 +25,7 @@ __all__ = ["BudgetService"]
 
 
 def _amount(value: object) -> int:
-    amount = v.integer(value, "budget amount")
-    if amount < 0:
-        raise ValidationError("budget amount cannot be negative")
-    return amount
+    return v.non_negative_amount(value, "budget amount")
 
 
 class BudgetService:
@@ -86,11 +83,17 @@ class BudgetService:
     def list(
         self, *, period_id: int | None = None, category_id: int | None = None
     ) -> builtins.list[Budget]:
-        """Return budgets, optionally filtered by period and/or category."""
+        """Return budgets, optionally filtered by period and/or category.
+
+        Raises:
+            ValidationError: If an identifier is not a valid id.
+        """
         statement = select(BudgetRow)
         if period_id is not None:
+            period_id = v.identifier(period_id, "period id")
             statement = statement.where(BudgetRow.period_id == period_id)
         if category_id is not None:
+            category_id = v.identifier(category_id, "category id")
             statement = statement.where(BudgetRow.category_id == category_id)
         statement = statement.order_by(
             BudgetRow.period_id, BudgetRow.category_id, BudgetRow.id

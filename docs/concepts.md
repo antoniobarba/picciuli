@@ -9,6 +9,28 @@
 - Dates are `datetime.date` values. Every date range is **inclusive** on both
   ends.
 
+### Limits
+
+Every service enforces the bounds of [`picciuli.limits`](api/limits.md) and
+raises `ValidationError` beyond them:
+
+| Value                                                   | Limit                       |
+|---------------------------------------------------------|-----------------------------|
+| any single amount (split, opening balance, goal, budget, cost, proceeds, fee, tax) | `abs(amount) <= 10**15` minor units |
+| share quantity, price, exchange rate                    | about `9.2e10`, 8 decimal places |
+| identifiers                                             | `1` to `2**63 - 1`          |
+| splits per transaction                                  | 100                         |
+| names (accounts, categories, securities, periods, currency symbol, providers, price source) | 200 characters |
+| descriptions and notes                                  | 2000 characters             |
+| split memos                                             | 500 characters              |
+| security symbols                                        | 32 characters               |
+| category symbols                                        | 12 characters               |
+
+10^15 minor units is 10 trillion with two minor digits, 1 billion with six.
+Balances and totals are sums of bounded values; they are computed without
+overflow, so they may be larger, and books written before the limits existed
+stay readable.
+
 ## Accounts
 
 An account is a place where money is kept or owed. Its

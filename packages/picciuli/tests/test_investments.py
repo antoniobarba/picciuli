@@ -21,6 +21,7 @@ from picciuli import (
     ValidationError,
 )
 from picciuli.errors import PriceProviderError
+from picciuli.limits import MAX_AMOUNT
 from picciuli.prices import PricePoint, PriceProvider, Quote
 from picciuli.rates import ExchangeRateProvider, RatePoint, RateQuote
 
@@ -129,6 +130,13 @@ class TestSecurities:
         for bad in (0, Decimal("1.123456789"), 1.5, Decimal("NaN"), True):
             with pytest.raises(ValidationError):
                 book.securities.set_price(etf.id, d(1), bad)  # type: ignore[arg-type]
+        for huge in ("1E+30", "1e308", "1e999999999", "92233720368.54775808"):
+            with pytest.raises(ValidationError, match="too large"):
+                book.securities.set_price(etf.id, d(1), Decimal(huge))
+        with pytest.raises(ValidationError, match="decimal places"):
+            book.securities.set_price(etf.id, d(1), Decimal("1e-999999999"))
+        with pytest.raises(NotFoundError, match="security 9223372036854775808"):
+            book.securities.prices(2**63)
 
     def test_exchange_rates(self, book: Book) -> None:
         book.securities.set_exchange_rate("eur", d(1), Decimal("1.1"))
@@ -265,7 +273,18 @@ class TestBuyAndSell:
             3500,
         )
 
-    @pytest.mark.parametrize("kwargs", [{"cost": 0}, {"quantity": 0}, {"fee": -1}])
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"cost": 0},
+            {"quantity": 0},
+            {"fee": -1},
+            {"cost": MAX_AMOUNT + 1},
+            {"fee": 2**63},
+            {"quantity": Decimal("1e999999999")},
+            {"quantity": Decimal("-1E+30")},
+        ],
+    )
     def test_buy_invalid(
         self, book: Book, broker: Account, etf: Security, kwargs: dict[str, int]
     ) -> None:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import abc
 import datetime as dt
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -139,11 +141,13 @@ class CachingProvider(PriceProvider):
 
     User interfaces that refresh frequently can use it to avoid hammering the
     data source: a quote younger than `ttl` seconds is returned from memory.
+    At most `max_size` symbols are kept; the least recently used are dropped.
 
     Args:
         provider: The provider to wrap.
         ttl: How long a quote stays fresh, in seconds.
         clock: Monotonic clock (injectable for tests).
+        max_size: Largest number of cached quotes.
     """
 
     def __init__(
@@ -152,23 +156,32 @@ class CachingProvider(PriceProvider):
         *,
         ttl: float = 60.0,
         clock: Callable[[], float] = time.monotonic,
+        max_size: int = 1024,
     ) -> None:
         self.provider = provider
         self.id = provider.id
         self.name = provider.name
         self.description = provider.description
         self.ttl = ttl
+        self.max_size = max_size
         self._clock = clock
-        self._quotes: dict[str, tuple[float, Quote]] = {}
+        self._lock = threading.Lock()
+        self._quotes: OrderedDict[str, tuple[float, Quote]] = OrderedDict()
 
     def latest(self, symbol: str) -> Quote:
         """Return a cached quote if still fresh, otherwise ask the provider."""
         now = self._clock()
-        cached = self._quotes.get(symbol)
-        if cached is not None and now - cached[0] < self.ttl:
-            return cached[1]
+        with self._lock:
+            cached = self._quotes.get(symbol)
+            if cached is not None and now - cached[0] < self.ttl:
+                self._quotes.move_to_end(symbol)
+                return cached[1]
         quote = self.provider.latest(symbol)
-        self._quotes[symbol] = (now, quote)
+        with self._lock:
+            self._quotes[symbol] = (now, quote)
+            self._quotes.move_to_end(symbol)
+            while len(self._quotes) > self.max_size:
+                self._quotes.popitem(last=False)
         return quote
 
     def history(self, symbol: str, start: dt.date, end: dt.date) -> list[PricePoint]:

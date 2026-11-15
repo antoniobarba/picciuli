@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +20,7 @@ from picciuli import (
     NotFoundError,
     ValidationError,
 )
+from picciuli.limits import MAX_AMOUNT
 
 from .conftest import d
 
@@ -83,6 +87,11 @@ class TestCreate:
             ({"opening_date": dt.datetime(2025, 1, 1)}, "without time"),
             ({"goal": "100"}, "integer"),
             ({"notes": 5}, "string or None"),
+            ({"opening_balance": MAX_AMOUNT + 1}, "opening balance cannot exceed"),
+            ({"opening_balance": -(2**63)}, "opening balance cannot exceed"),
+            ({"goal": 2**64}, "goal cannot exceed"),
+            ({"name": "n" * 201}, "name cannot exceed 200"),
+            ({"notes": "n" * 2001}, "notes cannot exceed 2000"),
         ],
     )
     def test_validation(
@@ -276,6 +285,36 @@ class TestBalances:
         assert worth.net_worth == 3500 - 99_100
         early = book.accounts.net_worth(as_of=d(1))
         assert (early.as_of, early.assets, early.liabilities) == (d(1), 5000, -100_000)
+
+    def test_totals_beyond_64_bits_stay_readable(self, tmp_path: Path) -> None:
+        """Books written before the amount limit may hold values near 2**63."""
+        path = tmp_path / "legacy.db"
+        with Book.open(path) as book:
+            account = book.accounts.create("Old", AccountType.CHECKING)
+            food = book.categories.create("Food")
+            period = book.periods.create(d(1), end=d(31))
+            for day in (1, 2):
+                book.transactions.record_income(d(day), 1, account_id=account.id)
+            for day in (3, 4):
+                book.transactions.record_expense(
+                    d(day), 2, account_id=account.id, category_id=food.id
+                )
+        top = 2**63 - 1
+        with closing(sqlite3.connect(path)) as connection, connection:
+            connection.execute("UPDATE splits SET amount = ? WHERE amount = 1", (top,))
+            connection.execute(
+                "UPDATE splits SET amount = ? WHERE amount = -2", (-top - 1,)
+            )
+            # Proof that a plain SQL SUM cannot read this book.
+            with pytest.raises(sqlite3.OperationalError, match="integer overflow"):
+                connection.execute("SELECT SUM(amount) FROM splits").fetchone()
+        with Book.open(path) as book:
+            assert book.accounts.balance(account.id) == -2
+            assert book.accounts.net_worth().net_worth == -2
+            assert book.investments.net_worth().net_worth == -2
+            summary = book.periods.summary(period.id)
+            assert (summary.income, summary.expenses) == (2 * top, 2 * (-top - 1))
+            assert summary.uncategorized == 2 * top
 
 
 class TestRegister:

@@ -11,14 +11,15 @@ from decimal import Decimal
 from typing import Final
 
 from picciuli.errors import ValidationError
+from picciuli.limits import DECIMAL_PLACES, MAX_DECIMAL
 
-PLACES: Final = 8
+PLACES: Final = DECIMAL_PLACES
 """Maximum number of decimal places of quantities, prices and rates."""
 
 SCALE: Final = 10**PLACES
 
 _QUANTUM: Final = Decimal(1).scaleb(-PLACES)
-_LIMIT: Final = Decimal(2**63 - 1) / SCALE
+_LIMIT: Final = MAX_DECIMAL
 
 
 def to_decimal(value: object, field: str) -> Decimal:
@@ -28,10 +29,11 @@ def to_decimal(value: object, field: str) -> Decimal:
     result = Decimal(value)
     if not result.is_finite():
         raise ValidationError(f"{field} must be a finite number")
+    # Checked first: quantizing a huge value raises InvalidOperation.
+    if result.copy_abs() > _LIMIT:
+        raise ValidationError(f"{field} is too large")
     if result != result.quantize(_QUANTUM, rounding=decimal.ROUND_DOWN):
         raise ValidationError(f"{field} can have at most {PLACES} decimal places")
-    if abs(result) > _LIMIT:
-        raise ValidationError(f"{field} is too large")
     return result
 
 

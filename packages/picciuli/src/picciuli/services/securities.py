@@ -22,6 +22,7 @@ from picciuli._db.session import UnitOfWork
 from picciuli._db.tables import ExchangeRateRow, PriceRow, SecurityRow, SplitRow
 from picciuli._decimal import positive_decimal, to_scaled
 from picciuli.errors import ConflictError, NotFoundError, ValidationError
+from picciuli.limits import MAX_NAME_LENGTH, MAX_SYMBOL_LENGTH
 from picciuli.model import (
     UNSET,
     ExchangeRate,
@@ -140,7 +141,7 @@ class SecurityService:
         name = v.name(name, "security name")
         currency = v.currency_code(currency)
         security_kind = _kind(kind)
-        symbol = v.optional_text(symbol, "symbol")
+        symbol = v.optional_text(symbol, "symbol", MAX_SYMBOL_LENGTH)
         code = v.isin(isin)
         notes = v.optional_text(notes, "notes")
         with self._uow.session() as session:
@@ -206,7 +207,7 @@ class SecurityService:
             if not isinstance(kind, Unset):
                 row.kind = _kind(kind).value
             if not isinstance(symbol, Unset):
-                row.symbol = v.optional_text(symbol, "symbol")
+                row.symbol = v.optional_text(symbol, "symbol", MAX_SYMBOL_LENGTH)
             if not isinstance(notes, Unset):
                 row.notes = v.optional_text(notes, "notes")
             session.flush()
@@ -253,7 +254,7 @@ class SecurityService:
         """
         day = v.date(date, "date")
         value = positive_decimal(price, "price")
-        source = v.optional_text(source, "source")
+        source = v.optional_text(source, "source", MAX_NAME_LENGTH)
         with self._uow.session() as session:
             get_row(session, SecurityRow, security_id, "security")
             return to_price(store_price(session, security_id, day, value, source))
@@ -262,10 +263,11 @@ class SecurityService:
         """Delete the price of a security on a day.
 
         Raises:
-            NotFoundError: If there is no such price.
+            NotFoundError: If there is no such security or price.
         """
         day = v.date(date, "date")
         with self._uow.session() as session:
+            get_row(session, SecurityRow, security_id, "security")
             result = session.execute(
                 delete(PriceRow).where(
                     PriceRow.security_id == security_id, PriceRow.date == day

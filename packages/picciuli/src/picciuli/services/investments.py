@@ -63,10 +63,7 @@ _T = TypeVar("_T")
 
 
 def _fee(value: object, field: str) -> int:
-    amount = v.integer(value, field)
-    if amount < 0:
-        raise ValidationError(f"{field} cannot be negative")
-    return amount
+    return v.non_negative_amount(value, field)
 
 
 def _consume(lots: list[list[int]], quantity: int) -> int:
@@ -349,7 +346,7 @@ class InvestmentService:
             ConflictError: If an account is closed.
         """
         shares = positive_decimal(quantity, "quantity")
-        cost = v.positive_integer(cost, "cost")
+        cost = v.positive_amount(cost, "cost")
         fee = _fee(fee, "fee")
         payer = account_id if from_account_id is None else from_account_id
         with self._uow.session() as session:
@@ -425,7 +422,7 @@ class InvestmentService:
         """
         day = v.date(date, "date")
         shares = positive_decimal(quantity, "quantity")
-        proceeds = v.positive_integer(proceeds, "proceeds")
+        proceeds = v.positive_amount(proceeds, "proceeds")
         fee = _fee(fee, "fee")
         tax = _fee(tax, "tax")
         receiver = account_id if to_account_id is None else to_account_id

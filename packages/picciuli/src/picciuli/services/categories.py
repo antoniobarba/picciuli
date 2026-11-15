@@ -12,11 +12,10 @@ from picciuli._db.queries import get_row, ordered_categories, to_category
 from picciuli._db.session import UnitOfWork
 from picciuli._db.tables import BudgetRow, CategoryRow, SplitRow
 from picciuli.errors import ConflictError, ValidationError
+from picciuli.limits import MAX_CATEGORY_SYMBOL_LENGTH
 from picciuli.model import UNSET, Category, Unset
 
 __all__ = ["CategoryService"]
-
-_SYMBOL_MAX = 12
 
 
 def _symbol(value: object, name: str) -> str:
@@ -28,8 +27,10 @@ def _symbol(value: object, name: str) -> str:
     symbol = value.strip()
     if not symbol:
         raise ValidationError("category symbol cannot be empty")
-    if len(symbol) > _SYMBOL_MAX:
-        raise ValidationError(f"category symbol cannot exceed {_SYMBOL_MAX} characters")
+    if len(symbol) > MAX_CATEGORY_SYMBOL_LENGTH:
+        raise ValidationError(
+            f"category symbol cannot exceed {MAX_CATEGORY_SYMBOL_LENGTH} characters"
+        )
     if not symbol.isprintable():
         raise ValidationError("category symbol must contain only printable characters")
     return symbol

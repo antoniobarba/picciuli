@@ -17,6 +17,7 @@ from picciuli import (
     TransactionKind,
     ValidationError,
 )
+from picciuli.limits import MAX_AMOUNT
 
 from .conftest import d
 
@@ -89,6 +90,10 @@ class TestCreate:
             ([AccountSplit(1, 5, memo=3)], "memo"),  # type: ignore[arg-type]
             ([AccountSplit("1", 5)], "account id"),  # type: ignore[arg-type]
             ([AccountSplit(1, 5), ExternalSplit(5, "x")], "category id"),  # type: ignore[arg-type]
+            ([AccountSplit(1, MAX_AMOUNT + 1)], "cannot exceed 10+ in absolute"),
+            ([AccountSplit(1, -(2**63))], "cannot exceed"),
+            ([AccountSplit(1, 5, memo="m" * 501)], "memo cannot exceed 500"),
+            ([AccountSplit(1, 1)] * 101, "more than 100 splits"),
         ],
     )
     def test_invalid_splits(
@@ -122,6 +127,25 @@ class TestCreate:
         with pytest.raises(ValidationError, match="same account"):
             book.transactions.record_transfer(
                 d(1), 5, from_account_id=checking.id, to_account_id=checking.id
+            )
+
+    def test_amount_and_text_limits(self, book: Book, checking: Account) -> None:
+        book.transactions.record_income(
+            d(1), MAX_AMOUNT, account_id=checking.id, notes="n" * 2000
+        )
+        with pytest.raises(ValidationError, match="amount cannot exceed"):
+            book.transactions.record_income(
+                d(1), MAX_AMOUNT + 1, account_id=checking.id
+            )
+        with pytest.raises(ValidationError, match="amount cannot exceed"):
+            book.transactions.record_expense(d(1), 2**63, account_id=checking.id)
+        with pytest.raises(ValidationError, match="notes cannot exceed 2000"):
+            book.transactions.record_income(
+                d(1), 5, account_id=checking.id, notes="n" * 2001
+            )
+        with pytest.raises(ValidationError, match="description cannot exceed"):
+            book.transactions.record_income(
+                d(1), 5, account_id=checking.id, description="d" * 2001
             )
 
 
@@ -270,9 +294,12 @@ class TestQueries:
             ({"start": d(2), "end": d(1)}, "on or before"),
             ({"limit": -1}, "negative"),
             ({"offset": -1}, "negative"),
+            ({"limit": 2**63}, "cannot exceed"),
+            ({"offset": 2**63}, "cannot exceed"),
             ({"text": 5}, "string"),
             ({"account_id": "1"}, "account id"),
             ({"category_id": "1"}, "category id"),
+            ({"account_id": 2**63}, "account id must be between"),
         ],
     )
     def test_invalid_filters(

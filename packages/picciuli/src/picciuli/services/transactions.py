@@ -21,6 +21,7 @@ from picciuli._db.tables import (
 )
 from picciuli._decimal import to_decimal, to_scaled
 from picciuli.errors import ConflictError, ValidationError
+from picciuli.limits import MAX_MEMO_LENGTH, MAX_SPLITS
 from picciuli.model import (
     UNSET,
     AccountSplit,
@@ -49,6 +50,10 @@ def _validated_splits(
         raise ValidationError("splits must be a sequence of AccountSplit/ExternalSplit")
     if not splits:
         raise ValidationError("a transaction needs at least one split")
+    if len(splits) > MAX_SPLITS:
+        raise ValidationError(
+            f"a transaction cannot have more than {MAX_SPLITS} splits"
+        )
     rows: list[SplitRow] = []
     account_total = external_total = 0
     for position, split in enumerate(splits, start=1):
@@ -56,13 +61,13 @@ def _validated_splits(
             raise ValidationError(
                 f"split {position} must be an AccountSplit or an ExternalSplit"
             )
-        amount = v.integer(split.amount, f"split {position} amount")
+        amount = v.amount(split.amount, f"split {position} amount")
         moves_shares = isinstance(split, AccountSplit) and (
             split.security_id is not None or split.quantity is not None
         )
         if amount == 0 and not moves_shares:
             raise ValidationError(f"split {position} amount cannot be zero")
-        memo = v.optional_text(split.memo, f"split {position} memo")
+        memo = v.optional_text(split.memo, f"split {position} memo", MAX_MEMO_LENGTH)
         if isinstance(split, AccountSplit):
             account_id = v.identifier(split.account_id, f"split {position} account id")
             account = get_row(session, AccountRow, account_id, "account")
@@ -368,10 +373,8 @@ class TransactionService:
         else:
             statement = statement.order_by(TransactionRow.date, TransactionRow.id)
         if limit is not None:
-            statement = statement.limit(v.integer(limit, "limit"))
-        offset = v.integer(offset, "offset")
-        if offset < 0 or (limit is not None and limit < 0):
-            raise ValidationError("limit and offset cannot be negative")
+            statement = statement.limit(v.count(limit, "limit"))
+        offset = v.count(offset, "offset")
         if offset:
             statement = statement.offset(offset)
         with self._uow.session() as session:
@@ -440,7 +443,7 @@ class TransactionService:
             NotFoundError: If the account or category does not exist.
             ConflictError: If the account is closed.
         """
-        amount = v.positive_integer(amount, "amount")
+        amount = v.positive_amount(amount, "amount")
         return self.create(
             date,
             [
@@ -477,7 +480,7 @@ class TransactionService:
             NotFoundError: If the account or category does not exist.
             ConflictError: If the account is closed.
         """
-        amount = v.positive_integer(amount, "amount")
+        amount = v.positive_amount(amount, "amount")
         return self.create(
             date,
             [AccountSplit(account_id, amount), ExternalSplit(amount, category_id)],
@@ -514,7 +517,7 @@ class TransactionService:
             NotFoundError: If an account does not exist.
             ConflictError: If an account is closed.
         """
-        amount = v.positive_integer(amount, "amount")
+        amount = v.positive_amount(amount, "amount")
         if from_account_id == to_account_id:
             raise ValidationError("cannot transfer to the same account")
         return self.create(
