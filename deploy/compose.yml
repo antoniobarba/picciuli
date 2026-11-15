@@ -147,7 +147,7 @@ services:
   zitadel-login:
     <<: *hardening
     # Runs as the image's own non-root user (nextjs).
-    image: ghcr.io/zitadel/zitadel-login:v4.16.0@sha256:adeba50a8090d1484a312ac81e67cae5f839ba376e3325c00ec75fc79939a842
+    image: ghcr.io/zitadel/zitadel-login:v4.20.3@sha256:8f730428dfd65cd8979d07ef4e34a59d44978e956692b7dbbc3bba4e4abb4f92
     mem_limit: 512m
     cpus: 1
     pids_limit: 256
