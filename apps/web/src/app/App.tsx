@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { UserManager } from 'oidc-client-ts';
 import { lazy, useMemo, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
@@ -6,7 +6,7 @@ import { ApiError, createApi } from '../api/client';
 import { ApiContext } from '../api/context';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import type { AppConfig } from '../config';
-import { ConfirmProvider, ToastProvider } from '../components/feedback';
+import { ConfirmProvider, ToastProvider, useNotify } from '../components/feedback';
 import { Overview } from '../screens/Overview';
 import { EditorsProvider } from './editors';
 import { LivePricesProvider } from './live';
@@ -87,6 +87,7 @@ function shouldRetry(failures: number, error: unknown): boolean {
 /** Everything below exists only while signed in: a new session starts with an empty cache. */
 function Authenticated({ config }: { config: AppConfig }) {
   const auth = useAuth();
+  const notify = useNotify();
   const { getToken, handleUnauthorized } = auth;
   const api = useMemo(
     () => createApi({ baseUrl: config.apiUrl, getToken, onUnauthorized: handleUnauthorized }),
@@ -95,6 +96,14 @@ function Authenticated({ config }: { config: AppConfig }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
+        queryCache: new QueryCache({
+          onError: (error, query) => {
+            // Offline is announced by a banner; 401 leads to a renewal or the sign-in page.
+            if (query.meta?.quiet || !navigator.onLine) return;
+            if (error instanceof ApiError && error.status === 401) return;
+            notify(error.message, { title: 'Cannot load data', kind: 'error' });
+          },
+        }),
         defaultOptions: {
           queries: { staleTime: 10_000, retry: shouldRetry, refetchOnWindowFocus: true },
           mutations: { retry: false },

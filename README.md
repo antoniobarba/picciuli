@@ -5,7 +5,8 @@ library backed by a single SQLite file, designed to be shared by several user
 interfaces: console, desktop, web and mobile.
 
 > **Status:** version 2 is a complete rewrite. This repository contains the
-> core library, a console user interface built on it, and the documentation.
+> core library, a console user interface and a web/mobile app built on it, the
+> API server and the documentation.
 > The original console application is preserved under the git tag
 > `v1-legacy`; its databases are not compatible with version 2.
 
@@ -74,6 +75,16 @@ A multi-user REST API (FastAPI) for web and mobile front-ends: every user gets
 a private book, and logins are handled by an OpenID Connect provider (Zitadel).
 See [docs/api-server.md](docs/api-server.md) and, to put it online with
 automatic deployments, [docs/deployment.md](docs/deployment.md).
+
+## Web and mobile app
+
+```bash
+cd apps/web && npm ci && npm run dev    # http://localhost:5173
+```
+
+A React Progressive Web App on the API, with the screens of the console
+interface: it runs in any browser and installs on computers and phones. See
+[docs/web.md](docs/web.md).
 
 ## Documentation
 

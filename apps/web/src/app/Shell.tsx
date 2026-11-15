@@ -50,6 +50,25 @@ function useInstallPrompt(): (() => void) | null {
     : null;
 }
 
+function OfflineBanner() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  if (online) return null;
+  return (
+    <div className="update-banner offline" role="status">
+      You are offline: the data shown may be out of date and changes cannot be saved.
+    </div>
+  );
+}
+
 function UpdateBanner() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -172,6 +191,7 @@ export function Shell() {
       </header>
 
       <UpdateBanner />
+      <OfflineBanner />
 
       <main className="main" id="main">
         <Suspense fallback={<Loading />}>

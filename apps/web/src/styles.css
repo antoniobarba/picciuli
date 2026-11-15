@@ -370,6 +370,10 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.update-banner.offline {
+  background: color-mix(in srgb, var(--warning) 18%, var(--surface));
+}
+
 /* Pages and cards */
 
 .page {

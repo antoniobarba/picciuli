@@ -142,6 +142,7 @@ export function FindSecurity({ onClose, onFound }: { onClose: () => void; onFoun
     enabled: query.length > 0,
     staleTime: 5 * 60_000,
     retry: false,
+    meta: { quiet: true },
   });
   return (
     <Modal open onClose={onClose} title="Find a security online" wide>
@@ -271,6 +272,7 @@ export function TradeForm({
       ),
     enabled: selling && Boolean(account && security && parsed),
     retry: false,
+    meta: { quiet: true },
   });
 
   const save = useApiMutation(async (client) => {

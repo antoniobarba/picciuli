@@ -27,4 +27,5 @@ What it handles:
 
 Start with [Getting started](getting-started.md), then read
 [Concepts](concepts.md) to understand the accounting model. To use Picciuli
-from a terminal, see the [Console interface](tui.md).
+from a terminal, see the [Console interface](tui.md); in a browser or on a
+phone, the [Web and mobile app](web.md).

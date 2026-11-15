@@ -1,8 +1,8 @@
 name: Deploy
 
-# After CI succeeds on master: build the API image, push it to GitHub Container
-# Registry and deploy it to the server over SSH. Run it by hand ("Run
-# workflow") with a commit SHA to roll back to an earlier image.
+# After CI succeeds on master: build the API and web images, push them to
+# GitHub Container Registry and deploy them to the server over SSH. Run it by
+# hand ("Run workflow") with a commit SHA to roll back to earlier images.
 #
 # Repository settings needed (Settings > Secrets and variables > Actions):
 #   secrets  DEPLOY_SSH_KEY       private key of the server's "deploy" user
@@ -10,6 +10,7 @@ name: Deploy
 #   vars     DEPLOY_HOST          server address
 #            DEPLOY_USER          usually "deploy"
 #            API_DOMAIN           e.g. api.example.com
+#            APP_DOMAIN           e.g. app.example.com (web front-end, optional)
 
 on:
   workflow_run:
@@ -33,6 +34,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/picciuli-api
+  WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/picciuli-web
 
 jobs:
   image:
@@ -78,6 +80,20 @@ jobs:
             org.opencontainers.image.revision=${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.WEB_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
 
   deploy:
     needs: image
@@ -115,3 +131,7 @@ jobs:
         run: |
           curl --fail --silent --show-error --retry 10 --retry-delay 5 \
             --retry-all-errors "https://${{ vars.API_DOMAIN }}/healthz"
+          if [ -n "${{ vars.APP_DOMAIN }}" ]; then
+            curl --fail --silent --show-error --retry 10 --retry-delay 5 \
+              --retry-all-errors "https://${{ vars.APP_DOMAIN }}/config.json"
+          fi
