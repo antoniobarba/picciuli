@@ -219,7 +219,8 @@ def share_moves(
     moves = []
     for day, tx_id, acc, sec, qty, amount in session.execute(statement):
         # The query only selects account splits that move shares.
-        assert acc is not None and sec is not None and qty is not None
+        if acc is None or sec is None or qty is None:
+            raise RuntimeError(f"transaction {tx_id} has an incomplete share move")
         moves.append(ShareMove(day, tx_id, acc, sec, qty, amount))
     return moves
 

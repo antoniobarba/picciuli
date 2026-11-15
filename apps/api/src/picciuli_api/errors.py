@@ -97,13 +97,15 @@ async def _auth_unavailable(request: Request, exc: Exception) -> JSONResponse:
 
 
 async def _request_validation(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, RequestValidationError)
+    if not isinstance(exc, RequestValidationError):
+        raise TypeError("unexpected exception type") from exc
     errors = jsonable_encoder(exc.errors(), exclude={"ctx", "url", "input"})
     return _error(422, "invalid_request", "the request is not valid", errors=errors)
 
 
 async def _http_error(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, StarletteHTTPException)
+    if not isinstance(exc, StarletteHTTPException):
+        raise TypeError("unexpected exception type") from exc
     code = _HTTP_CODES.get(exc.status_code, "http_error")
     return _error(exc.status_code, code, str(exc.detail), headers=exc.headers)
 

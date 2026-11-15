@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import re
+
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -29,13 +32,18 @@ class TestVerifier:
         assert verifier.verify(token).subject == "alice"
 
     @pytest.mark.parametrize(
-        ("options", "message"),
+        ("options", "reason"),
         [
             ({"expires_in": -60}, "expired"),
             ({"audience": "someone-else"}, "(?i)audience"),
             ({"issuer": "https://evil.test"}, "issuer"),
             ({"subject": None}, "sub"),
             ({"kid": "rotated-away"}, "unknown signing key"),
+            ({"issued_in": None}, "iat"),
+            ({"issued_in": 3600, "expires_in": 7200}, "iat"),
+            ({"issued_in": -60, "expires_in": 24 * 3600}, "lifetime"),
+            ({"expires_in": 10 * 365 * 24 * 3600}, "lifetime"),
+            ({"subject": ""}, "empty subject"),
         ],
     )
     def test_rejected_claims(
@@ -43,18 +51,26 @@ class TestVerifier:
         verifier: TokenVerifier,
         tokens: Tokens,
         options: dict[str, object],
-        message: str,
+        reason: str,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with pytest.raises(AuthenticationError, match=message):
+        caplog.set_level(logging.INFO, logger="picciuli_api.auth")
+        with pytest.raises(AuthenticationError) as error:
             verifier.verify(tokens(**options))  # type: ignore[arg-type]
+        assert str(error.value) == "invalid access token"
+        assert re.search(reason, caplog.text)
 
-    def test_empty_subject(self, verifier: TokenVerifier, tokens: Tokens) -> None:
-        with pytest.raises(AuthenticationError, match="empty subject"):
-            verifier.verify(tokens(""))
+    def test_lifetime_is_configurable(self, keys: StaticKeys, tokens: Tokens) -> None:
+        verifier = TokenVerifier(
+            issuer=ISSUER, audience=AUDIENCE, keys=keys, max_lifetime=600
+        )
+        assert verifier.verify(tokens(expires_in=600)).subject == "alice"
+        with pytest.raises(AuthenticationError):
+            verifier.verify(tokens(expires_in=601))
 
     def test_forged_signature(self, verifier: TokenVerifier, tokens: Tokens) -> None:
         other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        with pytest.raises(AuthenticationError, match="Signature"):
+        with pytest.raises(AuthenticationError, match=r"^invalid access token$"):
             verifier.verify(tokens(key=other))
 
     def test_symmetric_algorithms_are_refused(
@@ -119,7 +135,21 @@ class TestEndpointAuthentication:
         token = tokens(expires_in=-3600)
         response = client.get(f"{API}/me", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 401
-        assert response.json()["error"] == "unauthorized"
+        assert response.json() == {
+            "error": "unauthorized",
+            "detail": "invalid access token",
+        }
+
+    @pytest.mark.parametrize("token", ["garbage", "a.b.c"])
+    def test_garbage_token_gets_generic_body(
+        self, client: TestClient, token: str
+    ) -> None:
+        response = client.get(f"{API}/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+        assert response.json() == {
+            "error": "unauthorized",
+            "detail": "invalid access token",
+        }
 
     def test_unauthenticated_requests_create_no_data(
         self, client: TestClient, settings: Settings

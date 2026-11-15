@@ -91,6 +91,7 @@ def create_app(
             settings.jwks_url,
             issuer=settings.oidc_issuer,
             audience=settings.oidc_audience,
+            max_lifetime=settings.oidc_max_token_lifetime,
         ),
         books=books
         or BookRegistry(settings.users_dir, max_open=settings.max_open_books),
@@ -201,7 +202,8 @@ def _add_oidc_scheme(app: FastAPI, issuer: str) -> None:
                     security = operation.get("security")
                     if security and {"bearer": []} in security:
                         security.append({"oidc": []})
-        assert app.openapi_schema is not None
+        if app.openapi_schema is None:
+            raise RuntimeError("the OpenAPI schema was not generated")
         return app.openapi_schema
 
     app.openapi = openapi  # type: ignore[method-assign]

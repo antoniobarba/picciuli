@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from typing import Any, Final, Protocol
 
@@ -30,6 +31,9 @@ ALGORITHMS: Final = (
     "EdDSA",
 )
 """Accepted signature algorithms. Symmetric (HS*) and `none` are refused."""
+
+_LOG = logging.getLogger(__name__)
+_INVALID = "invalid access token"
 
 
 class AuthenticationError(Exception):
@@ -82,6 +86,7 @@ class TokenVerifier:
         audience: Required `aud` claim (one of its values).
         keys: Source of the signing keys.
         leeway: Tolerated clock skew, in seconds.
+        max_lifetime: Longest accepted validity (`exp` - `iat`), in seconds.
     """
 
     def __init__(
@@ -91,24 +96,38 @@ class TokenVerifier:
         audience: str,
         keys: SigningKeySource,
         leeway: float = 30.0,
+        max_lifetime: float = 24 * 60 * 60,
     ) -> None:
         self.issuer = issuer
         self.audience = audience
         self._keys = keys
         self._leeway = leeway
+        self._max_lifetime = max_lifetime
 
     @classmethod
-    def from_jwks_url(cls, url: str, *, issuer: str, audience: str) -> TokenVerifier:
+    def from_jwks_url(
+        cls,
+        url: str,
+        *,
+        issuer: str,
+        audience: str,
+        max_lifetime: float = 24 * 60 * 60,
+    ) -> TokenVerifier:
         """Build a verifier downloading the keys from a JWKS URL (cached 1 hour)."""
         client = jwt.PyJWKClient(url, cache_keys=True, lifespan=3600, timeout=10)
-        return cls(issuer=issuer, audience=audience, keys=client)
+        return cls(
+            issuer=issuer, audience=audience, keys=client, max_lifetime=max_lifetime
+        )
 
     def verify(self, token: str) -> User:
         """Check the signature and the claims of `token`.
 
+        Clients only get a generic message; the reason is logged.
+
         Raises:
             AuthenticationError: If the token is malformed, expired, signed by an
-                unknown key or issued for another issuer or audience.
+                unknown key, issued for another issuer or audience, or valid for
+                longer than `max_lifetime`.
             AuthUnavailableError: If the signing keys cannot be downloaded.
         """
         try:
@@ -120,13 +139,19 @@ class TokenVerifier:
                 audience=self.audience,
                 issuer=self.issuer,
                 leeway=self._leeway,
-                options={"require": ["exp", "iss", "sub", "aud"]},
+                options={"require": ["exp", "iat", "iss", "sub", "aud"]},
             )
         except jwt.PyJWKClientConnectionError as exc:
             raise AuthUnavailableError("identity provider unreachable") from exc
         except jwt.PyJWTError as exc:
-            raise AuthenticationError(f"invalid access token: {exc}") from exc
+            _LOG.info("Rejected access token: %s", exc)
+            raise AuthenticationError(_INVALID) from exc
+        # PyJWT has already checked that both claims are numbers.
+        if claims["exp"] - claims["iat"] > self._max_lifetime:
+            _LOG.info("Rejected access token: lifetime exceeds the maximum")
+            raise AuthenticationError(_INVALID)
         subject = claims["sub"]
         if not isinstance(subject, str) or not subject:
-            raise AuthenticationError("invalid access token: empty subject")
+            _LOG.info("Rejected access token: empty subject")
+            raise AuthenticationError(_INVALID)
         return User(issuer=self.issuer, subject=subject)

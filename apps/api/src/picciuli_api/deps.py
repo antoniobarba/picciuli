@@ -47,7 +47,8 @@ bearer_scheme = HTTPBearer(
 def get_context(request: Request) -> AppContext:
     """Return the services of the running application."""
     context = request.app.state.context
-    assert isinstance(context, AppContext)
+    if not isinstance(context, AppContext):
+        raise RuntimeError("the application context is not configured")
     return context
 
 

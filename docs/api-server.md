@@ -99,6 +99,8 @@ Environment variables (all prefixed with `PICCIULI_`):
 | `OIDC_JWKS_URL`           | `<issuer>/oauth/v2/keys`    | signing keys (Zitadel's location by default)    |
 | `OIDC_SWAGGER_CLIENT_ID`  | unset                       | lets Swagger UI log in with PKCE                |
 | `OIDC_SWAGGER_SCOPES`     | `openid profile email`      | scopes requested by Swagger UI                  |
+| `OIDC_MAX_TOKEN_LIFETIME` | `86400` (24 h)              | longest accepted `exp` - `iat` of a token       |
+| `LOGIN_REQUIRE_LOCKOUT`   | `true`                      | refuse native sign-in without a Zitadel lockout policy |
 | `DATA_DIR`                | `data`                      | the books are in its `users` subdirectory       |
 | `CORS_ORIGINS`            | none                        | comma-separated front-end origins               |
 | `MAX_OPEN_BOOKS`          | `64`                        | books kept open at the same time                |
@@ -129,7 +131,8 @@ with an RSA key generated during the test session and give the app the matching
 public key, so authentication is never mocked away and no network is used.
 Price providers are replaced by in-memory fakes with a fake clock.
 
-- `test_auth.py`: expired, forged, wrong-audience and wrong-issuer tokens;
+- `test_auth.py`: expired, forged, wrong-audience, wrong-issuer and over-long
+  tokens, and generic 401 bodies;
 - `test_books.py`: per-user files, the open-book cache and its eviction;
 - `test_isolation.py`: users never see each other's data;
 - one module per resource for the endpoints, including error paths;

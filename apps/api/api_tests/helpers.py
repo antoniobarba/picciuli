@@ -53,6 +53,7 @@ class Tokens:
         issuer: str = ISSUER,
         audience: str | list[str] = AUDIENCE,
         expires_in: int = 300,
+        issued_in: int | None = 0,
         key: Any = None,
         kid: str = KID,
         algorithm: str = "RS256",
@@ -61,9 +62,10 @@ class Tokens:
         claims: dict[str, Any] = {
             "iss": issuer,
             "aud": audience,
-            "iat": now,
             "exp": now + dt.timedelta(seconds=expires_in),
         }
+        if issued_in is not None:
+            claims["iat"] = now + dt.timedelta(seconds=issued_in)
         if subject is not None:
             claims["sub"] = subject
         return jwt.encode(
