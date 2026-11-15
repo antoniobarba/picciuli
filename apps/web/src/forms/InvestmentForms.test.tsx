@@ -1,12 +1,12 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import type { Split, Transaction } from '../api/types';
+import type { Split, Transaction, TransactionTrade } from '../api/types';
 import { EditorsProvider, useEditors } from '../app/editors';
 import { renderWithApi } from '../test/render';
 import { tradeOf } from './InvestmentForms';
 
-const transaction = (id: number, splits: Split[]): Transaction => ({
+const transaction = (id: number, splits: Split[], trade: TransactionTrade | null = null): Transaction => ({
   id,
   date: '2026-03-10',
   description: 'Buy All-World',
@@ -14,47 +14,40 @@ const transaction = (id: number, splits: Split[]): Transaction => ({
   kind: 'expense',
   net_amount: 0,
   splits,
+  trade,
 });
-const buy = transaction(7, [
-  { type: 'account', account_id: 2, amount: 3500, security_id: 5, quantity: '1.5' },
-  { type: 'account', account_id: 1, amount: -3599 },
-  { type: 'external', amount: -99, category_id: 3, memo: 'Fee' },
-]);
-const sell = transaction(8, [
-  { type: 'account', account_id: 2, amount: -3500, security_id: 5, quantity: '-1' },
-  { type: 'account', account_id: 2, amount: 3770 },
-  { type: 'external', amount: 500, category_id: 4, memo: 'Realized gain' },
-  { type: 'external', amount: -100, category_id: null, memo: 'Fee' },
-  { type: 'external', amount: -130, category_id: 3, memo: 'Tax' },
-]);
+const noFees = { fee: 0, fee_category_id: null, tax: 0, tax_category_id: null, gain_category_id: null };
+const buy = transaction(
+  7,
+  [
+    { type: 'account', account_id: 2, amount: 3500, security_id: 5, quantity: '1.5' },
+    { type: 'account', account_id: 1, amount: -3599 },
+    { type: 'external', amount: -99, category_id: 3, memo: 'Fee' },
+  ],
+  {
+    ...noFees, kind: 'buy', account_id: 2, security_id: 5, quantity: '1.5', amount: 3500,
+    other_account_id: 1, fee: 99, fee_category_id: 3,
+  },
+);
 
 describe('tradeOf', () => {
-  it('reads back what the buy and sell endpoints recorded', () => {
+  it('reads the trade the transaction was recorded from', () => {
     expect(tradeOf(buy)).toEqual({
       selling: false, date: '2026-03-10', accountId: 2, securityId: 5, quantity: '1.5', amount: 3500,
       otherId: 1, fee: 99, feeCategoryId: 3, tax: 0, taxCategoryId: null, gainCategoryId: null,
     });
+    const sell = transaction(8, [], {
+      kind: 'sell', account_id: 2, security_id: 5, quantity: '1', amount: 4000, other_account_id: null,
+      fee: 0, fee_category_id: 3, tax: 130, tax_category_id: 3, gain_category_id: 4,
+    });
     expect(tradeOf(sell)).toEqual({
       selling: true, date: '2026-03-10', accountId: 2, securityId: 5, quantity: '1', amount: 4000,
-      otherId: null, fee: 100, feeCategoryId: null, tax: 130, taxCategoryId: 3, gainCategoryId: 4,
+      otherId: null, fee: 0, feeCategoryId: 3, tax: 130, taxCategoryId: 3, gainCategoryId: 4,
     });
   });
 
-  it('reads an imported sale whose gain line has another memo', () => {
-    const imported = transaction(1930, [
-      { type: 'account', account_id: 19, amount: -14361, memo: '1 quote al costo medio', security_id: 2, quantity: '-1' },
-      { type: 'account', account_id: 19, amount: 14151, memo: 'incasso vendita', security_id: null, quantity: null },
-      { type: 'external', amount: -210, category_id: 51, memo: 'minusvalenza' },
-    ]);
-    expect(tradeOf(imported)).toMatchObject({ selling: true, quantity: '1', amount: 14151, otherId: null, fee: 0, gainCategoryId: 51 });
-    expect(tradeOf(transaction(1930, [...imported.splits, { type: 'external', amount: -10, memo: 'bollo' }]))).toBeNull();
-  });
-
-  it('leaves other transactions to the split editor', () => {
-    const [share, cash] = buy.splits;
-    expect(tradeOf(transaction(1, [cash!, { type: 'external', amount: 3599, category_id: 3 }]))).toBeNull();
-    expect(tradeOf(transaction(1, [share!, cash!, { type: 'external', amount: -99, memo: 'Lunch' }]))).toBeNull();
-    expect(tradeOf(transaction(1, [share!, { ...cash!, amount: -3000 }, { type: 'external', amount: -500 }]))).toBeNull();
+  it('leaves transactions without a trade to the split editor, whatever their splits', () => {
+    expect(tradeOf({ ...buy, trade: null })).toBeNull();
   });
 });
 
@@ -102,12 +95,16 @@ describe('editing a trade', () => {
   });
 
   it('opens the sell form for a sale as the API returns it', async () => {
-    const sale = transaction(9, [
-      { type: 'account', account_id: 2, amount: -10000, memo: null, security_id: 5, quantity: '-1' },
-      { type: 'account', account_id: 2, amount: 8900, memo: null, security_id: null, quantity: null },
-      { type: 'external', amount: -1000, category_id: null, memo: 'Realized gain' },
-      { type: 'external', amount: -100, category_id: null, memo: 'Fee' },
-    ]);
+    const sale = transaction(
+      9,
+      [
+        { type: 'account', account_id: 2, amount: -10000, memo: null, security_id: 5, quantity: '-1' },
+        { type: 'account', account_id: 2, amount: 8900, memo: null, security_id: null, quantity: null },
+        { type: 'external', amount: -1000, category_id: null, memo: 'Realized gain' },
+        { type: 'external', amount: -100, category_id: null, memo: 'Fee' },
+      ],
+      { ...noFees, kind: 'sell', account_id: 2, security_id: 5, quantity: '1', amount: 9000, other_account_id: null, fee: 100 },
+    );
     const { requests } = renderWithApi(
       <EditorsProvider>
         <EditButton trade={sale} />

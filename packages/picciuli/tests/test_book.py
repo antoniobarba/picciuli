@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from contextlib import closing
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,8 @@ from picciuli import (
     CostMethod,
     ExternalSplit,
     SchemaVersionError,
+    Trade,
+    TradeKind,
     ValidationError,
 )
 from picciuli._db.schema import file_engine, prepare_schema
@@ -24,6 +27,7 @@ from picciuli._db.tables import AccountRow
 
 from .conftest import d
 from .schema_v1 import SCHEMA_V1
+from .schema_v2 import SCHEMA_V2
 
 
 def test_open_creates_and_reopens_a_file(tmp_path: Path) -> None:
@@ -191,6 +195,84 @@ def test_version_1_is_upgraded_to_version_2(
         book.investments.record_buy(
             d(3), account_id=broker.id, security_id=etf.id, quantity=1, cost=100
         )
+    fresh = file_engine(tmp_path / "fresh.db")
+    prepare_schema(fresh)
+    upgraded = file_engine(path)
+    try:
+        assert _structure(upgraded) == _structure(fresh)
+    finally:
+        fresh.dispose()
+        upgraded.dispose()
+
+
+def _make_v2(path: Path) -> None:
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(SCHEMA_V2)
+        connection.executemany(
+            "INSERT INTO meta VALUES (?, ?)",
+            [
+                ("schema_version", "2"),
+                ("currency", "€"),
+                ("minor_digits", "2"),
+                ("currency_code", "EUR"),
+                ("cost_method", "average"),
+                ("price_provider", "yahoo"),
+            ],
+        )
+        connection.executescript(
+            """
+            INSERT INTO accounts VALUES (1, 'Checking', 'checking', 0, NULL, NULL,
+                NULL, 1, NULL);
+            INSERT INTO accounts VALUES (2, 'Broker', 'investment', 0, NULL, NULL,
+                NULL, 2, NULL);
+            INSERT INTO categories VALUES (1, 'Gains', 'G', NULL, 1);
+            INSERT INTO categories VALUES (2, 'Fees', 'F', NULL, 2);
+            INSERT INTO securities VALUES (1, 'ETF', NULL, NULL, 'EUR', 'etf', NULL);
+            INSERT INTO transactions VALUES (1, '2025-01-01', 'Buy ETF', NULL);
+            INSERT INTO splits VALUES (1, 1, 1, 2, NULL, 1000, NULL, 1, 300000000);
+            INSERT INTO splits VALUES (2, 1, 2, 1, NULL, -1010, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (3, 1, 3, NULL, 2, -10, 'Fee', NULL, NULL);
+            INSERT INTO transactions VALUES (2, '2025-01-02', 'Sell ETF', NULL);
+            INSERT INTO splits VALUES (4, 2, 1, 2, NULL, -333, NULL, 1, -100000000);
+            INSERT INTO splits VALUES (5, 2, 2, 1, NULL, 490, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (6, 2, 3, NULL, 1, 167, 'Realized gain',
+                NULL, NULL);
+            INSERT INTO splits VALUES (7, 2, 4, NULL, 2, -10, 'Fee', NULL, NULL);
+            INSERT INTO transactions VALUES (3, '2025-01-03', 'Vendita', NULL);
+            INSERT INTO splits VALUES (8, 3, 1, 2, NULL, -333,
+                '1 quote al costo medio', 1, -100000000);
+            INSERT INTO splits VALUES (9, 3, 2, 2, NULL, 300, 'incasso vendita',
+                NULL, NULL);
+            INSERT INTO splits VALUES (10, 3, 3, NULL, 1, -33, 'minusvalenza',
+                NULL, NULL);
+            INSERT INTO transactions VALUES (4, '2025-01-04', 'Odd', NULL);
+            INSERT INTO splits VALUES (11, 4, 1, 2, NULL, 100, NULL, 1, 100000000);
+            INSERT INTO splits VALUES (12, 4, 2, 1, NULL, -120, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (13, 4, 3, NULL, 2, -10, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (14, 4, 4, NULL, 2, -10, NULL, NULL, NULL);
+            INSERT INTO transactions VALUES (5, '2025-01-05', 'Shop', NULL);
+            INSERT INTO splits VALUES (15, 5, 1, 1, NULL, -50, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (16, 5, 2, NULL, 2, -50, NULL, NULL, NULL);
+            """
+        )
+
+
+def test_version_2_is_upgraded_with_the_trades_it_can_prove(tmp_path: Path) -> None:
+    path = tmp_path / "v2.db"
+    _make_v2(path)
+    with Book.open(path) as book:
+        trades = {t.id: t.trade for t in book.transactions.list()}
+        splits = {t.id: t.splits for t in book.transactions.list()}
+    assert trades == {
+        1: Trade(TradeKind.BUY, 2, 1, Decimal(3), 1000, 1, 10, 2),
+        2: Trade(TradeKind.SELL, 2, 1, Decimal(1), 500, 1, 10, 2, gain_category_id=1),
+        3: Trade(TradeKind.SELL, 2, 1, Decimal(1), 300, gain_category_id=1),
+        4: None,
+        5: None,
+    }
+    assert splits[3][0] == AccountSplit(
+        2, -333, "1 quote al costo medio", 1, Decimal(-1)
+    )
     fresh = file_engine(tmp_path / "fresh.db")
     prepare_schema(fresh)
     upgraded = file_engine(path)

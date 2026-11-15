@@ -57,6 +57,20 @@ COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "security_id",
         "quantity",
     ),
+    "trades": (
+        "transaction_id",
+        "kind",
+        "account_id",
+        "security_id",
+        "quantity",
+        "amount",
+        "other_account_id",
+        "fee",
+        "fee_category_id",
+        "tax",
+        "tax_category_id",
+        "gain_category_id",
+    ),
 }
 """Columns read from each table, in the order of the returned tuples."""
 

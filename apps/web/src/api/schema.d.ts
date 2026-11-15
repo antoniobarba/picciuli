@@ -2110,6 +2110,45 @@ export interface components {
             rate_provider?: string;
         };
         /**
+         * TradeKind
+         * @description Whether a [`Trade`][picciuli.model.Trade] bought or sold shares.
+         * @enum {string}
+         */
+        TradeKind: "buy" | "sell";
+        /**
+         * TradeOut
+         * @description The arguments of a purchase or sale of shares, as they were entered.
+         */
+        TradeOut: {
+            kind: components["schemas"]["TradeKind"];
+            /** Account Id */
+            account_id: number;
+            /** Security Id */
+            security_id: number;
+            /** Quantity */
+            quantity: string;
+            /**
+             * Amount
+             * @description Cost of a purchase, or gross proceeds of a sale.
+             */
+            amount: number;
+            /**
+             * Other Account Id
+             * @description Account paying or receiving the money; `null` for the investment account's own cash.
+             */
+            other_account_id: number | null;
+            /** Fee */
+            fee: number;
+            /** Fee Category Id */
+            fee_category_id: number | null;
+            /** Tax */
+            tax: number;
+            /** Tax Category Id */
+            tax_category_id: number | null;
+            /** Gain Category Id */
+            gain_category_id: number | null;
+        };
+        /**
          * TransactionCreate
          * @description A new transaction. Account splits must add up to the external splits.
          */
@@ -2153,6 +2192,8 @@ export interface components {
             kind: components["schemas"]["TransactionKind"];
             /** Net Amount */
             net_amount: number;
+            /** @description Set when the splits were built by a purchase or sale of shares; editing the splits directly removes it. */
+            trade?: components["schemas"]["TradeOut"] | null;
         };
         /**
          * TransactionUpdate

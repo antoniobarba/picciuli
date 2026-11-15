@@ -244,48 +244,23 @@ export interface Trade {
   gainCategoryId: number | null;
 }
 
-/** The trade a transaction records, or `null` when its splits are not those of a buy or sell. */
+/** The trade a transaction was recorded from, or `null` for any other transaction. */
 export function tradeOf(transaction: Transaction): Trade | null {
-  const shares = transaction.splits.filter((s) => s.type === 'account' && s.security_id != null);
-  const cash = transaction.splits.filter((s) => s.type === 'account' && s.security_id == null);
-  const external = transaction.splits.filter((s) => s.type === 'external');
-  const [share] = shares;
-  if (shares.length !== 1 || share?.type !== 'account' || share.security_id == null || !share.quantity) return null;
-  let memos = new Map(external.map((s) => [s.memo ?? '', s]));
-  if (memos.size !== external.length || cash.length > 1) return null;
-  const selling = share.quantity.startsWith('-');
-  const allowed = selling ? ['Realized gain', 'Fee', 'Tax'] : ['Fee'];
-  // A sale's lone line with another memo (e.g. from an import) is its realized gain or loss.
-  const [lone] = external;
-  if (selling && external.length === 1 && lone && !allowed.includes(lone.memo ?? '')) {
-    memos = new Map([['Realized gain', lone]]);
-  }
-  if ([...memos.keys()].some((memo) => !allowed.includes(memo))) return null;
-  const fee = 0 - (memos.get('Fee')?.amount ?? 0);
-  const tax = 0 - (memos.get('Tax')?.amount ?? 0);
-  if (fee < 0 || tax < 0) return null;
-  const [money] = cash;
-  const otherId = money?.type === 'account' && money.account_id !== share.account_id ? money.account_id : null;
-  const categoryOf = (memo: string) => {
-    const split = memos.get(memo);
-    return split?.type === 'external' ? (split.category_id ?? null) : null;
-  };
-  const amount = selling ? -share.amount + (memos.get('Realized gain')?.amount ?? 0) : share.amount;
-  const expected = selling ? amount - fee - tax : -(amount + fee);
-  if (amount <= 0 || (money?.amount ?? 0) !== expected || (!selling && !money)) return null;
+  const { trade } = transaction;
+  if (!trade) return null;
   return {
-    selling,
+    selling: trade.kind === 'sell',
     date: transaction.date,
-    accountId: share.account_id,
-    securityId: share.security_id,
-    quantity: share.quantity.replace(/^-/, ''),
-    amount,
-    otherId,
-    fee,
-    feeCategoryId: categoryOf('Fee'),
-    tax,
-    taxCategoryId: categoryOf('Tax'),
-    gainCategoryId: categoryOf('Realized gain'),
+    accountId: trade.account_id,
+    securityId: trade.security_id,
+    quantity: trade.quantity,
+    amount: trade.amount,
+    otherId: trade.other_account_id,
+    fee: trade.fee,
+    feeCategoryId: trade.fee_category_id,
+    tax: trade.tax,
+    taxCategoryId: trade.tax_category_id,
+    gainCategoryId: trade.gain_category_id,
   };
 }
 

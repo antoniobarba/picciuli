@@ -17,6 +17,8 @@ from picciuli import (
     Security,
     SecurityKind,
     Settings,
+    Trade,
+    TradeKind,
     TransactionKind,
     ValidationError,
 )
@@ -489,6 +491,128 @@ class TestBuyAndSell:
                 quantity=1,
                 proceeds=1,
             )
+
+    def test_trades_keep_their_arguments(
+        self,
+        book: Book,
+        checking: Account,
+        broker: Account,
+        etf: Security,
+        gains: Category,
+    ) -> None:
+        fees = book.categories.create("Fees")
+        bought = book.investments.record_buy(
+            d(1),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=2,
+            cost=1000,
+            from_account_id=checking.id,
+            fee_category_id=fees.id,
+        )
+        assert bought.trade == Trade(
+            TradeKind.BUY,
+            broker.id,
+            etf.id,
+            Decimal(2),
+            1000,
+            checking.id,
+            fee_category_id=fees.id,
+        )
+        # Zero fee, tax and gain store no split, but keep their categories.
+        sold = book.investments.record_sell(
+            d(2),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=1,
+            proceeds=500,
+            fee_category_id=fees.id,
+            tax_category_id=fees.id,
+            gain_category_id=gains.id,
+        )
+        assert sold.splits == (
+            AccountSplit(broker.id, -500, security_id=etf.id, quantity=Decimal(-1)),
+            AccountSplit(broker.id, 500),
+        )
+        expected = Trade(
+            TradeKind.SELL,
+            broker.id,
+            etf.id,
+            Decimal(1),
+            500,
+            fee_category_id=fees.id,
+            tax_category_id=fees.id,
+            gain_category_id=gains.id,
+        )
+        assert sold.trade == expected
+        assert book.transactions.get(sold.id).trade == expected
+        updated = book.investments.update_sell(
+            sold.id,
+            d(2),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=1,
+            proceeds=600,
+            to_account_id=checking.id,
+            fee=10,
+        )
+        assert updated.trade == Trade(
+            TradeKind.SELL, broker.id, etf.id, Decimal(1), 600, checking.id, fee=10
+        )
+        with pytest.raises(NotFoundError, match="category 999"):
+            book.investments.record_buy(
+                d(3),
+                account_id=broker.id,
+                security_id=etf.id,
+                quantity=1,
+                cost=1,
+                fee_category_id=999,
+            )
+
+    def test_editing_the_splits_turns_a_trade_into_a_transaction(
+        self, book: Book, broker: Account, etf: Security
+    ) -> None:
+        tx = book.investments.record_buy(
+            d(1), account_id=broker.id, security_id=etf.id, quantity=1, cost=100
+        )
+        assert book.transactions.update(tx.id, notes="kept").trade == tx.trade
+        edited = book.transactions.update(tx.id, splits=tx.splits)
+        assert edited.trade is None
+
+    def test_deletions_follow_the_references_of_trades(
+        self,
+        book: Book,
+        checking: Account,
+        broker: Account,
+        etf: Security,
+        gains: Category,
+    ) -> None:
+        buy(book, broker, etf, 1, "1", 1000)
+        other = book.categories.create("Other gains")
+        tx = book.investments.record_sell(
+            d(2),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=1,
+            proceeds=1000,
+            fee=1000,
+            to_account_id=checking.id,
+            gain_category_id=gains.id,
+        )
+        assert all(
+            not isinstance(s, AccountSplit) or s.account_id != checking.id
+            for s in tx.splits
+        )
+        with pytest.raises(ConflictError, match="has transactions"):
+            book.accounts.delete(checking.id)
+        book.categories.delete(gains.id, reassign_to=other.id)
+        trade = book.transactions.get(tx.id).trade
+        assert trade is not None
+        assert trade.gain_category_id == other.id
+        book.categories.delete(other.id)
+        trade = book.transactions.get(tx.id).trade
+        assert trade is not None
+        assert trade.gain_category_id is None
 
 
 class TestValuation:

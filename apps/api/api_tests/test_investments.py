@@ -164,6 +164,24 @@ class TestInvestments:
         assert buy["kind"] == "transfer"
         share = next(s for s in buy["splits"] if s["security_id"] is not None)
         assert (share["quantity"], share["amount"]) == ("2", 20000)
+        assert buy["trade"] == {
+            "kind": "buy",
+            "account_id": portfolio["broker"],
+            "security_id": portfolio["etf"],
+            "quantity": "2",
+            "amount": 20000,
+            "other_account_id": portfolio["checking"],
+            "fee": 0,
+            "fee_category_id": None,
+            "tax": 0,
+            "tax_category_id": None,
+            "gain_category_id": None,
+        }
+        edited = alice.patch(
+            f"{API}/transactions/{buy['id']}", json={"splits": buy["splits"]}
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["trade"] is None
 
     def test_holdings_and_valuation(
         self, alice: TestClient, portfolio: dict[str, int]

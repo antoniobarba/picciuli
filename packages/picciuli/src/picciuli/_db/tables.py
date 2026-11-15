@@ -120,6 +120,54 @@ class TransactionRow(Base):
         order_by="SplitRow.position",
         lazy="selectin",
     )
+    trade: Mapped[TradeRow | None] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class TradeRow(Base):
+    """The arguments of a purchase or sale, kept next to the splits they built."""
+
+    __tablename__ = "trades"
+    __table_args__ = (
+        CheckConstraint("kind IN ('buy', 'sell')", name="ck_trade_kind"),
+        CheckConstraint("quantity > 0", name="ck_trade_quantity"),
+        CheckConstraint("amount > 0", name="ck_trade_amount"),
+        CheckConstraint("fee >= 0 AND tax >= 0", name="ck_trade_fees"),
+        CheckConstraint(
+            "kind = 'sell' OR (tax = 0 AND tax_category_id IS NULL "
+            "AND gain_category_id IS NULL)",
+            name="ck_trade_buy",
+        ),
+    )
+
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(String)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    security_id: Mapped[int] = mapped_column(
+        ForeignKey("securities.id", ondelete="RESTRICT")
+    )
+    # Number of shares scaled by 10**8 (see picciuli._decimal.SCALE).
+    quantity: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)
+    other_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    fee: Mapped[int] = mapped_column(Integer)
+    fee_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT")
+    )
+    tax: Mapped[int] = mapped_column(Integer)
+    tax_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT")
+    )
+    gain_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT")
+    )
 
 
 class SplitRow(Base):

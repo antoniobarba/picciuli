@@ -11,6 +11,7 @@ export type Transaction = S['TransactionOut'];
 export type AccountSplit = S['AccountSplitOut'];
 export type ExternalSplit = S['ExternalSplitOut'];
 export type Split = AccountSplit | ExternalSplit;
+export type TransactionTrade = S['TradeOut'];
 export type SplitIn = S['AccountSplitIn'] | S['ExternalSplitIn'];
 export type TransactionKind = S['TransactionKind'];
 export type Period = S['PeriodOut'];

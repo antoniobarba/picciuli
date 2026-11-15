@@ -23,9 +23,16 @@ from picciuli._db.queries import (
     to_exchange_rate,
     to_price,
     to_security,
+    to_transaction,
 )
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import AccountRow, SecurityRow, TransactionRow
+from picciuli._db.tables import (
+    AccountRow,
+    CategoryRow,
+    SecurityRow,
+    TradeRow,
+    TransactionRow,
+)
 from picciuli._decimal import (
     from_scaled,
     market_value,
@@ -48,6 +55,8 @@ from picciuli.model import (
     PriceUpdate,
     Settings,
     Split,
+    Trade,
+    TradeKind,
     Transaction,
 )
 from picciuli.prices import PricePoint, PriceProvider, create_provider
@@ -64,6 +73,74 @@ _T = TypeVar("_T")
 
 def _fee(value: object, field: str) -> int:
     return v.non_negative_amount(value, field)
+
+
+def trade_splits(trade: Trade, cost: int = 0) -> list[Split]:
+    """The splits recording `trade`; `cost` is the cost basis of sold shares."""
+    own = trade.account_id
+    other = own if trade.other_account_id is None else trade.other_account_id
+    shares, security = trade.quantity, trade.security_id
+    if trade.kind is TradeKind.BUY:
+        splits: list[Split] = [
+            AccountSplit(own, trade.amount, security_id=security, quantity=shares),
+            AccountSplit(other, -(trade.amount + trade.fee)),
+        ]
+        if trade.fee:
+            splits.append(ExternalSplit(-trade.fee, trade.fee_category_id, "Fee"))
+        return splits
+    splits = [AccountSplit(own, -cost, security_id=security, quantity=-shares)]
+    received = trade.amount - trade.fee - trade.tax
+    if received:
+        splits.append(AccountSplit(other, received))
+    gain = trade.amount - cost
+    if gain:
+        splits.append(ExternalSplit(gain, trade.gain_category_id, "Realized gain"))
+    if trade.fee:
+        splits.append(ExternalSplit(-trade.fee, trade.fee_category_id, "Fee"))
+    if trade.tax:
+        splits.append(ExternalSplit(-trade.tax, trade.tax_category_id, "Tax"))
+    return splits
+
+
+def _check_references(session: Session, trade: Trade) -> None:
+    """Check the ids that the splits may not use, for example a zero fee's."""
+    accounts = {"account_id": trade.account_id}
+    if trade.other_account_id is not None:
+        accounts["other account id"] = trade.other_account_id
+    for field, account_id in accounts.items():
+        get_row(session, AccountRow, v.identifier(account_id, field), "account")
+    v.identifier(trade.security_id, "security_id")
+    categories = {
+        "fee_category_id": trade.fee_category_id,
+        "tax_category_id": trade.tax_category_id,
+        "gain_category_id": trade.gain_category_id,
+    }
+    for field, category_id in categories.items():
+        if category_id is not None:
+            get_row(session, CategoryRow, v.identifier(category_id, field), "category")
+
+
+def trade_row(trade: Trade) -> TradeRow:
+    return TradeRow(
+        kind=trade.kind.value,
+        account_id=trade.account_id,
+        security_id=trade.security_id,
+        quantity=to_scaled(trade.quantity),
+        amount=trade.amount,
+        other_account_id=trade.other_account_id,
+        fee=trade.fee,
+        fee_category_id=trade.fee_category_id,
+        tax=trade.tax,
+        tax_category_id=trade.tax_category_id,
+        gain_category_id=trade.gain_category_id,
+    )
+
+
+def _attach(session: Session, transaction_id: int, trade: Trade) -> Transaction:
+    row = get_row(session, TransactionRow, transaction_id, "transaction")
+    row.trade = trade_row(trade)
+    session.flush()
+    return to_transaction(row)
 
 
 def _consume(lots: list[list[int]], quantity: int) -> int:
@@ -358,7 +435,7 @@ class InvestmentService:
             ConflictError: If an account is closed.
         """
         with self._uow.session() as session:
-            splits, description = self._buy(
+            trade, splits, description = self._buy(
                 session,
                 account_id=account_id,
                 security_id=security_id,
@@ -369,9 +446,10 @@ class InvestmentService:
                 fee_category_id=fee_category_id,
                 description=description,
             )
-            return self._transactions.create(
+            created = self._transactions.create(
                 date, splits, description=description, notes=notes
             )
+            return _attach(session, created.id, trade)
 
     def update_buy(
         self,
@@ -402,7 +480,7 @@ class InvestmentService:
         """
         with self._uow.session() as session:
             get_row(session, TransactionRow, transaction_id, "transaction")
-            splits, description = self._buy(
+            trade, splits, description = self._buy(
                 session,
                 account_id=account_id,
                 security_id=security_id,
@@ -413,13 +491,14 @@ class InvestmentService:
                 fee_category_id=fee_category_id,
                 description=description,
             )
-            return self._transactions.update(
+            self._transactions.update(
                 transaction_id,
                 date=date,
                 splits=splits,
                 description=description,
                 notes=notes,
             )
+            return _attach(session, transaction_id, trade)
 
     def _buy(
         self,
@@ -433,19 +512,20 @@ class InvestmentService:
         fee: int,
         fee_category_id: int | None,
         description: str | None,
-    ) -> tuple[list[Split], str]:
-        shares = positive_decimal(quantity, "quantity")
-        cost = v.positive_amount(cost, "cost")
-        fee = _fee(fee, "fee")
-        payer = account_id if from_account_id is None else from_account_id
+    ) -> tuple[Trade, list[Split], str]:
+        trade = Trade(
+            kind=TradeKind.BUY,
+            account_id=account_id,
+            security_id=security_id,
+            quantity=positive_decimal(quantity, "quantity"),
+            amount=v.positive_amount(cost, "cost"),
+            other_account_id=from_account_id,
+            fee=_fee(fee, "fee"),
+            fee_category_id=fee_category_id,
+        )
+        _check_references(session, trade)
         security = get_row(session, SecurityRow, security_id, "security")
-        splits: list[Split] = [
-            AccountSplit(account_id, cost, security_id=security_id, quantity=shares),
-            AccountSplit(payer, -(cost + fee)),
-        ]
-        if fee:
-            splits.append(ExternalSplit(-fee, fee_category_id, "Fee"))
-        return splits, description or f"Buy {security.name}"
+        return trade, trade_splits(trade), description or f"Buy {security.name}"
 
     def record_sell(
         self,
@@ -503,7 +583,7 @@ class InvestmentService:
         """
         day = v.date(date, "date")
         with self._uow.session() as session:
-            splits, description = self._sell(
+            trade, splits, description = self._sell(
                 session,
                 day,
                 None,
@@ -519,9 +599,10 @@ class InvestmentService:
                 gain_category_id=gain_category_id,
                 description=description,
             )
-            return self._transactions.create(
+            created = self._transactions.create(
                 day, splits, description=description, notes=notes
             )
+            return _attach(session, created.id, trade)
 
     def update_sell(
         self,
@@ -557,7 +638,7 @@ class InvestmentService:
         day = v.date(date, "date")
         with self._uow.session() as session:
             get_row(session, TransactionRow, transaction_id, "transaction")
-            splits, description = self._sell(
+            trade, splits, description = self._sell(
                 session,
                 day,
                 transaction_id,
@@ -573,13 +654,14 @@ class InvestmentService:
                 gain_category_id=gain_category_id,
                 description=description,
             )
-            return self._transactions.update(
+            self._transactions.update(
                 transaction_id,
                 date=day,
                 splits=splits,
                 description=description,
                 notes=notes,
             )
+            return _attach(session, transaction_id, trade)
 
     def _sell(
         self,
@@ -598,13 +680,21 @@ class InvestmentService:
         tax_category_id: int | None,
         gain_category_id: int | None,
         description: str | None,
-    ) -> tuple[list[Split], str]:
-        shares = positive_decimal(quantity, "quantity")
-        proceeds = v.positive_amount(proceeds, "proceeds")
-        fee = _fee(fee, "fee")
-        tax = _fee(tax, "tax")
-        receiver = account_id if to_account_id is None else to_account_id
-        get_row(session, AccountRow, account_id, "account")
+    ) -> tuple[Trade, list[Split], str]:
+        trade = Trade(
+            kind=TradeKind.SELL,
+            account_id=account_id,
+            security_id=security_id,
+            quantity=positive_decimal(quantity, "quantity"),
+            amount=v.positive_amount(proceeds, "proceeds"),
+            other_account_id=to_account_id,
+            fee=_fee(fee, "fee"),
+            fee_category_id=fee_category_id,
+            tax=_fee(tax, "tax"),
+            tax_category_id=tax_category_id,
+            gain_category_id=gain_category_id,
+        )
+        _check_references(session, trade)
         security = get_row(session, SecurityRow, security_id, "security")
         moves = share_moves(
             session,
@@ -613,21 +703,14 @@ class InvestmentService:
             until=day,
             excluding=excluding,
         )
-        cost = _sale_cost(moves, to_scaled(shares), read_settings(session).cost_method)
-        splits: list[Split] = [
-            AccountSplit(account_id, -cost, security_id=security_id, quantity=-shares)
-        ]
-        received = proceeds - fee - tax
-        if received:
-            splits.append(AccountSplit(receiver, received))
-        gain = proceeds - cost
-        if gain:
-            splits.append(ExternalSplit(gain, gain_category_id, "Realized gain"))
-        if fee:
-            splits.append(ExternalSplit(-fee, fee_category_id, "Fee"))
-        if tax:
-            splits.append(ExternalSplit(-tax, tax_category_id, "Tax"))
-        return splits, description or f"Sell {security.name}"
+        cost = _sale_cost(
+            moves, to_scaled(trade.quantity), read_settings(session).cost_method
+        )
+        return (
+            trade,
+            trade_splits(trade, cost),
+            description or f"Sell {security.name}",
+        )
 
     def refresh_prices(
         self,

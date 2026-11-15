@@ -10210,6 +10210,108 @@
         "title": "SettingsUpdate",
         "description": "Changes to the settings."
       },
+      "TradeKind": {
+        "type": "string",
+        "enum": [
+          "buy",
+          "sell"
+        ],
+        "title": "TradeKind",
+        "description": "Whether a [`Trade`][picciuli.model.Trade] bought or sold shares."
+      },
+      "TradeOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TradeKind"
+          },
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "security_id": {
+            "type": "integer",
+            "title": "Security Id"
+          },
+          "quantity": {
+            "type": "string",
+            "title": "Quantity"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount",
+            "description": "Cost of a purchase, or gross proceeds of a sale."
+          },
+          "other_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Account Id",
+            "description": "Account paying or receiving the money; `null` for the investment account's own cash."
+          },
+          "fee": {
+            "type": "integer",
+            "title": "Fee"
+          },
+          "fee_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Category Id"
+          },
+          "tax": {
+            "type": "integer",
+            "title": "Tax"
+          },
+          "tax_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Category Id"
+          },
+          "gain_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gain Category Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "account_id",
+          "security_id",
+          "quantity",
+          "amount",
+          "other_account_id",
+          "fee",
+          "fee_category_id",
+          "tax",
+          "tax_category_id",
+          "gain_category_id"
+        ],
+        "title": "TradeOut",
+        "description": "The arguments of a purchase or sale of shares, as they were entered."
+      },
       "TransactionCreate": {
         "properties": {
           "date": {
@@ -10345,6 +10447,17 @@
           "net_amount": {
             "type": "integer",
             "title": "Net Amount"
+          },
+          "trade": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TradeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the splits were built by a purchase or sale of shares; editing the splits directly removes it."
           }
         },
         "type": "object",

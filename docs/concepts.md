@@ -206,6 +206,12 @@ method or editing an earlier purchase does not rewrite it.
 recorded trade in place, as if it were recorded again: an edited sale gets its
 cost computed anew, without counting the sale itself.
 
+Every buy and sale also stores its **trade**: the arguments it was recorded
+with (kind, accounts, security, quantity, amount, fee, tax and their
+categories), exposed as `Transaction.trade`. The apps use it to reopen the
+transaction in the Buy or Sell form. Editing the splits of a trade directly
+turns it into an ordinary transaction, and its trade is dropped.
+
 Other events are ordinary transactions. A **dividend** is income into the
 investment (or checking) account. A **stock split** or bonus shares is a single
 share split with a zero amount, for example `investment 0 (+9 shares)`.

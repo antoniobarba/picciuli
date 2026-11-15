@@ -33,7 +33,10 @@ from picciuli.model import (
     SecurityKind,
     Settings,
     Split,
+    Trade,
+    TradeKind,
 )
+from picciuli.services.investments import trade_row, trade_splits
 from picciuli.services.settings import (
     _MAX_MINOR_DIGITS,
     _cost_method,
@@ -41,7 +44,7 @@ from picciuli.services.settings import (
 )
 from picciuli.services.transactions import _security_pairs, _validated_splits
 
-from .queries import check_holdings, external_flows
+from .queries import check_holdings, external_flows, to_trade
 from .schema import DEFAULT_SETTINGS
 from .tables import (
     AccountRow,
@@ -52,6 +55,7 @@ from .tables import (
     PriceRow,
     SecurityRow,
     SplitRow,
+    TradeRow,
     TransactionRow,
 )
 from .upload import Deadline, RawBook
@@ -60,7 +64,9 @@ if TYPE_CHECKING:
     from picciuli.book import Book
 
 _SplitKey = tuple[int | None, int | None, int, str | None, int | None, int | None]
-_TransactionKey = tuple[dt.date, str | None, str | None, tuple[_SplitKey, ...]]
+_TransactionKey = tuple[
+    dt.date, str | None, str | None, tuple[_SplitKey, ...], Trade | None
+]
 
 _DATE: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _MAX_SQL_INTEGER: Final = 2**63 - 1
@@ -595,6 +601,15 @@ class _Importer:
                 if split.transaction_id not in headers:
                     raise ValidationError("its transaction does not exist")
                 splits.setdefault(split.transaction_id, []).append(split)
+        trades: dict[int, Trade] = {}
+        for label, row in self._rows("trades", "trade"):
+            with _context(label):
+                transaction_id, parsed = _parse_trade(
+                    row, accounts, categories, securities
+                )
+                if transaction_id not in headers:
+                    raise ValidationError("its transaction does not exist")
+                trades[transaction_id] = parsed
         # The identity map only keeps weak references: holding the rows used by
         # the split validation avoids one query (and autoflush) per transaction.
         pinned = [
@@ -609,6 +624,7 @@ class _Importer:
                 row.description,
                 row.notes,
                 tuple(_row_split_key(s) for s in row.splits),
+                None if row.trade is None else to_trade(row.trade),
             )
             for row in self._session.scalars(select(TransactionRow))
         )
@@ -624,8 +640,15 @@ class _Importer:
                 mapped = [
                     _map_split(s, accounts, categories, securities) for s in items
                 ]
+                trade = trades.get(transaction_id)
+                if trade is not None:
+                    _check_trade(trade, mapped)
                 key = _transaction_key(
-                    day, description, notes, tuple(_split_key(s) for s in mapped)
+                    day,
+                    description,
+                    notes,
+                    tuple(_split_key(s) for s in mapped),
+                    trade,
                 )
                 if existing[key] > 0:
                     existing[key] -= 1
@@ -633,7 +656,11 @@ class _Importer:
                     continue
                 rows = _validated_splits(self._session, day, mapped)
             transaction = TransactionRow(
-                date=day, description=description, notes=notes, splits=rows
+                date=day,
+                description=description,
+                notes=notes,
+                splits=rows,
+                trade=None if trade is None else trade_row(trade),
             )
             self._session.add(transaction)
             pairs |= _security_pairs(rows)
@@ -725,8 +752,90 @@ def _transaction_key(
     description: str | None,
     notes: str | None,
     splits: tuple[_SplitKey, ...],
+    trade: Trade | None,
 ) -> _TransactionKey:
-    return (date, description, notes, splits)
+    return (date, description, notes, splits, trade)
+
+
+def _mapped_id(value: object, ids: dict[int, int], field: str, label: str) -> int:
+    mapped = ids.get(v.identifier(value, field))
+    if mapped is None:
+        raise ValidationError(f"its {label} does not exist")
+    return mapped
+
+
+def _optional_mapped_id(
+    value: object, ids: dict[int, int], field: str, label: str
+) -> int | None:
+    return None if value is None else _mapped_id(value, ids, field, label)
+
+
+def _parse_trade(
+    row: tuple[object, ...],
+    accounts: dict[int, int],
+    categories: dict[int, int],
+    securities: dict[int, int],
+) -> tuple[int, Trade]:
+    (
+        transaction_id,
+        kind,
+        account,
+        security,
+        quantity,
+        amount,
+        other,
+        fee,
+        fee_category,
+        tax,
+        tax_category,
+        gain_category,
+    ) = row
+    if kind not in ("buy", "sell"):
+        raise ValidationError("kind must be 'buy' or 'sell'")
+    scaled = v.integer(quantity, "quantity")
+    if scaled <= 0:
+        raise ValidationError("quantity must be positive")
+    trade = Trade(
+        kind=TradeKind(kind),
+        account_id=_mapped_id(account, accounts, "account id", "account"),
+        security_id=_mapped_id(security, securities, "security id", "security"),
+        quantity=to_decimal(from_scaled(scaled), "quantity"),
+        amount=v.positive_amount(amount, "amount"),
+        other_account_id=_optional_mapped_id(
+            other, accounts, "other account id", "other account"
+        ),
+        fee=v.non_negative_amount(fee, "fee"),
+        fee_category_id=_optional_mapped_id(
+            fee_category, categories, "fee category id", "fee category"
+        ),
+        tax=v.non_negative_amount(tax, "tax"),
+        tax_category_id=_optional_mapped_id(
+            tax_category, categories, "tax category id", "tax category"
+        ),
+        gain_category_id=_optional_mapped_id(
+            gain_category, categories, "gain category id", "gain category"
+        ),
+    )
+    if trade.kind is TradeKind.BUY and (
+        trade.tax or trade.tax_category_id or trade.gain_category_id
+    ):
+        raise ValidationError("a purchase cannot have a tax or a gain")
+    return v.identifier(transaction_id, "transaction id"), trade
+
+
+def _check_trade(trade: Trade, splits: list[Split]) -> None:
+    """Refuse a trade whose arguments do not produce the transaction's splits."""
+    cost = -sum(
+        s.amount
+        for s in splits
+        if isinstance(s, AccountSplit) and s.security_id is not None
+    )
+    expected = Counter(_split_key(s)[:3] + _split_key(s)[4:] for s in splits)
+    built = Counter(
+        _split_key(s)[:3] + _split_key(s)[4:] for s in trade_splits(trade, cost)
+    )
+    if expected != built:
+        raise ValidationError("its trade does not match its splits")
 
 
 def _split_key(split: Split) -> _SplitKey:
@@ -756,6 +865,7 @@ def _row_split_key(row: SplitRow) -> _SplitKey:
 
 def _wipe(session: Session) -> None:
     for statement in (
+        delete(TradeRow),
         delete(SplitRow),
         delete(TransactionRow),
         delete(BudgetRow),

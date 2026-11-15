@@ -26,6 +26,8 @@ from picciuli.model import (
     Security,
     SecurityKind,
     Split,
+    Trade,
+    TradeKind,
     Transaction,
 )
 
@@ -39,6 +41,7 @@ from .tables import (
     PriceRow,
     SecurityRow,
     SplitRow,
+    TradeRow,
     TransactionRow,
 )
 
@@ -133,6 +136,22 @@ def to_exchange_rate(row: ExchangeRateRow) -> ExchangeRate:
     )
 
 
+def to_trade(row: TradeRow) -> Trade:
+    return Trade(
+        kind=TradeKind(row.kind),
+        account_id=row.account_id,
+        security_id=row.security_id,
+        quantity=from_scaled(row.quantity),
+        amount=row.amount,
+        other_account_id=row.other_account_id,
+        fee=row.fee,
+        fee_category_id=row.fee_category_id,
+        tax=row.tax,
+        tax_category_id=row.tax_category_id,
+        gain_category_id=row.gain_category_id,
+    )
+
+
 def to_transaction(row: TransactionRow) -> Transaction:
     return Transaction(
         id=row.id,
@@ -140,6 +159,7 @@ def to_transaction(row: TransactionRow) -> Transaction:
         description=row.description,
         notes=row.notes,
         splits=tuple(to_split(split) for split in row.splits),
+        trade=None if row.trade is None else to_trade(row.trade),
     )
 
 

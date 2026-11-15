@@ -21,7 +21,6 @@ from picciuli import (
 )
 from picciuli_tui.formatting import MoneyFormat
 from picciuli_tui.forms import (
-    NONE_ID,
     AccountDraft,
     EntryKind,
     InputError,
@@ -532,15 +531,7 @@ def test_read_and_update_recorded_trades(
             notes="Monthly purchase",
         ),
     )
-    altered = replace(
-        bought,
-        splits=(
-            bought.splits[0],
-            bought.splits[1],
-            ExternalSplit(-100, food.id, "Custom fee"),
-        ),
-    )
-    assert trade_from_transaction(altered, money) is None
+    assert trade_from_transaction(replace(bought, trade=None), money) is None
     edited_buy = save_buy(
         book,
         TradeDraft(
@@ -618,7 +609,7 @@ def test_read_and_update_recorded_trades(
     }
 
 
-def test_read_imported_sale_with_other_gain_memo(
+def test_transactions_without_a_trade_use_the_split_editor(
     book: Book, money: MoneyFormat, broker: Account, etf: Security, food: Category
 ) -> None:
     book.investments.record_buy(
@@ -627,26 +618,12 @@ def test_read_imported_sale_with_other_gain_memo(
     sold = book.transactions.create(
         TODAY,
         [
-            AccountSplit(
-                broker.id, -14361, "1 quote al costo medio", etf.id, Decimal(-1)
-            ),
-            AccountSplit(broker.id, 14151, "incasso vendita"),
-            ExternalSplit(-210, food.id, "minusvalenza"),
+            AccountSplit(broker.id, -14361, security_id=etf.id, quantity=Decimal(-1)),
+            AccountSplit(broker.id, 14151),
+            ExternalSplit(-210, food.id, "Realized gain"),
         ],
-        description="Vendita ETF",
     )
-    parsed = trade_from_transaction(sold, money)
-    assert parsed is not None
-    selling, draft = parsed
-    assert (selling, draft.amount, draft.other_account_id, draft.fee) == (
-        True,
-        "141.51",
-        NONE_ID,
-        "",
-    )
-    assert draft.category_id == food.id
-    extra = replace(sold, splits=(*sold.splits, ExternalSplit(-10, None, "bollo")))
-    assert trade_from_transaction(extra, money) is None
+    assert trade_from_transaction(sold, money) is None
 
 
 def test_share_transaction_draft_preserves_share_quantity(

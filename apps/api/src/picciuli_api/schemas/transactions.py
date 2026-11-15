@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
 
-from picciuli import AccountSplit, ExternalSplit, TransactionKind
+from picciuli import AccountSplit, ExternalSplit, TradeKind, TransactionKind
 from picciuli.limits import MAX_SPLITS
 
 from .base import (
@@ -34,6 +34,7 @@ __all__ = [
     "IncomeCreate",
     "SplitIn",
     "SplitOut",
+    "TradeOut",
     "TransactionCreate",
     "TransactionOut",
     "TransactionUpdate",
@@ -64,6 +65,25 @@ class ExternalSplitOut(OutputModel):
 SplitOut = Annotated[AccountSplitOut | ExternalSplitOut, Field(discriminator="type")]
 
 
+class TradeOut(OutputModel):
+    """The arguments of a purchase or sale of shares, as they were entered."""
+
+    kind: TradeKind
+    account_id: int
+    security_id: int
+    quantity: DecimalStr
+    amount: int = Field(description="Cost of a purchase, or gross proceeds of a sale.")
+    other_account_id: int | None = Field(
+        description="Account paying or receiving the money; `null` for the "
+        "investment account's own cash."
+    )
+    fee: int
+    fee_category_id: int | None
+    tax: int
+    tax_category_id: int | None
+    gain_category_id: int | None
+
+
 def _tag_split(split: object) -> object:
     if isinstance(split, AccountSplit):
         return {"type": "account", **dataclasses.asdict(split)}
@@ -82,6 +102,11 @@ class TransactionOut(OutputModel):
     splits: list[SplitOut]
     kind: TransactionKind
     net_amount: int
+    trade: TradeOut | None = Field(
+        default=None,
+        description="Set when the splits were built by a purchase or sale of "
+        "shares; editing the splits directly removes it.",
+    )
 
     @field_validator("splits", mode="before")
     @classmethod

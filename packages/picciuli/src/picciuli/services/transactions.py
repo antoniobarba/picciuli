@@ -219,7 +219,9 @@ class TransactionService:
     ) -> Transaction:
         """Change a transaction; arguments left `UNSET` are not modified.
 
-        Passing `splits` replaces all existing splits. The splits (old or new) are
+        Passing `splits` replaces all existing splits and turns a purchase or
+        sale of shares into an ordinary transaction: its
+        [`trade`][picciuli.model.Trade] is removed. The splits (old or new) are
         validated again against the new date.
 
         Raises:
@@ -246,6 +248,8 @@ class TransactionService:
             if not isinstance(notes, Unset):
                 row.notes = v.optional_text(notes, "notes")
             if not isinstance(splits, Unset):
+                # Splits edited by hand no longer follow a trade's arguments.
+                row.trade = None
                 row.splits.clear()
                 session.flush()
                 row.splits.extend(new_rows)

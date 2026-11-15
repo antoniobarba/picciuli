@@ -17,7 +17,7 @@ from picciuli._db.queries import (
     to_transaction,
 )
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import AccountRow, SplitRow, TransactionRow
+from picciuli._db.tables import AccountRow, SplitRow, TradeRow, TransactionRow
 from picciuli.errors import ConflictError, ValidationError
 from picciuli.model import (
     UNSET,
@@ -326,6 +326,10 @@ class AccountService:
                 select(func.count())
                 .select_from(SplitRow)
                 .where(SplitRow.account_id == row.id)
+            ) or session.scalar(
+                select(func.count())
+                .select_from(TradeRow)
+                .where(TradeRow.other_account_id == row.id)
             )
             if used:
                 raise ConflictError(

@@ -56,6 +56,8 @@ __all__ = [
     "SecurityKind",
     "Settings",
     "Split",
+    "Trade",
+    "TradeKind",
     "Transaction",
     "TransactionKind",
     "Unset",
@@ -134,6 +136,13 @@ class TransactionKind(str, enum.Enum):
     """No external splits: money only moved between your accounts."""
     MIXED = "mixed"
     """External splits with both signs, for example a purchase with a refund."""
+
+
+class TradeKind(str, enum.Enum):
+    """Whether a [`Trade`][picciuli.model.Trade] bought or sold shares."""
+
+    BUY = "buy"
+    SELL = "sell"
 
 
 class SecurityKind(str, enum.Enum):
@@ -315,6 +324,46 @@ Split: TypeAlias = AccountSplit | ExternalSplit
 
 
 @dataclass(frozen=True, slots=True)
+class Trade:
+    """The details of a purchase or sale of shares, as they were entered.
+
+    Transactions recorded with
+    [`record_buy`][picciuli.services.InvestmentService.record_buy] or
+    [`record_sell`][picciuli.services.InvestmentService.record_sell] keep these
+    arguments next to the splits they produced, so that they can be edited
+    again with the same form. Replacing the splits of the transaction by hand
+    turns it into an ordinary transaction without a trade.
+
+    Attributes:
+        kind: Purchase or sale.
+        account_id: Investment account holding the shares.
+        security_id: The security traded.
+        quantity: Positive number of shares.
+        amount: Positive cost of a purchase, or gross proceeds of a sale.
+        other_account_id: Account paying for a purchase or receiving the
+            money of a sale, or `None` for the investment account's own cash.
+        fee: Commission (zero or positive).
+        fee_category_id: Category of the fee expense.
+        tax: Tax withheld on a sale (zero or positive; always zero for a
+            purchase).
+        tax_category_id: Category of the tax expense (sales only).
+        gain_category_id: Category of the realized gain or loss (sales only).
+    """
+
+    kind: TradeKind
+    account_id: int
+    security_id: int
+    quantity: Decimal
+    amount: int
+    other_account_id: int | None = None
+    fee: int = 0
+    fee_category_id: int | None = None
+    tax: int = 0
+    tax_category_id: int | None = None
+    gain_category_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Transaction:
     """A dated, balanced set of splits.
 
@@ -336,6 +385,8 @@ class Transaction:
         description: Short description, for example a payee.
         notes: Free text.
         splits: Splits in their stored order.
+        trade: The purchase or sale of shares the splits were built from,
+            or `None` for any other transaction.
     """
 
     id: int
@@ -343,6 +394,7 @@ class Transaction:
     description: str | None
     notes: str | None
     splits: tuple[Split, ...]
+    trade: Trade | None = None
 
     @property
     def account_splits(self) -> tuple[AccountSplit, ...]:

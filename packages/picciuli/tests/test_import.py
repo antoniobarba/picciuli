@@ -9,7 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from picciuli import AccountType, Book, ConflictError, ImportSummary, ValidationError
+from picciuli import (
+    AccountType,
+    Book,
+    ConflictError,
+    ImportSummary,
+    TradeKind,
+    ValidationError,
+)
 
 from .conftest import d
 from .schema_v1 import SCHEMA_V1
@@ -188,6 +195,13 @@ def test_file_round_trip(book: Book, source: Book, tmp_path: Path) -> None:
     assert (summary.accounts, summary.transactions, summary.prices) == (2, 4, 1)
     assert _snapshot(book) == _snapshot(source)
     assert book.settings.get() == source.settings.get()
+    (bought,) = [t for t in book.transactions.list() if t.trade is not None]
+    assert bought.trade is not None
+    assert (bought.trade.kind, bought.trade.quantity, bought.trade.amount) == (
+        TradeKind.BUY,
+        Decimal(2),
+        2100,
+    )
     assert book.import_file(path).duplicates == 4
     assert path.read_bytes() == content
 
@@ -325,7 +339,13 @@ _FIRST_EXPENSES = (
             "UPDATE splits SET amount = 999999 WHERE id = (SELECT min(id) FROM splits)",
             "unbalanced",
         ),
-        ("UPDATE splits SET quantity = -quantity", "cannot be negative"),
+        (
+            "DELETE FROM trades; UPDATE splits SET quantity = -quantity",
+            "cannot be negative",
+        ),
+        ("UPDATE trades SET amount = amount + 1", "trade does not match its splits"),
+        ("UPDATE trades SET fee_category_id = 999", "fee category does not exist"),
+        ("UPDATE trades SET kind = 'hold'", "kind must be"),
         (
             "UPDATE accounts SET type = 'checking' WHERE name = 'Broker'",
             "not an investment account",
@@ -355,7 +375,7 @@ _FIRST_EXPENSES = (
 def test_file_breaking_a_domain_rule_is_refused(
     book: Book, source: Book, tmp_path: Path, statement: str, message: str
 ) -> None:
-    path = _tamper(_write(source, tmp_path / "bad.db"), statement)
+    path = _tamper(_write(source, tmp_path / "bad.db"), *statement.split("; "))
     with pytest.raises(ValidationError, match=message):
         book.import_file(path, replace=True)
     assert book.accounts.list() == []

@@ -115,6 +115,9 @@ commit. Three boundaries still need explicit compatibility handling:
       tables, so that it keeps producing the same schema when the tables change
       later (see the version 1 → 2 step). The test in `tests/test_book.py`
       checks that an upgraded file has the same structure as a new one.
+    - The version 2 ? 3 step adds the `trades` table and back-fills it only
+      for buys and sales whose splits it can rebuild exactly from the inferred
+      trade; any other transaction keeps no trade and is edited as splits.
 2. **The HTTP API.** Browsers and phones update on their own schedule.
     - Changes to the API should be additive.
     - Breaking changes go under a new path prefix (`/v2`), while `/v1` is kept
