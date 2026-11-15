@@ -11,7 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from picciuli import Book
 from picciuli_api.auth import AuthenticationError, TokenVerifier, User
-from picciuli_api.books import BookRegistry
+from picciuli_api.books import BookRegistry, ImportLimiter
 from picciuli_api.config import Settings
 from picciuli_api.providers import SharedProviders
 
@@ -35,6 +35,7 @@ class AppContext:
     verifier: TokenVerifier
     books: BookRegistry
     providers: SharedProviders
+    imports: ImportLimiter
 
 
 bearer_scheme = HTTPBearer(

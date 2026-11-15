@@ -87,6 +87,11 @@ export interface paths {
          *     Merging requires the same currency and decimal digits. With
          *     `mode=replace`, all your data is deleted first and the file's settings
          *     are adopted. Either way the import is all-or-nothing.
+         *
+         *     The file must use the current schema version (open older files once with
+         *     an up-to-date console application) and its data must respect the same
+         *     rules as data entered by hand, otherwise the request fails with 422.
+         *     Only one import per user runs at a time (409 otherwise).
          */
         post: operations["import_data_api_v1_me_import_post"];
         delete?: never;
@@ -2388,6 +2393,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many imports running */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

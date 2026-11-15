@@ -227,7 +227,7 @@
           "me"
         ],
         "summary": "Import Data",
-        "description": "Load the data of a Picciuli database file (SQLite) into your book.\n\nWith `mode=merge`, accounts, categories, securities and periods with the\nsame name (or ISIN, or days) are reused, and transactions identical to\nexisting ones are skipped, so importing a file twice adds nothing.\nMerging requires the same currency and decimal digits. With\n`mode=replace`, all your data is deleted first and the file's settings\nare adopted. Either way the import is all-or-nothing.",
+        "description": "Load the data of a Picciuli database file (SQLite) into your book.\n\nWith `mode=merge`, accounts, categories, securities and periods with the\nsame name (or ISIN, or days) are reused, and transactions identical to\nexisting ones are skipped, so importing a file twice adds nothing.\nMerging requires the same currency and decimal digits. With\n`mode=replace`, all your data is deleted first and the file's settings\nare adopted. Either way the import is all-or-nothing.\n\nThe file must use the current schema version (open older files once with\nan up-to-date console application) and its data must respect the same\nrules as data entered by hand, otherwise the request fails with 422.\nOnly one import per user runs at a time (409 otherwise).",
         "operationId": "import_data_api_v1_me_import_post",
         "security": [
           {
@@ -305,6 +305,16 @@
           },
           "413": {
             "description": "The file is too big",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Too many imports running",
             "content": {
               "application/json": {
                 "schema": {

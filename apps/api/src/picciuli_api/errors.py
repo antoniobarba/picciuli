@@ -21,6 +21,7 @@ from picciuli import (
     ValidationError,
 )
 from picciuli_api.auth import AuthenticationError, AuthUnavailableError
+from picciuli_api.books import ImportsBusyError
 
 __all__ = ["ERROR_RESPONSES", "ErrorResponse", "install_error_handlers"]
 
@@ -96,6 +97,10 @@ async def _auth_unavailable(request: Request, exc: Exception) -> JSONResponse:
     return _error(503, "auth_unavailable", str(exc))
 
 
+async def _imports_busy(request: Request, exc: Exception) -> JSONResponse:
+    return _error(503, "busy", str(exc), headers={"Retry-After": "30"})
+
+
 async def _request_validation(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, RequestValidationError):
         raise TypeError("unexpected exception type") from exc
@@ -119,6 +124,7 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(PicciuliError, _library_error)
     app.add_exception_handler(AuthenticationError, _authentication_error)
     app.add_exception_handler(AuthUnavailableError, _auth_unavailable)
+    app.add_exception_handler(ImportsBusyError, _imports_busy)
     app.add_exception_handler(RequestValidationError, _request_validation)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     # Bugs still reach the server log: Starlette re-raises after responding.

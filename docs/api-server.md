@@ -64,12 +64,13 @@ picciuli-api openapi --output apps/api/openapi.json
 |--------|------------------------|-----------------------------------------------|
 | 401    | `unauthorized`         | missing, expired or invalid token             |
 | 404    | `not_found`            | unknown entity or URL                         |
-| 409    | `conflict`             | duplicate name, entity in use, closed account |
+| 409    | `conflict`             | duplicate name, entity in use, closed account, import already running |
 | 413    | `too_large`            | uploaded file above `MAX_IMPORT_BYTES`        |
 | 422    | `invalid_request`      | malformed request (with an `errors` list)     |
 | 422    | `validation_error`     | a domain rule, e.g. unbalanced splits         |
 | 502    | `price_provider_error` | the price provider failed                     |
 | 503    | `auth_unavailable`     | the identity provider's keys are unreachable  |
+| 503    | `busy`                 | `MAX_CONCURRENT_IMPORTS` imports are running  |
 | 500    | `internal_error`       | a bug; details are only in the server log    |
 
 ## Main endpoints
@@ -88,6 +89,13 @@ picciuli-api openapi --output apps/api/openapi.json
 | investments    | `/valuations`, `/net-worth`, `/buy`, `/sell`, `/refresh-prices`, `/refresh-exchange-rates`, `/{account}/valuation`, `/{account}/holdings`, `/{account}/sale-cost` |
 | providers      | `/prices`, `/rates`, `/prices/{id}/search?q=`                             |
 
+`POST /me/import` treats the uploaded file as untrusted: it is opened
+read-only, its schema must match the current schema version exactly (no views,
+triggers or extra tables), and every row is created again through the library
+services, so the data must respect the same rules as data entered by hand.
+Files with an older schema version are refused with `422`: open them once with
+an up-to-date console application, which upgrades them, then import them
+again.
 ## Configuration
 
 Environment variables (all prefixed with `PICCIULI_`):
@@ -105,6 +113,8 @@ Environment variables (all prefixed with `PICCIULI_`):
 | `CORS_ORIGINS`            | none                        | comma-separated front-end origins               |
 | `MAX_OPEN_BOOKS`          | `64`                        | books kept open at the same time                |
 | `MAX_IMPORT_BYTES`        | `52428800` (50 MB)          | largest file accepted by `POST /me/import`      |
+| `MAX_CONCURRENT_IMPORTS`  | `2`                         | imports running at once (one per user)          |
+| `IMPORT_TIMEOUT_SECONDS`  | `60`                        | time budget of one import before it is refused  |
 | `PRICE_CACHE_SECONDS`     | `900`                       | shared quote and rate cache duration            |
 | `HOST`, `PORT`            | `127.0.0.1`, `8000`         | listening address                               |
 | `FORWARDED_ALLOW_IPS`     | `127.0.0.1`                 | proxies trusted for `X-Forwarded-*`             |

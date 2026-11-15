@@ -55,7 +55,10 @@ transactions identical to ones you already have, so importing the same file
 twice adds nothing; your settings are kept and the file must use the same
 currency and decimal digits (unless your book is still empty). *Replace*
 deletes all your data first and adopts the file's settings. Either way the
-import is all-or-nothing.
+import is all-or-nothing, and the file must follow the same rules as data
+entered by hand (for example balanced transactions), otherwise nothing is
+imported. Files from an older Picciuli version must be opened once with an
+up-to-date console interface before they can be imported.
 
 The transaction form has the four kinds of the console interface: **Expense**,
 **Income**, **Transfer** and **Split**. In the split editor a live line shows

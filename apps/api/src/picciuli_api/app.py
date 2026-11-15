@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import picciuli
 from picciuli_api.auth import TokenVerifier
-from picciuli_api.books import BookRegistry
+from picciuli_api.books import BookRegistry, ImportLimiter
 from picciuli_api.config import Settings
 from picciuli_api.deps import AppContext, get_current_user
 from picciuli_api.errors import ERROR_RESPONSES, install_error_handlers
@@ -96,6 +96,7 @@ def create_app(
         books=books
         or BookRegistry(settings.users_dir, max_open=settings.max_open_books),
         providers=providers or SharedProviders(ttl=settings.price_cache_seconds),
+        imports=ImportLimiter(settings.max_concurrent_imports),
     )
 
     @asynccontextmanager

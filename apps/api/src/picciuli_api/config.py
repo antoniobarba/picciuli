@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     """How many user databases are kept open at the same time."""
     max_import_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
     """Largest database file accepted by `POST /me/import`, in bytes."""
+    max_concurrent_imports: int = Field(default=2, ge=1)
+    """How many imports may run at the same time (each user runs one at most)."""
+    import_timeout_seconds: float = Field(default=60.0, gt=0)
+    """Time budget of one import; slower imports are refused and rolled back."""
     price_cache_seconds: float = Field(default=900.0, ge=0)
     """How long downloaded quotes and exchange rates are reused, in seconds."""
 
