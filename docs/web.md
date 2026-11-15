@@ -41,6 +41,14 @@ rest. Every list row opens when clicked; its **⋯** menu has the other actions.
 A category, period or budget opens its transactions with their total and what
 is left of the budget (`e` or **⋯ › Edit** edits it); a transaction there opens
 in the editor.
+Every transaction list (the day's transactions, an account's register and the
+category, period and budget dialogs) has a **Search transactions** box and
+**Previous** / **Next** buttons, with 25 transactions per page. Search matches
+words in descriptions, notes, accounts, categories, dates and amounts across
+the whole list, not just the current page; clear it to see all transactions
+again. Changing the day or account resets the search and page. Totals, budget
+remaining, calendar figures and the register's running balances always refer
+to the original full data, regardless of search or page.
 Accounts and categories are reordered by dragging the **⠿** handle at the
 start of their row, with the mouse or a finger; a subcategory moves only among
 the subcategories of the same parent, and a category takes its subcategories

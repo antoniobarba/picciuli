@@ -7,6 +7,7 @@ import { useEditors } from '../app/editors';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
 import { Amount, Empty, Loading, PageHeader, RowMenu } from '../components/ui';
+import { TransactionListControls, useTransactionList } from '../components/TransactionListControls';
 import { shortDate, todayDay } from '../lib/dates';
 import { ACCOUNT_TYPE_LABELS, byId, categoryLabel, transactionTitle, type ById } from '../lib/format';
 import type { Account, Category } from '../api/types';
@@ -44,6 +45,7 @@ export function Register() {
   const categories = byId(useCategories().data);
   const valuation = useValuations().data?.find((v) => v.account.id === id);
   const entries = useMemo(() => [...(register.data?.entries ?? [])].reverse(), [register.data]);
+  const list = useTransactionList(entries, `account:${id}`, (entry) => entry.transaction);
   const account = register.data?.account;
 
   const remove = useApiMutation((api, transactionId: number) =>
@@ -100,8 +102,9 @@ export function Register() {
           </span>
         ) : null}
       </div>
-      {entries.length === 0 ? (
-        <Empty>No transactions yet.</Empty>
+      <TransactionListControls list={list} />
+      {list.items.length === 0 ? (
+        <Empty>{entries.length === 0 ? 'No transactions yet.' : 'No matching transactions.'}</Empty>
       ) : (
         <div className="card">
           <table className="table rows-clickable">
@@ -116,7 +119,7 @@ export function Register() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
+              {list.items.map((entry) => (
                 <tr
                   key={entry.transaction.id}
                   tabIndex={0}

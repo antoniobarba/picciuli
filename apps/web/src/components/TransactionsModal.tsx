@@ -22,6 +22,7 @@ import {
 } from '../lib/format';
 import { Modal } from './Modal';
 import { Amount, Empty, Loading } from './ui';
+import { TransactionListControls, useTransactionList } from './TransactionListControls';
 
 export interface Remaining {
   label: string;
@@ -73,19 +74,21 @@ export function TransactionsModal({
   const accountMap = useMemo(() => byId(accounts.data), [accounts.data]);
   const categoryMap = useMemo(() => byId(categories.data), [categories.data]);
   const list = transactions.data ?? [];
+  const paged = useTransactionList(list, JSON.stringify(filter), (transaction) => transaction);
   const valueOf = (transaction: Transaction) => (amountOf ? amountOf(transaction) : transaction.net_amount);
   const total = list.reduce((sum, transaction) => sum + valueOf(transaction), 0);
 
   return (
     <Modal open onClose={onClose} title={title} description={description} wide>
+      <TransactionListControls list={paged} />
       <div className="item-transactions">
         {transactions.isLoading ? (
           <Loading />
-        ) : list.length === 0 ? (
-          <Empty>No transactions.</Empty>
+        ) : paged.items.length === 0 ? (
+          <Empty>{list.length === 0 ? 'No transactions.' : 'No matching transactions.'}</Empty>
         ) : (
           <ul className="transaction-list" aria-label="Transactions">
-            {list.map((transaction) => (
+            {paged.items.map((transaction) => (
               <li key={transaction.id}>
                 <button
                   type="button"

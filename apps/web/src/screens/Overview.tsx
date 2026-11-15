@@ -21,6 +21,7 @@ import { DateField } from '../components/DateField';
 import { useConfirm, useNotify } from '../components/feedback';
 import { FormDialog } from '../components/forms';
 import { Amount, Empty, RowMenu } from '../components/ui';
+import { TransactionListControls, useTransactionList } from '../components/TransactionListControls';
 import { choosePeriod, cyclePeriod, dayFlows, shiftMonth, visibleRange } from '../lib/calendar';
 import { isValidDay, longDate, parts, shortDate, todayDay, type Day } from '../lib/dates';
 import {
@@ -74,6 +75,7 @@ export function Overview() {
     () => (transactions.data ?? []).filter((transaction) => transaction.date === day),
     [transactions.data, day],
   );
+  const list = useTransactionList(dayTransactions, day, (transaction) => transaction);
   const accountMap = useMemo(() => byId(accounts.data), [accounts.data]);
   const categoryMap = useMemo(() => byId(categories.data), [categories.data]);
   const hasOpenAccounts = (accounts.data ?? []).some((account) => !account.is_closed);
@@ -82,7 +84,7 @@ export function Overview() {
     unwrap(api.DELETE('/api/v1/transactions/{transaction_id}', { params: { path: { transaction_id: id } } })),
   );
 
-  const selected = dayTransactions.find((t) => t.id === selectedId) ?? (dayTransactions.length === 1 ? dayTransactions[0] : undefined);
+  const selected = list.items.find((t) => t.id === selectedId) ?? (list.items.length === 1 ? list.items[0] : undefined);
 
   const newTransaction = (on: Day = day) => {
     if (accounts.data && !hasOpenAccounts) {
@@ -172,15 +174,16 @@ export function Overview() {
               + New
             </button>
           </div>
+          <TransactionListControls list={list} />
           {!accounts.isLoading && !hasOpenAccounts ? (
             <Empty>
               Welcome! Start by creating an account in <Link to="/accounts">Accounts</Link>.
             </Empty>
-          ) : dayTransactions.length === 0 ? (
-            <Empty>No transactions on this day.</Empty>
+          ) : list.items.length === 0 ? (
+            <Empty>{dayTransactions.length === 0 ? 'No transactions on this day.' : 'No matching transactions.'}</Empty>
           ) : (
             <ul className="transaction-list">
-              {dayTransactions.map((transaction) => (
+              {list.items.map((transaction) => (
                 <li key={transaction.id} className={transaction.id === selected?.id ? 'selected' : ''}>
                   <button
                     type="button"
