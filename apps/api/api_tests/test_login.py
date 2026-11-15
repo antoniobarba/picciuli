@@ -12,8 +12,16 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 
+from api_tests.helpers import FakeClock
 from picciuli_api import Settings, create_app
-from picciuli_api.login import Flow, Login, UpstreamError, Zitadel
+from picciuli_api.login import (
+    Flow,
+    Login,
+    Throttle,
+    UpstreamError,
+    Zitadel,
+    client_key,
+)
 
 ORIGIN = "https://app.test"
 
@@ -43,6 +51,11 @@ class Identity:
         self.callback = self.redirect_uri + "?code=one-time-code&state=state"
         self.fail: str = ""
         self.found = True
+        self.lockout: dict[str, Any] = {
+            "maxPasswordAttempts": "5",
+            "maxOtpAttempts": "5",
+        }
+        self.users: dict[str, dict[str, Any]] = {}
 
     def call(
         self, method: str, path: str, body: dict[str, Any] | None = None
@@ -53,6 +66,9 @@ class Identity:
         if path.startswith("/v2/settings/login"):
             assert "ctx.orgId=org" in path
             return {"settings": self.policy}
+        if path.startswith("/v2/settings/lockout"):
+            assert "ctx.orgId=org" in path
+            return {"settings": self.lockout}
         if path.startswith("/v2/settings/password"):
             return {"settings": {"minLength": "8", "requiresNumber": True}}
         if path.startswith("/v2/oidc/auth_requests/"):
@@ -81,6 +97,10 @@ class Identity:
             return {}
         if path == "/v2/users/user":
             return {"user": self.user}
+        if method == "GET" and path.startswith("/v2/users/") and path.count("/") == 3:
+            if path in self.users:
+                return {"user": self.users[path]}
+            raise UpstreamError(404)
         if path == "/v2/users/user/authentication_methods":
             return {"authMethodTypes": self.methods}
         if path == "/v2/users/human":
@@ -127,7 +147,15 @@ def browser(
     login_settings: Settings, identity: Identity, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
     monkeypatch.setattr(Zitadel, "call", lambda self, *args: identity.call(*args))
-    with TestClient(create_app(login_settings), base_url=ORIGIN) as client:
+    app = create_app(login_settings)
+
+    async def from_test_ip(scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            ip = dict(scope["headers"]).get(b"x-test-ip", b"testclient").decode()
+            scope["client"] = (ip, 1234)
+        await app(scope, receive, send)
+
+    with TestClient(from_test_ip, base_url=ORIGIN) as client:
         client.headers["origin"] = ORIGIN
         yield client
 
@@ -419,6 +447,189 @@ def test_request_rate_is_bounded(browser: TestClient) -> None:
     response = browser.post("/api/auth/logout", json={})
     assert response.status_code == 429
     assert response.headers["retry-after"] == "60"
+
+
+def test_ipv6_clients_are_limited_per_64(browser: TestClient) -> None:
+    for host in range(30):
+        ip = f"2001:db8:1:2:{host:x}::1"
+        response = browser.post("/api/auth/logout", json={}, headers={"x-test-ip": ip})
+        assert response.status_code == 200
+    rotated = {"x-test-ip": "2001:db8:1:2:ffff:ffff:ffff:ffff"}
+    assert browser.post("/api/auth/logout", json={}, headers=rotated).status_code == 429
+    other = {"x-test-ip": "2001:db8:1:3::1"}
+    assert browser.post("/api/auth/logout", json={}, headers=other).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("host", "key"),
+    [
+        ("2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2::/64"),
+        ("::ffff:192.0.2.7", "192.0.2.7"),
+        ("192.0.2.7", "192.0.2.7"),
+        ("testclient", "testclient"),
+    ],
+)
+def test_client_key(host: str, key: str) -> None:
+    assert client_key(host) == key
+
+
+def rotating(number: int) -> dict[str, str]:
+    return {"x-test-ip": f"198.51.{number // 250}.{number % 250 + 1}"}
+
+
+def test_password_guessing_is_limited_per_account_across_ips(
+    browser: TestClient,
+) -> None:
+    start(browser)
+    wrong = {"username": "alice@example.test", "password": "wrong"}
+    for attempt in range(10):
+        response = browser.post(
+            "/api/auth/login", json=wrong, headers=rotating(attempt)
+        )
+        assert response.status_code == 400
+    shouted = {"username": " ALICE@example.test", "password": "correct"}
+    response = browser.post("/api/auth/login", json=shouted, headers=rotating(99))
+    assert response.status_code == 429
+    assert int(response.headers["retry-after"]) > 60
+    other = {"username": "bob@example.test", "password": "wrong"}
+    assert (
+        browser.post("/api/auth/login", json=other, headers=rotating(98)).status_code
+        == 400
+    )
+
+
+def test_totp_guessing_is_limited_per_user_and_session_across_ips(
+    browser: TestClient, identity: Identity
+) -> None:
+    start(browser)
+    identity.methods = ["AUTHENTICATION_METHOD_TYPE_TOTP"]
+    assert sign_in(browser).json()["step"] == "totp"
+    identity.fail = "/v2/sessions/session"
+    for attempt in range(10):
+        response = browser.post(
+            "/api/auth/verify", json={"code": "000000"}, headers=rotating(attempt)
+        )
+        assert response.status_code == 400
+    identity.fail = ""
+    response = browser.post(
+        "/api/auth/verify", json={"code": "123456"}, headers=rotating(50)
+    )
+    assert response.status_code == 429
+
+
+@pytest.mark.parametrize(
+    ("action", "extra"),
+    [("verify-email", {}), ("reset-password", {"password": "new"})],
+)
+def test_emailed_codes_are_limited_per_user_across_ips(
+    browser: TestClient, identity: Identity, action: str, extra: dict[str, str]
+) -> None:
+    identity.fail = "/email/verify" if action == "verify-email" else "/password"
+    body = {"user_id": "user", "code": "wrong", **extra}
+    for attempt in range(10):
+        response = browser.post(
+            f"/api/auth/{action}", json=body, headers=rotating(attempt)
+        )
+        assert response.status_code == 400
+    response = browser.post(f"/api/auth/{action}", json=body, headers=rotating(77))
+    assert response.status_code == 429
+
+
+def test_throttle_counters_cannot_be_evicted_by_volume() -> None:
+    clock = FakeClock()
+    throttle = Throttle(max_keys=3, clock=clock)
+    for _ in range(2):
+        assert throttle.hit("victim", 2, 900) == 0
+    assert throttle.hit("victim", 2, 900) > 0
+    assert throttle.hit("a", 2, 900) == 0
+    assert throttle.hit("b", 2, 900) == 0
+    assert throttle.hit("c", 2, 900) > 0  # full: refused, nothing evicted
+    assert throttle.hit("victim", 2, 900) > 0
+    clock.now += 900
+    assert throttle.hit("victim", 2, 900) == 0
+    assert set(throttle.windows) == {"victim"}
+
+
+@pytest.mark.parametrize(
+    "lockout",
+    [
+        {},
+        {"maxPasswordAttempts": "5"},
+        {"maxPasswordAttempts": "0", "maxOtpAttempts": "5"},
+    ],
+)
+def test_sign_in_fails_closed_without_lockout_policy(
+    browser: TestClient,
+    identity: Identity,
+    lockout: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    identity.lockout = lockout
+    response = browser.post("/api/auth/start", json={"auth_request": "V2_request"})
+    assert response.status_code == 503
+    assert "no lockout policy" in caplog.text
+    response = browser.post(
+        "/api/auth/verify-email", json={"user_id": "user", "code": "code"}
+    )
+    assert response.status_code == 503
+    assert browser.post("/api/auth/logout", json={}).status_code == 200
+
+
+def test_missing_lockout_policy_can_be_tolerated(
+    login_settings: Settings,
+    identity: Identity,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(Zitadel, "call", lambda self, *args: identity.call(*args))
+    identity.lockout = {}
+    login = Login(login_settings.model_copy(update={"login_require_lockout": False}))
+    login.require_lockout()
+    login.require_lockout()
+    assert caplog.text.count("no lockout policy") == 1
+    lockout_reads = [path for _, path, _ in identity.calls if "lockout" in path]
+    assert len(lockout_reads) == 1
+
+
+def test_unknown_foreign_and_wrong_codes_look_identical(
+    browser: TestClient, identity: Identity
+) -> None:
+    identity.users["/v2/users/foreign"] = {
+        "userId": "foreign",
+        "state": "USER_STATE_ACTIVE",
+        "details": {"resourceOwner": "other"},
+        "human": {"email": {"isVerified": False}},
+    }
+    for action, extra in [("verify-email", {}), ("reset-password", {"password": "x"})]:
+        identity.fail = "/email/verify" if action == "verify-email" else "/password"
+        responses = [
+            browser.post(
+                f"/api/auth/{action}",
+                json={"user_id": user_id, "code": "code", **extra},
+                headers=rotating(number),
+            )
+            for number, user_id in enumerate(["ghost", "foreign", "user"])
+        ]
+        assert {r.status_code for r in responses} == {400}
+        assert len({r.text for r in responses}) == 1
+
+
+def test_reset_work_happens_after_the_response(
+    browser: TestClient, identity: Identity
+) -> None:
+    identity.fail = "/password_reset"
+    response = browser.post(
+        "/api/auth/reset-request", json={"username": "alice@example.test"}
+    )
+    assert response.json() == {"step": "reset-sent"}
+    assert any(path.endswith("/password_reset") for _, path, _ in identity.calls)
+
+
+def test_missing_pat_is_unavailable(tmp_path: Path) -> None:
+    settings = Settings(oidc_issuer="https://identity.test", oidc_audience="aud")
+    with pytest.raises(HTTPException) as error:
+        Zitadel(settings).call("GET", "/v2/settings/login")
+    assert error.value.status_code == 503
 
 
 @pytest.mark.parametrize(

@@ -202,9 +202,12 @@ HTTPS. Login flows expire after ten minutes; Zitadel sessions have a 30-day
 lifetime. Session tokens never reach JavaScript. The existing OIDC access and
 refresh token storage is unchanged. Native sign-out terminates the current
 Zitadel session and revokes the app's tokens; it does not sign out other devices.
-Anonymous endpoints are limited to 30 requests per minute per client IP per
-API process. Keep the supplied single-process deployment or add a shared
-edge rate limiter when scaling it.
+Anonymous endpoints are limited to 30 requests per minute per client address
+(IPv6: per /64), and guesses to 10 per 15 minutes per username, user ID and
+Zitadel session, per API process. Native sign-in also requires a Zitadel lockout
+policy (see [Account lockout and MFA](deployment.md#account-lockout-and-mfa)).
+Keep the supplied single-process deployment or add a shared edge rate limiter
+when scaling it.
 
 For local native-login development, run the API with `PICCIULI_LOGIN_ORIGIN` set
 to `http://localhost:5173`, the development client ID and the same server-only

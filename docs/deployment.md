@@ -142,9 +142,24 @@ password from `.env`.
 4. In the **Token Settings** of each application, set **Auth Token Type** to
    **JWT**. The API validates JWT access tokens; opaque tokens are rejected.
 5. **Self-registration.** *Default settings → Login behavior and security*:
-   enable **Register allowed**. Under *Password complexity* and *Lockout* pick
-   your rules; enable passkeys or OTP under *Login behavior* if you like.
-6. **E-mail.** *Default settings → SMTP provider*: add an SMTP server (your
+   enable **Register allowed**. Under *Password complexity* pick your rules;
+   enable passkeys or OTP under *Login behavior* if you like.
+6. **Lockout (required).** Without a lockout policy, Zitadel allows unlimited
+   password and authenticator-code guesses, and the API refuses native sign-in
+   (see [Account lockout](#account-lockout-and-mfa)). Once the PAT and `.env`
+   values of [native login](web.md#enabling-native-login) are in place, copy
+   `deploy/zitadel_security.py` to `/opt/picciuli` and run:
+
+   ```bash
+   cd /opt/picciuli
+   sudo python3 zitadel_security.py lockout --apply   # 5 passwords, 5 OTPs
+   sudo python3 zitadel_security.py status
+   ```
+
+   `status` must show `maxPasswordAttempts` and `maxOtpAttempts` of 5 with
+   `RESOURCE_OWNER_TYPE_ORG`. Alternatively set them in the console under
+   *Organization → Settings → Lockout*.
+7. **E-mail.** *Default settings → SMTP provider*: add an SMTP server (your
    mail provider, Brevo, Mailgun, Amazon SES...) so that Zitadel can verify
    addresses and send password resets. Test delivery and activate the provider
    before inviting users: without an active provider, the login UI can ask for
@@ -189,6 +204,39 @@ and apply them with `./deploy.sh <current tag>` (or just re-run the workflow).
   bare domain redirect to it;
 - register a second user from the login page and check that they see an empty
   book.
+
+## Account lockout and MFA
+
+The organization's lockout policy locks a user after 5 wrong passwords or 5
+wrong authenticator codes. The API checks it before every native sign-in step
+(re-reading it every five minutes): while the policy is missing or zero, native
+sign-in answers `503` and the API logs `has no lockout policy`. Setting
+`PICCIULI_LOGIN_REQUIRE_LOCKOUT=false` keeps sign-in available and only logs
+the error; use it only temporarily. On top of Zitadel's lockout, the API allows
+30 requests per minute per client address (an IPv6 /64 counts as one address)
+and 10 attempts per 15 minutes per username, user ID and Zitadel session.
+
+A locked user stays locked until an administrator unlocks them: in the console
+(*Users → user → Unlock*) or with `POST /v2/users/<id>/unlock`. Anyone who
+knows an email address can lock that account, including the administrator's,
+so keep a second administrator (or the console session) available. The demo
+reset unlocks the `demo` user automatically.
+
+**MFA is optional** for now: users who enrolled an authenticator app must use
+it, others sign in with a password. Requiring MFA protects every account
+against password reuse, and is recommended for a financial app, but every user
+without an authenticator is asked to enrol one at their next sign-in (and the
+administrator must enrol one before using the console or `zitadel_security.py`
+again). After warning the users, run:
+
+```bash
+cd /opt/picciuli
+sudo python3 zitadel_security.py force-mfa           # shows the change
+sudo python3 zitadel_security.py force-mfa --apply
+```
+
+Undo it in the console (*Organization → Settings → Login behavior → Force
+MFA*).
 
 ## Everyday operations
 

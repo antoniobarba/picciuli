@@ -87,3 +87,32 @@ def test_reset_is_pinned_and_does_not_require_a_password_change(
         assert reset.call_args.args[0] == (
             tmp_path / "users" / f"{reset_demo.User(settings.oidc_issuer, '123').id}.db"
         )
+
+
+def test_reset_unlocks_a_locked_out_demo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = reset_demo.Settings(
+        oidc_issuer="https://issuer.example",
+        oidc_audience="project",
+        login_org_id="org",
+        data_dir=tmp_path,
+    )
+    client = Mock()
+    client.call.return_value = {
+        "user": {
+            "username": "demo",
+            "details": {"resourceOwner": "org"},
+            "state": "USER_STATE_LOCKED",
+            "human": {},
+        }
+    }
+    monkeypatch.setattr(
+        Path, "read_text", lambda self: '{"user_id":"123","password":"test-only"}'
+    )
+    monkeypatch.setattr(reset_demo, "Settings", lambda: settings)
+    monkeypatch.setattr(reset_demo, "Zitadel", lambda settings: client)
+    monkeypatch.setattr(reset_demo, "reset_book", Mock())
+    reset_demo.main()
+    paths = [call.args[1] for call in client.call.call_args_list]
+    assert paths == ["/v2/users/123", "/v2/users/123/unlock", "/v2/users/123/password"]
