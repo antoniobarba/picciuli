@@ -13,10 +13,11 @@ Caddy (HTTPS) ──▶ picciuli-api ──▶ data/users/<user id>.db   (one Bo
                        └──▶ Yahoo Finance, through a shared 15-minute cache
 ```
 
-- **Users are not managed by the API.** Registration, login, password resets,
-  e-mail verification and MFA are handled by an OpenID Connect provider
-  (Zitadel in the provided deployment). The API only checks the signature,
-  issuer, audience and expiry of the JWT access token in each request.
+- **Zitadel owns identities.** The optional [native login backend](web.md#enabling-native-login)
+  forwards registration, passwords, recovery and MFA checks to Zitadel through
+  narrowly scoped `/api/auth/*` endpoints. Credentials are not stored by Picciuli.
+  The book API still checks the signature, issuer, audience and expiry of the
+  OIDC JWT access token in each request.
 - **Every user has a private SQLite book**, created on the first request. The
   file name is a SHA-256 digest of the token's issuer and subject, so it never
   contains personal data. Users cannot reach each other's data: there is no

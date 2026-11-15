@@ -35,10 +35,16 @@ services:
       PICCIULI_OIDC_SWAGGER_SCOPES: ${SWAGGER_SCOPES:-openid profile email}
       PICCIULI_CORS_ORIGINS: ${CORS_ORIGINS:-}
       PICCIULI_PRICE_CACHE_SECONDS: ${PRICE_CACHE_SECONDS:-900}
+      PICCIULI_LOGIN_ORIGIN: ${LOGIN_ORIGIN:-}
+      PICCIULI_LOGIN_CLIENT_ID: ${WEB_CLIENT_ID:-}
+      PICCIULI_LOGIN_ORG_ID: ${LOGIN_ORG_ID:-}
+      PICCIULI_LOGIN_TOKEN_FILE: /run/secrets/login-client.pat
+      PICCIULI_LOGIN_COOKIE_SECRET: ${PICCIULI_LOGIN_COOKIE_SECRET:-}
       # The API port is not published: only Caddy can reach it.
       PICCIULI_FORWARDED_ALLOW_IPS: "*"
     volumes:
       - ./data/picciuli:/data
+      - ./secrets:/run/secrets:ro
     networks: [web]
 
   web:
@@ -50,6 +56,7 @@ services:
       PICCIULI_OIDC_ISSUER: https://${AUTH_DOMAIN}
       PICCIULI_OIDC_CLIENT_ID: ${WEB_CLIENT_ID:-}
       PICCIULI_OIDC_PROJECT_ID: ${OIDC_AUDIENCE:-}
+      PICCIULI_NATIVE_LOGIN: ${NATIVE_LOGIN:-false}
     read_only: true
     tmpfs: [/tmp]
     networks: [web]

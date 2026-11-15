@@ -13,6 +13,8 @@ export interface AppConfig {
   oidcClientId: string;
   /** Zitadel project id: requested as token audience so the API accepts it. */
   oidcProjectId: string;
+  /** Enabled only after the confidential login backend is provisioned. */
+  nativeLogin?: boolean;
 }
 
 function fromEnv(): Partial<AppConfig> {
@@ -22,6 +24,7 @@ function fromEnv(): Partial<AppConfig> {
     oidcIssuer: env.VITE_OIDC_ISSUER,
     oidcClientId: env.VITE_OIDC_CLIENT_ID,
     oidcProjectId: env.VITE_OIDC_PROJECT_ID,
+    nativeLogin: env.VITE_NATIVE_LOGIN === 'true',
   };
 }
 
@@ -36,12 +39,13 @@ export async function loadConfig(): Promise<AppConfig> {
     // Offline or not provided: use the build-time values.
   }
   const local = fromEnv();
-  const pick = (key: keyof AppConfig) => (remote[key] || local[key] || '').trim();
+  const pick = (key: Exclude<keyof AppConfig, 'nativeLogin'>) => (remote[key] || local[key] || '').trim();
   const config: AppConfig = {
     apiUrl: pick('apiUrl').replace(/\/+$/, ''),
     oidcIssuer: pick('oidcIssuer').replace(/\/+$/, ''),
     oidcClientId: pick('oidcClientId'),
     oidcProjectId: pick('oidcProjectId'),
+    nativeLogin: remote.nativeLogin ?? local.nativeLogin ?? false,
   };
   const missing = (['oidcIssuer', 'oidcClientId', 'oidcProjectId'] as const).filter((key) => !config[key]);
   if (missing.length) throw new Error(`Missing configuration: ${missing.join(', ')}`);

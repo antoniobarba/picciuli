@@ -97,7 +97,7 @@ async def _auth_unavailable(request: Request, exc: Exception) -> JSONResponse:
 
 async def _request_validation(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
-    errors = jsonable_encoder(exc.errors(), exclude={"ctx", "url"})
+    errors = jsonable_encoder(exc.errors(), exclude={"ctx", "url", "input"})
     return _error(422, "invalid_request", "the request is not valid", errors=errors)
 
 
