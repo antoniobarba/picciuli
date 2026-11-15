@@ -1518,6 +1518,12 @@ input[type='checkbox'] {
   margin-right: 0.4rem;
 }
 
+.item-transactions {
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
 .fab {
   display: none;
 }

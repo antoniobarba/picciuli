@@ -141,7 +141,10 @@ export interface TransactionFilter {
   end?: Day;
   account_id?: number;
   category_id?: number;
+  /** With `category_id`, also match its subcategories. */
+  include_subcategories?: boolean;
   text?: string;
+  newest_first?: boolean;
 }
 
 export function useTransactions(filter: TransactionFilter, enabled = true) {

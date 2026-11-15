@@ -4,7 +4,8 @@ import { useApiMutation, useBudgetReport, useCategories, useMoney, usePeriods } 
 import type { BudgetLine, Period } from '../api/types';
 import { useConfirm, useNotify } from '../components/feedback';
 import { AmountField, errorMessage, FormDialog, SelectField } from '../components/forms';
-import { Amount, Empty, Loading, PageHeader, ProgressBar, RowMenu } from '../components/ui';
+import { BudgetTransactions } from '../components/TransactionsModal';
+import { Amount, Empty, Loading, onEnter, PageHeader, ProgressBar, RowMenu } from '../components/ui';
 import { covers } from '../lib/calendar';
 import { todayDay } from '../lib/dates';
 import { categoryTree, periodRange } from '../lib/format';
@@ -29,7 +30,9 @@ export function Budgets() {
     ordered[ordered.length - 1] ??
     null;
   const report = useBudgetReport(current?.id ?? null);
-  const [dialog, setDialog] = useState<{ kind: 'edit'; line: BudgetLine | null } | { kind: 'copy' } | null>(null);
+  const [dialog, setDialog] = useState<
+    { kind: 'transactions' | 'edit'; line: BudgetLine | null } | { kind: 'copy' } | null
+  >(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const lines = report.data?.lines ?? [];
   const selected = lines.find((l) => l.budget.id === selectedId) ?? null;
@@ -144,8 +147,8 @@ export function Budgets() {
                         tabIndex={0}
                         className={line.budget.id === selectedId ? 'selected' : ''}
                         onFocus={() => setSelectedId(line.budget.id)}
-                        onClick={() => setDialog({ kind: 'edit', line })}
-                        onKeyDown={(e) => e.key === 'Enter' && setDialog({ kind: 'edit', line })}
+                        onClick={() => setDialog({ kind: 'transactions', line })}
+                        onKeyDown={onEnter(() => setDialog({ kind: 'transactions', line }))}
                       >
                         <td>
                           {line.category.parent_id !== null ? `└ ${line.category.name}` : line.category.name}
@@ -196,6 +199,9 @@ export function Budgets() {
           )}
         </>
       )}
+      {dialog?.kind === 'transactions' && dialog.line && current ? (
+        <BudgetTransactions line={dialog.line} period={current} onClose={() => setDialog(null)} />
+      ) : null}
       {dialog?.kind === 'edit' && current ? (
         <BudgetForm periodId={current.id} line={dialog.line} onClose={() => setDialog(null)} categoriesInUse={lines} />
       ) : null}
