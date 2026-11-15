@@ -568,6 +568,46 @@ button {
   color: var(--muted);
 }
 
+.table .handle-cell,
+.table tr.child td.handle-cell {
+  width: 1%;
+  padding: 0.1rem 0 0.1rem 0.3rem;
+}
+
+.table tr.child td.handle-cell + td {
+  padding-left: 1.6rem;
+  color: var(--muted);
+}
+
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.drag-handle[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.table tbody tr.dragging td {
+  background: var(--accent-soft);
+}
+
+.table tbody tr.dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.table tbody tr.drop-before td {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.table tbody tr.drop-after td {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
 .table tr.closed td {
   opacity: 0.55;
 }
