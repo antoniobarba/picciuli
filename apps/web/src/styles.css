@@ -918,6 +918,11 @@ input[type='checkbox'] {
   box-shadow: var(--shadow);
 }
 
+.import-file {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .switch {
   display: inline-flex;
   align-items: center;

@@ -270,7 +270,8 @@ encrypted off-site copy. Test a restore from time to time.
 stop the API (`docker compose stop api`), copy
 `users/<id>.db` from the archive into `data/picciuli/users/`, fix the owner
 (`chown 10001:10001`), then `docker compose start api`. Users can also download
-their own data at any time with `GET /api/v1/me/export`.
+their own data at any time with `GET /api/v1/me/export`, and load it back
+with `POST /api/v1/me/import?mode=replace`.
 
 **Restore Zitadel:** `docker compose exec -T postgres pg_restore -U postgres
 --clean -d zitadel < zitadel.dump` with the same `ZITADEL_MASTERKEY`.

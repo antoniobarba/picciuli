@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import datetime as dt
+import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx2 import Response
 
 from api_tests.helpers import API, ISSUER, create_account
-from picciuli import Book
+from picciuli import AccountType, Book
 from picciuli_api import Settings
 from picciuli_api.auth import User
 
@@ -55,6 +59,105 @@ class TestMe:
         assert not any(settings.users_dir.iterdir())
         assert alice.get(f"{API}/accounts").json() == []
         assert alice.delete(f"{API}/me").status_code == 204
+
+
+def _database(path: Path, *names: str) -> bytes:
+    with Book.open(path) as book:
+        for name in names:
+            account = book.accounts.create(name, AccountType.CHECKING)
+            book.transactions.record_income(
+                dt.date(2025, 1, 1), 1000, account_id=account.id
+            )
+    return path.read_bytes()
+
+
+def _upload(client: TestClient, content: bytes, mode: str = "merge") -> Response:
+    return client.post(
+        f"{API}/me/import",
+        params={"mode": mode},
+        content=content,
+        headers={"Content-Type": "application/vnd.sqlite3"},
+    )
+
+
+class TestImport:
+    def test_merge_and_replace(self, alice: TestClient, tmp_path: Path) -> None:
+        create_account(alice, "Wallet")
+        content = _database(tmp_path / "local.db", "Checking", "Savings")
+        merged = _upload(alice, content)
+        assert merged.status_code == 200
+        assert merged.json() == {
+            "replaced": False,
+            "accounts": 2,
+            "categories": 0,
+            "securities": 0,
+            "prices": 0,
+            "exchange_rates": 0,
+            "periods": 0,
+            "budgets": 0,
+            "transactions": 2,
+            "duplicates": 0,
+        }
+        again = _upload(alice, content).json()
+        assert (again["accounts"], again["duplicates"]) == (0, 2)
+        names = [a["name"] for a in alice.get(f"{API}/accounts").json()]
+        assert names == ["Wallet", "Checking", "Savings"]
+
+        replaced = _upload(alice, content, "replace").json()
+        assert replaced["replaced"] and replaced["accounts"] == 2
+        names = [a["name"] for a in alice.get(f"{API}/accounts").json()]
+        assert names == ["Checking", "Savings"]
+
+    def test_merge_needs_the_same_currency(
+        self, alice: TestClient, tmp_path: Path
+    ) -> None:
+        create_account(alice, "Wallet")
+        path = tmp_path / "local.db"
+        with Book.open(path) as book:
+            book.settings.update(currency="€", currency_code="EUR")
+        response = _upload(alice, path.read_bytes())
+        assert response.status_code == 409
+        assert _upload(alice, path.read_bytes(), "replace").status_code == 200
+        assert alice.get(f"{API}/settings").json()["currency_code"] == "EUR"
+
+    @pytest.mark.parametrize("kind", ["text", "empty sqlite", "damaged"])
+    def test_rejects_other_files(
+        self, alice: TestClient, tmp_path: Path, kind: str
+    ) -> None:
+        path = tmp_path / "other.db"
+        if kind == "text":
+            content = b"hello"
+        elif kind == "empty sqlite":
+            with closing(sqlite3.connect(path)) as db:
+                db.execute("CREATE TABLE things (id INTEGER)")
+            content = path.read_bytes()
+        else:
+            content = _database(path, "Checking")[:2048]
+        response = _upload(alice, content)
+        assert response.status_code == 422
+        assert alice.get(f"{API}/accounts").json() == []
+
+    def test_size_limit(
+        self, alice: TestClient, settings: Settings, tmp_path: Path
+    ) -> None:
+        settings.max_import_bytes = 100
+        response = _upload(alice, _database(tmp_path / "local.db", "Checking"))
+        assert response.status_code == 413
+        assert response.json()["error"] == "too_large"
+
+    def test_cleans_up_temporary_files(
+        self, alice: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        content = _database(tmp_path / "local.db", "Checking")
+        uploads = tmp_path / "uploads"
+        uploads.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(uploads))
+        assert _upload(alice, content).status_code == 200
+        assert _upload(alice, b"junk").status_code == 422
+        assert list(uploads.iterdir()) == []
+
+    def test_needs_authentication(self, client: TestClient) -> None:
+        assert _upload(client, b"").status_code == 401
 
 
 class TestSettings:

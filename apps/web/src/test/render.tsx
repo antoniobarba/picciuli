@@ -9,6 +9,9 @@ import { ConfirmProvider, ToastProvider } from '../components/feedback';
 export interface FakeRequest {
   method: string;
   path: string;
+  /** Query parameters, present only when the URL has some. */
+  query?: Record<string, string>;
+  /** Parsed JSON, or the raw text of other bodies. */
   body: unknown;
 }
 
@@ -21,8 +24,14 @@ export function renderWithApi(ui: ReactNode, routes: Record<string, unknown> = {
   const fetchMock = vi.fn(async (input: Request) => {
     const url = new URL(input.url);
     const text = await input.text();
-    const body = text ? JSON.parse(text) : null;
-    requests.push({ method: input.method, path: url.pathname, body });
+    const json = (input.headers.get('Content-Type') ?? '').includes('json');
+    const body = text ? (json ? JSON.parse(text) : text) : null;
+    requests.push({
+      method: input.method,
+      path: url.pathname,
+      ...(url.search ? { query: Object.fromEntries(url.searchParams) } : {}),
+      body,
+    });
     const key = `${input.method} ${url.pathname}`;
     if (key in routes) return Response.json(routes[key], { status: input.method === 'POST' ? 201 : 200 });
     if (input.method !== 'GET') return Response.json(body ?? {}, { status: input.method === 'POST' ? 201 : 200 });

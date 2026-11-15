@@ -46,7 +46,15 @@ rest. Every list row opens when clicked; its **⋯** menu has the other actions.
 | Periods | Create, edit and delete periods. |
 | Budgets | Budgets of a period with their progress; copy them from another period. |
 | Investments | Holdings at market value, securities and their latest prices; find a security online, buy, sell (with a preview of the cost basis and gain), enter prices, refresh prices, download the price history, live prices. |
-| Settings | Currency, decimal digits, currency code, cost method and providers; export your data as a SQLite file (it opens with the console interface), delete all your data, sign out. |
+| Settings | Currency, decimal digits, currency code, cost method and providers; export your data as a SQLite file (it opens with the console interface); import a SQLite file, such as the database of the console interface, choosing to **merge** it with your data or to **replace** your data; delete all your data, sign out. |
+
+**Importing.** *Merge* reuses accounts, categories, securities and periods that
+have the same name (securities also by ISIN, periods by their days) and skips
+transactions identical to ones you already have, so importing the same file
+twice adds nothing; your settings are kept and the file must use the same
+currency and decimal digits (unless your book is still empty). *Replace*
+deletes all your data first and adopts the file's settings. Either way the
+import is all-or-nothing.
 
 The transaction form has the four kinds of the console interface: **Expense**,
 **Income**, **Transfer** and **Split**. In the split editor a live line shows

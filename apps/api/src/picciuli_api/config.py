@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     max_open_books: int = Field(default=64, ge=1)
     """How many user databases are kept open at the same time."""
+    max_import_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+    """Largest database file accepted by `POST /me/import`, in bytes."""
     price_cache_seconds: float = Field(default=900.0, ge=0)
     """How long downloaded quotes and exchange rates are reused, in seconds."""
 

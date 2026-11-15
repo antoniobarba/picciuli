@@ -68,6 +68,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Data
+         * @description Load the data of a Picciuli database file (SQLite) into your book.
+         *
+         *     With `mode=merge`, accounts, categories, securities and periods with the
+         *     same name (or ISIN, or days) are reused, and transactions identical to
+         *     existing ones are skipped, so importing a file twice adds nothing.
+         *     Merging requires the same currency and decimal digits. With
+         *     `mode=replace`, all your data is deleted first and the file's settings
+         *     are adopted. Either way the import is all-or-nothing.
+         */
+        post: operations["import_data_api_v1_me_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings": {
         parameters: {
             query?: never;
@@ -1588,6 +1615,32 @@ export interface components {
             unrealized_gain: number | null;
         };
         /**
+         * ImportOut
+         * @description What an import added to your book (reused entities are not counted).
+         */
+        ImportOut: {
+            /** Replaced */
+            replaced: boolean;
+            /** Accounts */
+            accounts: number;
+            /** Categories */
+            categories: number;
+            /** Securities */
+            securities: number;
+            /** Prices */
+            prices: number;
+            /** Exchange Rates */
+            exchange_rates: number;
+            /** Periods */
+            periods: number;
+            /** Budgets */
+            budgets: number;
+            /** Transactions */
+            transactions: number;
+            /** Duplicates */
+            duplicates: number;
+        };
+        /**
          * IncomeCreate
          * @description Money received into one account.
          */
@@ -2253,6 +2306,79 @@ export interface operations {
             };
             /** @description Conflict with the stored data */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_data_api_v1_me_import_post: {
+        parameters: {
+            query?: {
+                /** @description Merge with your data, or replace it entirely. */
+                mode?: "merge" | "replace";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A Picciuli database file, e.g. made by the TUI. */
+        requestBody: {
+            content: {
+                "application/vnd.sqlite3": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The file is too big */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

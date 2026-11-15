@@ -10,6 +10,7 @@ from types import TracebackType
 
 from sqlalchemy import Engine
 
+from picciuli._db.merge import import_book
 from picciuli._db.schema import (
     SCHEMA_VERSION,
     file_engine,
@@ -17,6 +18,8 @@ from picciuli._db.schema import (
     prepare_schema,
 )
 from picciuli._db.session import UnitOfWork
+from picciuli.errors import ValidationError
+from picciuli.model import ImportSummary
 from picciuli.services import (
     AccountService,
     BudgetService,
@@ -142,6 +145,42 @@ class Book:
         """
         with self._uow.session():
             yield
+
+    def import_from(self, source: Book, *, replace: bool = False) -> ImportSummary:
+        """Copy every account, category, transaction, budget... of another book.
+
+        The whole import runs in a single transaction: on error nothing changes.
+
+        When *merging* (the default), entities already present are reused
+        instead of duplicated: accounts, categories and periods are matched by
+        name (periods by first and last day), securities by ISIN or name,
+        budgets, prices and exchange rates by category, security or currency
+        and day, and transactions by content (day, description, notes and
+        splits), so importing the same book twice adds nothing the second
+        time. Existing entities and settings are never changed. A book without
+        accounts, categories, transactions, securities or periods takes the
+        settings of `source`.
+
+        When *replacing*, everything stored in this book is deleted first and
+        the settings of `source` are adopted.
+
+        Args:
+            source: Book to read; it is not modified.
+            replace: Whether to erase this book before importing.
+
+        Returns:
+            How many entities were added.
+
+        Raises:
+            ConflictError: When merging books with a different currency or
+                number of decimal digits (replace instead), or if the source
+                data violates a database constraint.
+            ValidationError: If `source` is this book.
+        """
+        if source is self:
+            raise ValidationError("a book cannot be imported into itself")
+        with source._uow.session() as reading, self._uow.session() as writing:
+            return import_book(writing, reading, replace=replace)
 
     def close(self) -> None:
         """Release the database connections. The book cannot be used afterwards."""

@@ -21,6 +21,7 @@ export type BudgetLine = S['BudgetLineOut'];
 export type Register = S['RegisterOut'];
 export type RegisterEntry = S['RegisterEntryOut'];
 export type Settings = S['SettingsOut'];
+export type ImportResult = S['ImportOut'];
 export type SettingsUpdate = S['SettingsUpdate'];
 export type CostMethod = S['CostMethod'];
 export type Security = S['SecurityOut'];

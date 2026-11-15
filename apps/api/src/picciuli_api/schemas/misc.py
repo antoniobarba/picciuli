@@ -9,6 +9,7 @@ from .base import OutputModel, PatchModel
 from .transactions import TransactionOut
 
 __all__ = [
+    "ImportOut",
     "MeOut",
     "RegisterEntryOut",
     "RegisterOut",
@@ -63,3 +64,20 @@ class MeOut(OutputModel):
     """Opaque identifier of the user's data."""
     issuer: str
     subject: str
+
+
+class ImportOut(OutputModel):
+    """What an import added to your book (reused entities are not counted)."""
+
+    replaced: bool
+    """Whether the previous data was erased first."""
+    accounts: int
+    categories: int
+    securities: int
+    prices: int
+    exchange_rates: int
+    periods: int
+    budgets: int
+    transactions: int
+    duplicates: int
+    """Transactions skipped because an identical one already existed."""

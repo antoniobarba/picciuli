@@ -105,6 +105,8 @@ export interface FormDialogProps {
   /** Validate and save; throw `InputError` or `ApiError` to keep the form open. */
   onSubmit: () => Promise<unknown> | unknown;
   saveLabel?: string;
+  /** Label of the save button while `onSubmit` runs. */
+  busyLabel?: string;
   help?: ReactNode;
   wide?: boolean;
   danger?: boolean;
@@ -120,6 +122,7 @@ export function FormDialog({
   title,
   onSubmit,
   saveLabel = 'Save',
+  busyLabel = 'Saving…',
   help,
   wide,
   danger,
@@ -172,7 +175,7 @@ export function FormDialog({
             Cancel
           </button>
           <button type="submit" className={`button ${danger ? 'danger' : 'primary'}`} disabled={busy}>
-            {busy ? 'Saving…' : saveLabel}
+            {busy ? busyLabel : saveLabel}
           </button>
         </div>
       </form>

@@ -65,6 +65,7 @@ picciuli-api openapi --output apps/api/openapi.json
 | 401    | `unauthorized`         | missing, expired or invalid token             |
 | 404    | `not_found`            | unknown entity or URL                         |
 | 409    | `conflict`             | duplicate name, entity in use, closed account |
+| 413    | `too_large`            | uploaded file above `MAX_IMPORT_BYTES`        |
 | 422    | `invalid_request`      | malformed request (with an `errors` list)     |
 | 422    | `validation_error`     | a domain rule, e.g. unbalanced splits         |
 | 502    | `price_provider_error` | the price provider failed                     |
@@ -75,7 +76,7 @@ picciuli-api openapi --output apps/api/openapi.json
 
 | Resource       | Endpoints                                                                 |
 |----------------|---------------------------------------------------------------------------|
-| me             | `GET /me`, `GET /me/export` (SQLite download), `DELETE /me` (erase data)  |
+| me             | `GET /me`, `GET /me/export` (SQLite download), `POST /me/import?mode=merge\|replace` (SQLite upload), `DELETE /me` (erase data) |
 | settings       | `GET`, `PATCH /settings`                                                  |
 | accounts       | CRUD, `/balances`, `/net-worth`, `/{id}/balance`, `/{id}/register`, `/{id}/move`, `/{id}/close`, `/{id}/reopen` |
 | categories     | CRUD, `?top_level=true`, `/{id}/children`, `DELETE ?reassign_to=` or `?uncategorize=true` |
@@ -101,6 +102,7 @@ Environment variables (all prefixed with `PICCIULI_`):
 | `DATA_DIR`                | `data`                      | the books are in its `users` subdirectory       |
 | `CORS_ORIGINS`            | none                        | comma-separated front-end origins               |
 | `MAX_OPEN_BOOKS`          | `64`                        | books kept open at the same time                |
+| `MAX_IMPORT_BYTES`        | `52428800` (50 MB)          | largest file accepted by `POST /me/import`      |
 | `PRICE_CACHE_SECONDS`     | `900`                       | shared quote and rate cache duration            |
 | `HOST`, `PORT`            | `127.0.0.1`, `8000`         | listening address                               |
 | `FORWARDED_ALLOW_IPS`     | `127.0.0.1`                 | proxies trusted for `X-Forwarded-*`             |

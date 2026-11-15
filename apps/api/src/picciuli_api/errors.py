@@ -51,6 +51,7 @@ _HTTP_CODES: Final = {
     403: "forbidden",
     404: "not_found",
     405: "method_not_allowed",
+    413: "too_large",
 }
 
 ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {

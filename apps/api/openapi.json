@@ -221,6 +221,113 @@
         ]
       }
     },
+    "/api/v1/me/import": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Import Data",
+        "description": "Load the data of a Picciuli database file (SQLite) into your book.\n\nWith `mode=merge`, accounts, categories, securities and periods with the\nsame name (or ISIN, or days) are reused, and transactions identical to\nexisting ones are skipped, so importing a file twice adds nothing.\nMerging requires the same currency and decimal digits. With\n`mode=replace`, all your data is deleted first and the file's settings\nare adopted. Either way the import is all-or-nothing.",
+        "operationId": "import_data_api_v1_me_import_post",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "merge",
+                "replace"
+              ],
+              "type": "string",
+              "description": "Merge with your data, or replace it entirely.",
+              "default": "merge",
+              "title": "Mode"
+            },
+            "description": "Merge with your data, or replace it entirely."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is too big",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "A Picciuli database file, e.g. made by the TUI.",
+          "content": {
+            "application/vnd.sqlite3": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings": {
       "get": {
         "tags": [
@@ -7291,6 +7398,65 @@
         ],
         "title": "HoldingOut",
         "description": "Shares of one security held in an account."
+      },
+      "ImportOut": {
+        "properties": {
+          "replaced": {
+            "type": "boolean",
+            "title": "Replaced"
+          },
+          "accounts": {
+            "type": "integer",
+            "title": "Accounts"
+          },
+          "categories": {
+            "type": "integer",
+            "title": "Categories"
+          },
+          "securities": {
+            "type": "integer",
+            "title": "Securities"
+          },
+          "prices": {
+            "type": "integer",
+            "title": "Prices"
+          },
+          "exchange_rates": {
+            "type": "integer",
+            "title": "Exchange Rates"
+          },
+          "periods": {
+            "type": "integer",
+            "title": "Periods"
+          },
+          "budgets": {
+            "type": "integer",
+            "title": "Budgets"
+          },
+          "transactions": {
+            "type": "integer",
+            "title": "Transactions"
+          },
+          "duplicates": {
+            "type": "integer",
+            "title": "Duplicates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "replaced",
+          "accounts",
+          "categories",
+          "securities",
+          "prices",
+          "exchange_rates",
+          "periods",
+          "budgets",
+          "transactions",
+          "duplicates"
+        ],
+        "title": "ImportOut",
+        "description": "What an import added to your book (reused entities are not counted)."
       },
       "IncomeCreate": {
         "properties": {

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { unwrap } from '../api/client';
 import { useApi } from '../api/context';
 import { useApiMutation, useMe, usePriceProviders, useRateProviders, useSettings } from '../api/queries';
@@ -8,6 +8,7 @@ import { displayName } from '../auth/oidc';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage, SelectField, TextField } from '../components/forms';
 import { Loading, PageHeader } from '../components/ui';
+import { ImportForm } from '../forms/ImportForm';
 import { COST_METHOD_LABELS } from '../lib/format';
 import { InputError } from '../lib/forms';
 import { MoneyFormat } from '../lib/money';
@@ -139,6 +140,8 @@ function AccountSection() {
   const confirm = useConfirm();
   const notify = useNotify();
   const [busy, setBusy] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
 
   const exportData = async () => {
     setBusy(true);
@@ -199,6 +202,21 @@ function AccountSection() {
         <button type="button" className="button" onClick={() => void exportData()} disabled={busy}>
           {busy ? 'Exporting…' : 'Export my data (SQLite)'}
         </button>
+        <button type="button" className="button" onClick={() => filePicker.current?.click()}>
+          Import data (SQLite)
+        </button>
+        <input
+          ref={filePicker}
+          type="file"
+          accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/x-sqlite3"
+          hidden
+          aria-label="Database file to import"
+          onChange={(event) => {
+            setImportFile(event.target.files?.[0] ?? null);
+            // Let the same file be chosen again later.
+            event.target.value = '';
+          }}
+        />
         <button type="button" className="button danger" onClick={() => void eraseData()}>
           Delete all my data
         </button>
@@ -207,8 +225,14 @@ function AccountSection() {
         </button>
       </div>
       <p className="muted small card-note">
-        The export opens with the Picciuli library and console interface: <code>picciuli-tui picciuli.db</code>.
+        The export opens with the Picciuli library and console interface: <code>picciuli-tui picciuli.db</code>. Import
+        loads such a file, for example the database of the console app, merging it with your data or replacing it.
       </p>
+      <ImportForm
+        key={importFile ? `${importFile.name}:${importFile.lastModified}` : 'none'}
+        file={importFile}
+        onClose={() => setImportFile(null)}
+      />
     </section>
   );
 }

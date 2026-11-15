@@ -44,6 +44,7 @@ __all__ = [
     "ExchangeRate",
     "ExternalSplit",
     "Holding",
+    "ImportSummary",
     "NetWorth",
     "Period",
     "PeriodSummary",
@@ -742,3 +743,36 @@ class PriceUpdate:
     prices: tuple[Price, ...]
     exchange_rates: tuple[ExchangeRate, ...]
     errors: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ImportSummary:
+    """Outcome of [`Book.import_from`][picciuli.Book.import_from].
+
+    Every count is the number of rows *added* to the book; entities that were
+    already present (and therefore reused) are not counted.
+
+    Attributes:
+        replaced: Whether the previous content was erased before importing.
+        accounts: Accounts added.
+        categories: Categories added.
+        securities: Securities added.
+        prices: Prices added.
+        exchange_rates: Exchange rates added.
+        periods: Periods added.
+        budgets: Budgets added.
+        transactions: Transactions added.
+        duplicates: Transactions skipped because an identical one already
+            existed.
+    """
+
+    replaced: bool
+    accounts: int
+    categories: int
+    securities: int
+    prices: int
+    exchange_rates: int
+    periods: int
+    budgets: int
+    transactions: int
+    duplicates: int

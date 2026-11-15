@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithApi } from '../test/render';
+import { describeImport, ImportForm } from './ImportForm';
 import { PeriodForm } from './PeriodForm';
 import { TransactionForm } from './TransactionForm';
 
@@ -96,5 +97,46 @@ describe('TransactionForm', () => {
         ],
       },
     });
+  });
+});
+
+describe('ImportForm', () => {
+  const result = {
+    replaced: true,
+    accounts: 1,
+    categories: 2,
+    securities: 0,
+    prices: 0,
+    exchange_rates: 0,
+    periods: 0,
+    budgets: 0,
+    transactions: 5,
+    duplicates: 0,
+  };
+
+  it('uploads the raw file with the chosen mode', async () => {
+    const onClose = vi.fn();
+    const file = new File(['SQLite format 3'], 'local.db', { type: 'application/vnd.sqlite3' });
+    const { requests } = renderWithApi(<ImportForm file={file} onClose={onClose} />, {
+      'POST /api/v1/me/import': result,
+    });
+    const user = userEvent.setup();
+    expect(screen.getByRole('button', { name: 'Merge' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Replace my data' }));
+    await user.click(screen.getByRole('button', { name: 'Replace everything' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(requests.find((r) => r.method === 'POST')).toEqual({
+      method: 'POST',
+      path: '/api/v1/me/import',
+      query: { mode: 'replace' },
+      body: 'SQLite format 3',
+    });
+    expect(await screen.findByText('Added 5 transactions, 1 account, 2 categories.')).toBeInTheDocument();
+  });
+
+  it('describes skipped duplicates', () => {
+    expect(describeImport({ ...result, accounts: 0, categories: 0, transactions: 0, duplicates: 1 })).toBe(
+      'Nothing new to add. 1 transaction was already there.',
+    );
   });
 });
