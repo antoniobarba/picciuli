@@ -47,11 +47,12 @@ On your computer, create the key GitHub Actions will use to log in:
 ssh-keygen -t ed25519 -N "" -C picciuli-deploy -f picciuli-deploy
 ```
 
-Copy the bootstrap script, the public key and the configuration template to the
-server and run the script as root:
+Copy the bootstrap script, the backup timer, the public key and the
+configuration template to the server and run the script as root:
 
 ```bash
-scp deploy/bootstrap-vm.sh deploy/.env.example picciuli-deploy.pub you@server:
+scp deploy/bootstrap-vm.sh deploy/picciuli-backup.service \
+  deploy/picciuli-backup.timer deploy/.env.example picciuli-deploy.pub you@server:
 ssh you@server
 sudo bash bootstrap-vm.sh "$(cat picciuli-deploy.pub)"
 sudo install -o deploy -g deploy -m 600 .env.example /opt/picciuli/.env
@@ -59,9 +60,9 @@ sudo install -o deploy -g deploy -m 600 .env.example /opt/picciuli/.env
 
 It installs Docker and the Compose plugin, opens only SSH, HTTP and HTTPS in the
 server's firewall (ufw, or the iptables rules of Oracle Cloud images), enables
-automatic security updates, log rotation and the nightly backup, and creates
-the `deploy` user and `/opt/picciuli`. Run it again with `HARDEN_SSH=1` to
-disable password logins once your own SSH key works.
+automatic security updates, log rotation and the nightly backup timer, and
+creates the `deploy` user and `/opt/picciuli`. Run it again with `HARDEN_SSH=1`
+to disable password logins once your own SSH key works.
 
 !!! note "Cloud firewalls"
     Most clouds filter traffic before it reaches the server. On Oracle Cloud,
@@ -257,21 +258,62 @@ cd /opt/picciuli && ./deploy.sh <commit sha>
 **Upgrade Zitadel:** change `ZITADEL_VERSION` in `.env` after reading its
 release notes, back up first, then `./deploy.sh <current tag>`.
 
-**Backups:** `backup.sh` runs every night at 03:30 (see
-`/etc/cron.d/picciuli-backup`). It writes
-`/var/backups/picciuli/<timestamp>.tar.gz` with a consistent copy of every user
-database and a dump of Zitadel, and keeps 14 days. Backups on the same disk do
-not survive the loss of the server: set `RESTIC_REPOSITORY` and
-`RESTIC_PASSWORD` (plus the credentials of the storage, e.g. Backblaze B2 or a
-Hetzner Storage Box) in the cron file and install `restic` to keep an
-encrypted off-site copy. Test a restore from time to time.
+**Backups:** `picciuli-backup.timer` runs `backup.sh` every night at 03:30 UTC
+(and catches up after downtime). It writes
+`/var/backups/picciuli/<timestamp>.tar.gz` (mode `600`, root only) with a
+consistent copy of every user database and a dump of Zitadel, and keeps 14
+days. The service logs to the journal and fails if no archive newer than 26
+hours exists afterwards; before each run it also warns if a night was missed.
+
+```bash
+systemctl list-timers picciuli-backup.timer
+sudo journalctl -u picciuli-backup.service --no-pager -n 30
+sudo systemctl start picciuli-backup.service   # back up now
+sudo /opt/picciuli/backup.sh --check           # exit 1 if older than 26 h
+```
+
+On servers prepared before the timer existed, install it by hand: copy
+`deploy/picciuli-backup.service` and `deploy/picciuli-backup.timer` to
+`/etc/systemd/system/` (mode `644`), remove `/etc/cron.d/picciuli-backup`, then
+`sudo systemctl daemon-reload && sudo systemctl enable --now
+picciuli-backup.timer`.
+
+**Off-site copy (restic):** backups on the same disk do not survive the loss of
+the server. To keep an encrypted off-site copy:
+
+1. Create a storage bucket or account (e.g. Backblaze B2, a Hetzner Storage
+   Box or any S3-compatible service) and an access key limited to it.
+2. On the server, `sudo apt-get install -y restic`.
+3. Create `/etc/picciuli/backup.env` (owner root, mode `600`; directory mode
+   `700`) with `RESTIC_REPOSITORY`, `RESTIC_PASSWORD` and the storage
+   credentials (e.g. `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or
+   `B2_ACCOUNT_ID`/`B2_ACCOUNT_KEY`). The service reads it automatically.
+   Keep a copy of `RESTIC_PASSWORD` outside the server: without it the copies
+   cannot be decrypted.
+4. Initialise the repository once:
+   `sudo sh -c 'set -a; . /etc/picciuli/backup.env; restic init'`.
+5. `sudo systemctl start picciuli-backup.service` and check that
+   `restic snapshots --tag picciuli` (with the same environment) lists it.
+
+**Test a restore** from time to time, without touching the live data:
+
+```bash
+t=$(sudo mktemp -d)
+sudo tar -C "$t" -xzf "$(sudo ls -t /var/backups/picciuli/*.tar.gz | head -n 1)"
+sudo sh -c "for db in $t/*/users/*.db; do sqlite3 \$db 'PRAGMA integrity_check;'; done"
+sudo sh -c "cat $t/*/zitadel.dump" |
+  (cd /opt/picciuli && sudo docker compose exec -T postgres pg_restore --list) | head
+sudo rm -rf "$t"
+```
 
 **Restore one user:** find their file name with `GET /api/v1/me` (`id` field),
 stop the API (`docker compose stop api`), copy
 `users/<id>.db` from the archive into `data/picciuli/users/`, fix the owner
 (`chown 10001:10001`), then `docker compose start api`. Users can also download
 their own data at any time with `GET /api/v1/me/export`, and load it back
-with `POST /api/v1/me/import?mode=replace`.
+with `POST /api/v1/me/import?mode=replace`. (Import is temporarily disabled at
+the edge in `deploy/Caddyfile`, which answers `503`, until it is sandboxed;
+see SEC-01.)
 
 **Restore Zitadel:** `docker compose exec -T postgres pg_restore -U postgres
 --clean -d zitadel < zitadel.dump` with the same `ZITADEL_MASTERKEY`.
