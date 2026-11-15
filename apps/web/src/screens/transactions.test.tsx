@@ -124,15 +124,17 @@ it('preserves register running balances and resets search and page on account ch
   expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
 });
 
-it('keeps dialog totals and remaining budget unchanged by paging and searching', async () => {
+it('totals every page of the dialog list, narrowed to the search results', async () => {
   const user = userEvent.setup();
   renderList('dialog');
   await screen.findByText('Purchase 01');
   await user.click(screen.getByRole('button', { name: 'Next' }));
-  await user.type(screen.getByRole('searchbox'), 'needle');
   expect(screen.getByText('Total').parentElement).toHaveTextContent('-EUR 52.00');
-  expect(screen.getByText('Remaining').parentElement).toHaveTextContent('EUR 100.00');
   expect(screen.getByText('52 transactions')).toBeInTheDocument();
+  await user.type(screen.getByRole('searchbox'), 'needle');
+  expect(screen.getByText('Total').parentElement).toHaveTextContent('-EUR 1.00');
+  expect(screen.getByText('1 transaction')).toBeInTheDocument();
+  expect(screen.getByText('Remaining').parentElement).toHaveTextContent('EUR 100.00');
 });
 
 it('resets the Overview search and page when changing day without filtering the calendar', async () => {

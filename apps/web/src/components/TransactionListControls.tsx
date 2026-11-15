@@ -36,6 +36,7 @@ export function useTransactionList<T>(
   const page = Math.min(current.page, pages - 1);
   if (state.scope !== scope || state.page !== page) setState({ ...current, page });
   return {
+    matches,
     items: matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
     search: current.search,
     setSearch: (search: string) => setState({ scope, search, page: 0 }),

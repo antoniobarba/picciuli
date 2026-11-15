@@ -76,7 +76,7 @@ export function TransactionsModal({
   const list = transactions.data ?? [];
   const paged = useTransactionList(list, JSON.stringify(filter), (transaction) => transaction);
   const valueOf = (transaction: Transaction) => (amountOf ? amountOf(transaction) : transaction.net_amount);
-  const total = list.reduce((sum, transaction) => sum + valueOf(transaction), 0);
+  const total = paged.matches.reduce((sum, transaction) => sum + valueOf(transaction), 0);
 
   return (
     <Modal open onClose={onClose} title={title} description={description} wide>
@@ -118,7 +118,7 @@ export function TransactionsModal({
       </div>
       <div className="totals">
         <span>
-          {list.length} transaction{list.length === 1 ? '' : 's'}
+          {paged.count} transaction{paged.count === 1 ? '' : 's'}
         </span>
         <span>
           Total <Amount value={total} money={money} bold />
