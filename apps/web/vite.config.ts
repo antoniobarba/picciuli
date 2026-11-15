@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
           categories: ['finance', 'productivity'],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,woff2}'],
+          globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/config\.json$/, /^\/api\//],
           cleanupOutdatedCaches: true,

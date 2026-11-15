@@ -50,6 +50,12 @@ export function AuthProvider({ manager, children }: { manager: UserManager; chil
       });
     const renewed = await renewing.current;
     if (!renewed) {
+      // Another tab may have renewed first: refresh tokens are single-use.
+      const stored = await manager.getUser();
+      if (stored && !stored.expired) {
+        setUser(stored);
+        return stored;
+      }
       await manager.removeUser();
       setUser(null);
       setStatus('signedOut');
