@@ -93,11 +93,14 @@ is reopened.
 ## Investments
 
 The Investments screen (`6`) shows the **holdings** of every investment
-account at market value: quantity, latest price, cost, value and unrealized
+account at market value: quantity, latest price, the price converted into the
+book currency (column `Price (EUR)` in a euro book), cost, value and unrealized
 gain, plus the uninvested cash. The totals line adds up the cost, the market
 value and the gain. Below it, the **securities** list shows each symbol, ISIN,
-currency and latest price. `tab` moves between the two lists, and `enter` opens
-the account register (holdings) or edits a security.
+currency, latest price and converted price. Securities quoted in the book
+currency show the same value in both columns, and `?` means that the
+exchange rate is not known yet (press `r`). `tab` moves between the two lists,
+and `enter` opens the account register (holdings) or edits a security.
 
 | Key | Action |
 |-----|--------|
@@ -131,7 +134,7 @@ their XETRA listing (see [Concepts](concepts.md#price-providers)).
 | `4` | Periods | Create, edit and delete periods. A period without an end is open-ended, and creating one ends the earlier open-ended periods. |
 | `5` | Budgets | Budgets of a period (`[` `]` change period) with their progress; `y` copies budgets from another period. |
 | `6` | Investments | See above |
-| `s` | Settings | Currency symbol, decimal digits, ISO currency code, cost method for sales (weighted average or FIFO) and price provider. The list shows every installed provider. |
+| `s` | Settings | Currency symbol, decimal digits, ISO currency code, cost method for sales (weighted average or FIFO), price provider and exchange-rate provider. Each list shows every installed provider. |
 
 Lists share the same keys: `↑` `↓` (or `j` `k`) to move, `n` to create,
 `enter` or `e` to edit and `d` to delete; deleting always asks first.

@@ -133,7 +133,8 @@ with Book.open("finance.db") as book:
 ```
 
 See [Concepts](concepts.md#investments) for the model, and
-[Price providers](api/prices.md) for the data sources.
+[Price providers](api/prices.md) and [Exchange-rate providers](api/rates.md)
+for the data sources.
 
 ## Grouping operations
 

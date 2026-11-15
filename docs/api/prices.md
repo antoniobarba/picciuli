@@ -1,6 +1,7 @@
 # Price providers
 
-A price provider downloads security prices and exchange rates. The library
+A price provider downloads security prices; exchange rates come from an
+[exchange-rate provider](rates.md). The library
 never touches the network by itself: prices are only fetched when you call
 [`InvestmentService.refresh_prices`][picciuli.services.InvestmentService.refresh_prices]
 or use a provider directly.
@@ -61,10 +62,13 @@ class MyQuotes(PriceProvider):
     def history(self, symbol: str, start: dt.date, end: dt.date) -> list[PricePoint]:
         return []
 
-    # Optional: currency conversion and search.
+    # Optional: the symbol of a currency pair, and search.
     def exchange_rate_symbol(self, currency: str, base: str) -> str | None:
         return f"{currency}{base}"
 ```
+
+`exchange_rate_symbol` is informational: exchange rates are downloaded by
+[exchange-rate providers](rates.md).
 
 Once registered, the provider appears in
 [`available_providers`][picciuli.prices.available_providers] and can be

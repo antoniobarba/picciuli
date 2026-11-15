@@ -551,11 +551,12 @@ def save_settings(
     currency_code: str | None = None,
     cost_method: CostMethod | None = None,
     price_provider: str | None = None,
+    rate_provider: str | None = None,
 ) -> MoneyFormat:
     """Change the book settings and return the new money format.
 
-    `currency_code`, `cost_method` and `price_provider` are left unchanged when
-    `None`; an empty currency code clears it.
+    `currency_code`, `cost_method`, `price_provider` and `rate_provider` are
+    left unchanged when `None`; an empty currency code clears it.
     """
     try:
         minor_digits = int(digits.strip())
@@ -571,6 +572,7 @@ def save_settings(
             currency_code=code,
             cost_method=UNSET if cost_method is None else cost_method,
             price_provider=UNSET if price_provider is None else price_provider,
+            rate_provider=UNSET if rate_provider is None else rate_provider,
         )
     )
 

@@ -25,6 +25,7 @@ def read_settings(session: Session) -> Settings:
         currency_code=code,
         cost_method=CostMethod(values.get("cost_method", CostMethod.AVERAGE.value)),
         price_provider=values.get("price_provider", "yahoo"),
+        rate_provider=values.get("rate_provider", "yahoo"),
     )
 
 
@@ -64,6 +65,7 @@ class SettingsService:
         currency_code: str | None | Unset = UNSET,
         cost_method: CostMethod | str | Unset = UNSET,
         price_provider: str | Unset = UNSET,
+        rate_provider: str | Unset = UNSET,
     ) -> Settings:
         """Change settings; arguments left `UNSET` are not modified.
 
@@ -82,6 +84,9 @@ class SettingsService:
                 to sales recorded afterwards.
             price_provider: Identifier of a registered price provider (see
                 [`available_providers`][picciuli.prices.available_providers]).
+            rate_provider: Identifier of a registered exchange-rate provider
+                (see
+                [`available_rate_providers`][picciuli.rates.available_rate_providers]).
 
         Raises:
             ValidationError: If an argument is invalid.
@@ -111,6 +116,13 @@ class SettingsService:
             provider = v.name(price_provider, "price provider")
             if provider not in provider_ids():
                 raise ValidationError(f"unknown price provider {provider!r}")
+        rates = None
+        if not isinstance(rate_provider, Unset):
+            from picciuli.rates import rate_provider_ids
+
+            rates = v.name(rate_provider, "exchange-rate provider")
+            if rates not in rate_provider_ids():
+                raise ValidationError(f"unknown exchange-rate provider {rates!r}")
         with self._uow.session() as session:
             if new_currency is not None:
                 _write(session, "currency", new_currency)
@@ -124,5 +136,7 @@ class SettingsService:
                 _write(session, "cost_method", method.value)
             if provider is not None:
                 _write(session, "price_provider", provider)
+            if rates is not None:
+                _write(session, "rate_provider", rates)
             session.flush()
             return read_settings(session)

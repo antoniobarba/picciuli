@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
+from decimal import Decimal
 from typing import ClassVar
 
 from rich.text import Text
@@ -26,6 +27,7 @@ from picciuli_tui.formatting import (
     percent_text,
     price_text,
     quantity_text,
+    rounded_price,
     short_date,
 )
 from picciuli_tui.forms import (
@@ -99,6 +101,8 @@ class InvestmentsScreen(BookScreen):
         self.valuations: list[AccountValuation] = []
         self.securities: list[Security] = []
         self.prices: dict[int, Price] = {}
+        self.converted: dict[int, Decimal] = {}
+        self._column_code: str | None = None
 
     def compose(self) -> ComposeResult:
         """Build the two tables."""
@@ -115,36 +119,70 @@ class InvestmentsScreen(BookScreen):
 
     def on_mount(self) -> None:
         """Add the columns."""
+        self._add_columns(self.book.settings.get().currency_code)
+
+    def _add_columns(self, code: str | None) -> None:
+        """(Re)build the columns; the converted column is named after `code`."""
+        converted = f"Price ({code or 'book'})"
+        self._column_code = code
         holdings = self.query_one("#holdings", ListTable)
-        for label in (
-            "Account",
-            "Security",
-            "Quantity",
-            "Price",
-            "Cost",
-            "Value",
-            "Gain",
-            "%",
+        holdings.clear(columns=True)
+        for label, key in (
+            ("Account", "account"),
+            ("Security", "security"),
+            ("Quantity", "quantity"),
+            ("Price", "price"),
+            (converted, "converted"),
+            ("Cost", "cost"),
+            ("Value", "value"),
+            ("Gain", "gain"),
+            ("%", "%"),
         ):
-            holdings.add_column(label, key=label.lower())
+            holdings.add_column(label, key=key)
         securities = self.query_one("#securities", ListTable)
-        for label in ("Name", "Kind", "Symbol", "ISIN", "Currency", "Price", "Date"):
-            securities.add_column(label, key=label.lower())
+        securities.clear(columns=True)
+        for label, key in (
+            ("Name", "name"),
+            ("Kind", "kind"),
+            ("Symbol", "symbol"),
+            ("ISIN", "isin"),
+            ("Currency", "currency"),
+            ("Price", "price"),
+            (converted, "converted"),
+            ("Date", "date"),
+        ):
+            securities.add_column(label, key=key)
 
     # Data
 
     def reload(self) -> None:
         """Read valuations, securities and prices."""
+        code = self.book.settings.get().currency_code
+        if code != self._column_code:
+            self._add_columns(code)
         self.valuations = self.book.investments.valuations()
         self.securities = self.book.securities.list()
         self.prices = {}
+        self.converted = {}
         for security in self.securities:
             price = self.book.securities.latest_price(security.id)
             if price is not None:
                 self.prices[security.id] = price
+                value = self.book.securities.latest_price_in_book_currency(security.id)
+                if value is not None:
+                    self.converted[security.id] = value
         self._show_title()
         self._show_holdings()
         self._show_securities()
+
+    def _converted_cell(self, price: Decimal | None, converted: Decimal | None) -> Text:
+        """Converted price, `?` when the rate is missing, blank without price."""
+        if price is None:
+            return Text("")
+        if converted is None:
+            return Text("?", justify="right", style="dim")
+        code = self._column_code or ""
+        return Text(price_text(rounded_price(converted), code).strip(), justify="right")
 
     def _show_title(self) -> None:
         app = self.picciuli
@@ -152,6 +190,10 @@ class InvestmentsScreen(BookScreen):
             provider = app.price_provider().name
         except PicciuliError:
             provider = self.book.settings.get().price_provider
+        try:
+            rates = app.rate_provider().name
+        except PicciuliError:
+            rates = self.book.settings.get().rate_provider
         live = f"live every {app.refresh_seconds:g} s" if app.live else "live off (l)"
         updated = (
             f" · updated {app.last_price_update:%H:%M:%S}"
@@ -159,7 +201,8 @@ class InvestmentsScreen(BookScreen):
             else ""
         )
         self.query_one("#holdings-title", Static).update(
-            f"[b]Holdings[/] at market value · {provider} · {live}{updated}"
+            f"[b]Holdings[/] at market value · prices {provider} · "
+            f"rates {rates} · {live}{updated}"
         )
 
     def _show_holdings(self) -> None:
@@ -182,6 +225,7 @@ class InvestmentsScreen(BookScreen):
                     security.name,
                     Text(quantity_text(holding.quantity), justify="right"),
                     price,
+                    self._converted_cell(holding.price, holding.converted_price),
                     amount_text(money, holding.cost_basis),
                     amount_text(money, holding.market_value)
                     if holding.market_value is not None
@@ -194,6 +238,7 @@ class InvestmentsScreen(BookScreen):
                 table.add_row(
                     account.name,
                     Text("Cash", style="italic"),
+                    "",
                     "",
                     "",
                     "",
@@ -236,6 +281,9 @@ class InvestmentsScreen(BookScreen):
                 Text(price_text(price.price, security.currency), justify="right")
                 if price
                 else "",
+                self._converted_cell(
+                    price.price if price else None, self.converted.get(security.id)
+                ),
                 short_date(price.date) if price else "",
                 key=str(security.id),
             )

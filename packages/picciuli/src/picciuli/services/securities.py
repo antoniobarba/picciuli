@@ -31,6 +31,8 @@ from picciuli.model import (
     Unset,
 )
 
+from .settings import read_settings
+
 __all__ = ["SecurityService"]
 
 
@@ -316,6 +318,34 @@ class SecurityService:
             get_row(session, SecurityRow, security_id, "security")
             row = latest_prices(session, as_of=as_of).get(security_id)
             return None if row is None else to_price(row)
+
+    def latest_price_in_book_currency(
+        self, security_id: int, *, as_of: dt.date | None = None
+    ) -> Decimal | None:
+        """Return the latest price converted into the book currency.
+
+        It multiplies the latest price on or before `as_of` by the latest
+        exchange rate on or before `as_of`; a security quoted in the book
+        currency needs no rate.
+
+        Returns:
+            The converted price in major units, or `None` if the price or the
+            rate is unknown.
+
+        Raises:
+            NotFoundError: If the security does not exist.
+        """
+        as_of = v.optional_date(as_of, "as_of")
+        with self._uow.session() as session:
+            security = get_row(session, SecurityRow, security_id, "security")
+            price = latest_prices(session, as_of=as_of).get(security_id)
+            if price is None:
+                return None
+            value = to_price(price).price
+            if security.currency == read_settings(session).currency_code:
+                return value
+            rate = latest_rates(session, as_of=as_of).get(security.currency)
+            return None if rate is None else value * to_exchange_rate(rate).rate
 
     def set_exchange_rate(
         self, currency: str, date: dt.date, rate: Decimal | int

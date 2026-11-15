@@ -211,6 +211,12 @@ def price_text(value: Decimal, currency: str) -> str:
     return f"{value:,.{places}f} {currency}"
 
 
+def rounded_price(value: Decimal) -> Decimal:
+    """Round a computed price for display: 2 decimals, 4 below one unit."""
+    places = 2 if abs(value) >= 1 else 4
+    return value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+
+
 def percent_text(part: int, whole: int) -> str:
     """Return `part / whole` as a signed percentage, or an empty string."""
     if not whole:

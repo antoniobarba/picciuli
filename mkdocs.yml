@@ -20,6 +20,7 @@ nav:
       - Services: api/services.md
       - Model: api/model.md
       - Price providers: api/prices.md
+      - Exchange-rate providers: api/rates.md
       - Money helpers: api/money.md
       - Errors: api/errors.md
 

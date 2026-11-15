@@ -212,7 +212,7 @@ HELP = """\
 |-----|--------|
 | `1` … `5` or click a tab | Overview · Accounts · Categories · Periods · Budgets |
 | `6` | Investments |
-| `s` | Settings (currency, price provider, cost method) |
+| `s` | Settings (currency, cost method, price and rate providers) |
 | `l` | Live prices on/off (refreshes market values periodically) |
 | `?` | This help |
 | `ctrl+p` | Command palette |

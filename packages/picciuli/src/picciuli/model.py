@@ -560,6 +560,9 @@ class Settings:
         cost_method: How the cost of sold shares is computed.
         price_provider: Identifier of the price provider used to refresh
             security prices (see [`PriceProvider`][picciuli.prices.PriceProvider]).
+        rate_provider: Identifier of the exchange-rate provider used to refresh
+            exchange rates (see
+            [`ExchangeRateProvider`][picciuli.rates.ExchangeRateProvider]).
     """
 
     currency: str
@@ -567,6 +570,7 @@ class Settings:
     currency_code: str | None = None
     cost_method: CostMethod = CostMethod.AVERAGE
     price_provider: str = "yahoo"
+    rate_provider: str = "yahoo"
 
 
 @dataclass(frozen=True, slots=True)
@@ -654,6 +658,13 @@ class Holding:
     price_date: dt.date | None
     exchange_rate: Decimal | None
     market_value: int | None
+
+    @property
+    def converted_price(self) -> Decimal | None:
+        """Price of one share in the book currency (major units), if known."""
+        if self.price is None or self.exchange_rate is None:
+            return None
+        return self.price * self.exchange_rate
 
     @property
     def unrealized_gain(self) -> int | None:

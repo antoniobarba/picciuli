@@ -18,6 +18,12 @@ from picciuli.prices import (
     available_providers,
     create_provider,
 )
+from picciuli.rates import (
+    CachingRateProvider,
+    ExchangeRateProvider,
+    available_rate_providers,
+    create_rate_provider,
+)
 from picciuli_tui.formatting import COST_METHOD_LABELS, MoneyFormat
 from picciuli_tui.forms import InputError, save_settings
 from picciuli_tui.screens.accounts import AccountsScreen
@@ -73,6 +79,7 @@ class PicciuliApp(App[None]):
         name: str | None = None,
         today: Callable[[], dt.date] = dt.date.today,
         price_provider: PriceProvider | None = None,
+        rate_provider: ExchangeRateProvider | None = None,
         refresh_seconds: float = 60.0,
         live: bool = False,
     ) -> None:
@@ -84,6 +91,8 @@ class PicciuliApp(App[None]):
             today: Clock used for "today" (replaceable in tests).
             price_provider: Provider to use instead of the one selected in the
                 book settings (handy for tests).
+            rate_provider: Exchange-rate provider to use instead of the one
+                selected in the book settings (handy for tests).
             refresh_seconds: Interval between price refreshes in live mode.
             live: Whether to start with live prices on.
         """
@@ -97,6 +106,8 @@ class PicciuliApp(App[None]):
         self._start_live = live
         self._fixed_provider = price_provider
         self._provider: PriceProvider | None = None
+        self._fixed_rate_provider = rate_provider
+        self._rate_provider: ExchangeRateProvider | None = None
         self._live_timer: Timer | None = None
         if name:
             self.title = f"Picciuli · {name}"
@@ -143,8 +154,16 @@ class PicciuliApp(App[None]):
             providers.append(
                 (f"{settings.price_provider} (not installed)", settings.price_provider)
             )
+        rate_providers = [(info.name, info.id) for info in available_rate_providers()]
+        if settings.rate_provider not in {value for _, value in rate_providers}:
+            rate_providers.append(
+                (f"{settings.rate_provider} (not installed)", settings.rate_provider)
+            )
         descriptions = "\n".join(
             f"• {info.name}: {info.description}" for info in available_providers()
+        )
+        rate_descriptions = "\n".join(
+            f"• {info.name}: {info.description}" for info in available_rate_providers()
         )
 
         def submit(values: FormValues) -> MoneyFormat:
@@ -155,6 +174,7 @@ class PicciuliApp(App[None]):
                 currency_code=values["currency_code"],
                 cost_method=values["cost_method"],
                 price_provider=values["price_provider"],
+                rate_provider=values["rate_provider"],
             )
 
         self.push_screen(
@@ -184,6 +204,12 @@ class PicciuliApp(App[None]):
                         providers,
                         settings.price_provider,
                     ),
+                    ChoiceField(
+                        "rate_provider",
+                        "Exchange rates",
+                        rate_providers,
+                        settings.rate_provider,
+                    ),
                 ],
                 submit,
                 help=(
@@ -191,7 +217,10 @@ class PicciuliApp(App[None]):
                     "they are never rescaled. The currency code converts "
                     "securities quoted in other currencies; changing it deletes "
                     "stored exchange rates. The cost method applies to sales "
-                    "recorded afterwards.\n\nPrice providers:\n" + descriptions
+                    "recorded afterwards.\n\nPrice providers:\n"
+                    + descriptions
+                    + "\n\nExchange-rate providers:\n"
+                    + rate_descriptions
                 ),
             ),
             self._settings_saved,
@@ -219,6 +248,21 @@ class PicciuliApp(App[None]):
             )
         return self._provider
 
+    def rate_provider(self) -> ExchangeRateProvider:
+        """Return the exchange-rate provider selected in the settings (cached).
+
+        Raises:
+            PriceProviderError: If the selected provider is not installed.
+        """
+        if self._fixed_rate_provider is not None:
+            return self._fixed_rate_provider
+        selected = self.book.settings.get().rate_provider
+        if self._rate_provider is None or self._rate_provider.id != selected:
+            self._rate_provider = CachingRateProvider(
+                create_rate_provider(selected), ttl=max(1.0, self.refresh_seconds / 2)
+            )
+        return self._rate_provider
+
     @property
     def live(self) -> bool:
         """Whether prices are refreshed periodically."""
@@ -238,11 +282,16 @@ class PicciuliApp(App[None]):
         except PicciuliError as error:
             self.notify(str(error), title="Cannot refresh prices", severity="error")
             return
+        rates: ExchangeRateProvider | None
+        try:
+            rates = self.rate_provider()
+        except PicciuliError:
+            rates = None  # the library reports the missing provider
 
         def work() -> None:
             try:
                 update = self.book.investments.refresh_prices(
-                    provider, history_start=history_start
+                    provider, rate_provider=rates, history_start=history_start
                 )
             except PicciuliError as error:
                 self.call_from_thread(

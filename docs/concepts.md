@@ -195,13 +195,19 @@ unit of that currency in the book currency. Changing the book currency code
 deletes the stored rates, because they would no longer be relative to the book
 currency.
 
+Rates come from an [exchange-rate provider](api/rates.md), chosen in the
+settings independently of the price provider. The built-in one reads Yahoo
+Finance currency pairs (free, no API key, updated during the day). Rates are
+stored at most once per currency and day, like prices.
+
 ### Price providers
 
 A [price provider](api/prices.md) downloads quotes. The book settings select
 which one [`refresh_prices`][picciuli.services.InvestmentService.refresh_prices]
 uses. Each refresh stores the latest quote as the price of its trading day,
-replacing the earlier quote of that day. It also stores the exchange rates the
-securities need. It can download the daily history too. Refreshing every minute
+replacing the earlier quote of that day. It also stores, through the
+exchange-rate provider, the rates the securities need. It can download the
+daily history too. Refreshing every minute
 therefore keeps one price per day that follows the market, and a user interface
 can show values that move during the day without filling the database.
 

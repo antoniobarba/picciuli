@@ -12,6 +12,7 @@ from textual.pilot import Pilot
 from picciuli import Account, AccountType, Book, Category, ValidationError
 from picciuli.errors import PriceProviderError
 from picciuli.prices import PricePoint, PriceProvider, Quote, SecurityInfo
+from picciuli.rates import ExchangeRateProvider, RatePoint, RateQuote
 from picciuli_tui.app import PicciuliApp
 from picciuli_tui.formatting import MoneyFormat
 
@@ -29,6 +30,7 @@ class FakeProvider(PriceProvider):
 
     def __init__(self) -> None:
         self.prices: dict[str, Decimal] = {}
+        self.currencies: dict[str, str] = {}
         self.history_starts: list[dt.date] = []
         self.broken = False
 
@@ -38,7 +40,8 @@ class FakeProvider(PriceProvider):
         if symbol not in self.prices:
             raise PriceProviderError(f"unknown symbol {symbol}")
         moment = dt.datetime(2025, 3, 12, 17, tzinfo=dt.timezone.utc)
-        return Quote(symbol, self.prices[symbol], "EUR", moment)
+        currency = self.currencies.get(symbol, "EUR")
+        return Quote(symbol, self.prices[symbol], currency, moment)
 
     def history(self, symbol: str, start: dt.date, end: dt.date) -> list[PricePoint]:
         self.history_starts.append(start)
@@ -48,6 +51,28 @@ class FakeProvider(PriceProvider):
         if query == "nothing":
             return []
         return [SecurityInfo("VWCE.DE", "Vanguard FTSE All-World", "XETRA", "ETF")]
+
+
+class FakeRates(ExchangeRateProvider):
+    """Offline exchange rates, for interface tests."""
+
+    id = "fakerates"
+    name = "Fake rates"
+    description = "Rates for tests"
+
+    def __init__(self) -> None:
+        self.rates: dict[str, Decimal] = {}
+
+    def latest(self, currency: str, base: str) -> RateQuote:
+        if currency not in self.rates:
+            raise PriceProviderError(f"no rate for {currency}")
+        moment = dt.datetime(2025, 3, 12, 17, tzinfo=dt.timezone.utc)
+        return RateQuote(currency, base, self.rates[currency], moment)
+
+    def history(
+        self, currency: str, base: str, start: dt.date, end: dt.date
+    ) -> list[RatePoint]:
+        return []
 
 
 @pytest.fixture
@@ -83,7 +108,12 @@ def run_app(
     size: tuple[int, int] = (150, 45),
     **options: Any,
 ) -> None:
-    """Run the application headless and play a scenario against it."""
+    """Run the application headless and play a scenario against it.
+
+    Exchange rates come from an empty `FakeRates` unless `rate_provider` is
+    given, so that no test reaches the network.
+    """
+    options.setdefault("rate_provider", FakeRates())
 
     async def main() -> None:
         app = PicciuliApp(book, name="test.db", today=lambda: TODAY, **options)

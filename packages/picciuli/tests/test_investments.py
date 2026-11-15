@@ -16,11 +16,13 @@ from picciuli import (
     NotFoundError,
     Security,
     SecurityKind,
+    Settings,
     TransactionKind,
     ValidationError,
 )
 from picciuli.errors import PriceProviderError
 from picciuli.prices import PricePoint, PriceProvider, Quote
+from picciuli.rates import ExchangeRateProvider, RatePoint, RateQuote
 
 from .conftest import d
 
@@ -480,8 +482,25 @@ class FakeProvider(PriceProvider):
         self.history_calls.append((symbol, start, end))
         return [PricePoint(start, self.quotes[symbol].price / 2)]
 
-    def exchange_rate_symbol(self, currency: str, base: str) -> str | None:
-        return None if currency == "CHF" else f"{currency}{base}"
+
+class FakeRates(ExchangeRateProvider):
+    id = "fakerates"
+    name = "Fake rates"
+
+    def __init__(self) -> None:
+        self.rates: dict[tuple[str, str], Decimal] = {}
+
+    def latest(self, currency: str, base: str) -> RateQuote:
+        rate = self.rates.get((currency, base))
+        if rate is None:
+            raise PriceProviderError(f"no rate for {currency}{base}")
+        moment = dt.datetime.combine(d(10), dt.time(17), dt.timezone.utc)
+        return RateQuote(currency, base, rate, moment)
+
+    def history(
+        self, currency: str, base: str, start: dt.date, end: dt.date
+    ) -> list[RatePoint]:
+        return [RatePoint(start, self.rates[(currency, base)] / 2)]
 
 
 class TestRefreshPrices:
@@ -499,9 +518,12 @@ class TestRefreshPrices:
         provider.add("EUR1", "50.5", None, d(10))
         provider.add("CH1", "10", "CHF", d(10))
         provider.add("MIS", "10", "USD", d(10))
-        provider.add("USDEUR", "0.9", "EUR", d(10))
         provider.failing.add("BAD")
-        update = book.investments.refresh_prices(provider, history_start=d(1))
+        rates = FakeRates()
+        rates.rates[("USD", "EUR")] = Decimal("0.9")
+        update = book.investments.refresh_prices(
+            provider, rate_provider=rates, history_start=d(1)
+        )
         assert {(p.security_id, p.date, p.price) for p in update.prices} == {
             (etf.id, d(1), Decimal(50)),
             (etf.id, d(10), Decimal(100)),
@@ -511,14 +533,14 @@ class TestRefreshPrices:
             (swiss.id, d(10), Decimal(10)),
         }
         assert all(p.source == "fake" for p in update.prices)
-        assert [(r.currency, r.date) for r in update.exchange_rates] == [
-            ("USD", d(1)),
-            ("USD", d(10)),
+        assert [(r.currency, r.date, r.rate) for r in update.exchange_rates] == [
+            ("USD", d(1), Decimal("0.45")),
+            ("USD", d(10), Decimal("0.9")),
         ]
         assert update.errors == (
             "Broken: no quote for BAD",
             "Mismatch: MIS is quoted in USD, not EUR",
-            "CHF: Fake cannot convert currencies",
+            "CHF: no rate for CHFEUR",
         )
         assert bad.id and mismatch.id
         buy(book, broker, etf, 2, "1", 8000)
@@ -530,8 +552,11 @@ class TestRefreshPrices:
         manual = book.securities.create("Manual", currency="EUR")
         provider = FakeProvider()
         provider.add("VWCE.DE", "100", "USD", d(10))
+        rates = FakeRates()
+        rates.rates[("USD", "USD")] = Decimal(1)
         update = book.investments.refresh_prices(
             provider,
+            rate_provider=rates,
             security_ids=[etf.id, manual.id],
             history_start=dt.date.today() + dt.timedelta(days=1),
         )
@@ -540,7 +565,7 @@ class TestRefreshPrices:
         assert provider.history_calls == []
         # Same day: the new quote replaces the old one.
         provider.add("VWCE.DE", "101", "USD", d(10))
-        book.investments.refresh_prices(provider)
+        book.investments.refresh_prices(provider, rate_provider=rates)
         assert [p.price for p in book.securities.prices(etf.id)] == [Decimal(101)]
         with pytest.raises(NotFoundError):
             book.investments.refresh_prices(provider, security_ids=[999])
@@ -552,26 +577,94 @@ class TestRefreshPrices:
         provider.add("VWCE.DE", "100", "USD", d(10))
         book.securities.create("Euro", currency="EUR", symbol="E")
         provider.add("E", "1", "EUR", d(10))
-        update = book.investments.refresh_prices(provider)
-        assert update.errors == ("EUR: no quote for EURUSD",)
+        update = book.investments.refresh_prices(provider, rate_provider=FakeRates())
+        assert update.errors == ("EUR: no rate for EURUSD",)
         book.settings.update(currency_code=None)
-        update = book.investments.refresh_prices(provider)
+        update = book.investments.refresh_prices(provider, rate_provider=FakeRates())
         assert update.errors == (
             "EUR: set the book currency code to convert prices",
             "USD: set the book currency code to convert prices",
         )
 
-    def test_default_provider_comes_from_settings(
-        self, book: Book, monkeypatch: pytest.MonkeyPatch
+    def test_default_providers_come_from_settings(
+        self, book: Book, etf: Security, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         created: list[str] = []
+        prices = FakeProvider()
+        prices.add("VWCE.DE", "100", "USD", d(10))
 
         def fake_create(provider_id: str) -> PriceProvider:
             created.append(provider_id)
-            return FakeProvider()
+            return prices
+
+        def fake_rates(provider_id: str) -> ExchangeRateProvider:
+            created.append(f"rates:{provider_id}")
+            rates = FakeRates()
+            rates.rates[("USD", "EUR")] = Decimal("0.9")
+            return rates
 
         monkeypatch.setattr(
             "picciuli.services.investments.create_provider", fake_create
         )
-        assert book.investments.refresh_prices().prices == ()
-        assert created == ["yahoo"]
+        monkeypatch.setattr(
+            "picciuli.services.investments.create_rate_provider", fake_rates
+        )
+        book.settings.update(currency_code="EUR")
+        update = book.investments.refresh_prices()
+        assert update.errors == ()
+        assert created == ["yahoo", "rates:yahoo"]
+
+    def test_unknown_rate_provider_is_reported(
+        self, book: Book, etf: Security, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        book.settings.update(currency_code="EUR")
+        monkeypatch.setattr(
+            "picciuli.services.investments.read_settings",
+            lambda session: Settings("€", 2, "EUR", rate_provider="gone"),
+        )
+        provider = FakeProvider()
+        provider.add("VWCE.DE", "100", "USD", d(10))
+        update = book.investments.refresh_prices(provider)
+        assert len(update.prices) == 1
+        assert update.errors == (
+            "exchange rates: unknown exchange-rate provider 'gone'",
+        )
+
+    def test_refresh_exchange_rates(self, book: Book, etf: Security) -> None:
+        book.settings.update(currency_code="EUR")
+        book.securities.create("Euro", currency="EUR")
+        rates = FakeRates()
+        rates.rates[("USD", "EUR")] = Decimal("0.9")
+        update = book.investments.refresh_exchange_rates(rates, history_start=d(1))
+        assert update.prices == ()
+        assert [(r.currency, r.rate) for r in update.exchange_rates] == [
+            ("USD", Decimal("0.45")),
+            ("USD", Decimal("0.9")),
+        ]
+        update = book.investments.refresh_exchange_rates(
+            rates, currencies=["gbp", "eur"]
+        )
+        assert update.errors == ("GBP: no rate for GBPEUR",)
+        assert (
+            book.investments.refresh_exchange_rates(rates, currencies=[]).errors == ()
+        )
+
+
+class TestConvertedPrices:
+    def test_holding_and_security_prices_in_book_currency(
+        self, book: Book, broker: Account, etf: Security
+    ) -> None:
+        book.settings.update(currency_code="EUR")
+        euro = book.securities.create("Euro", currency="EUR")
+        buy(book, broker, etf, 1, "1", 100)
+        assert book.securities.latest_price_in_book_currency(etf.id) is None
+        book.securities.set_price(etf.id, d(2), Decimal(100))
+        book.securities.set_price(euro.id, d(2), Decimal(50))
+        assert book.securities.latest_price_in_book_currency(etf.id) is None
+        assert book.investments.holdings(broker.id)[0].converted_price is None
+        assert book.securities.latest_price_in_book_currency(euro.id) == 50
+        book.securities.set_exchange_rate("USD", d(3), Decimal("0.9"))
+        assert book.securities.latest_price_in_book_currency(etf.id) == 90
+        assert book.securities.latest_price_in_book_currency(etf.id, as_of=d(2)) is None
+        assert book.securities.latest_price_in_book_currency(etf.id, as_of=d(1)) is None
+        assert book.investments.holdings(broker.id)[0].converted_price == 90

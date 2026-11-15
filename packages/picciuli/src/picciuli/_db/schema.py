@@ -147,6 +147,7 @@ DEFAULT_SETTINGS: Final[Mapping[str, str]] = {
     "currency_code": "USD",
     "cost_method": "average",
     "price_provider": "yahoo",
+    "rate_provider": "yahoo",
 }
 
 

@@ -25,8 +25,8 @@ interfaces: console, desktop, web and mobile.
 - Budgets per category and period that roll up subcategories.
 - Investments: securities with exact share quantities, purchases and sales with
   realized gains (weighted average or FIFO cost), market values from stored
-  prices and exchange rates, and modular price providers (Yahoo Finance built
-  in, others as plug-ins).
+  prices and exchange rates, and modular price and exchange-rate providers
+  (Yahoo Finance built in, others as plug-ins).
 - Net worth and account registers with running balances.
 - Typed, documented and fully tested API: frozen dataclasses for results,
   explicit error classes, and all-or-nothing `Book.atomic()` blocks.

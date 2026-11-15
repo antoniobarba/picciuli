@@ -3,9 +3,9 @@ from __future__ import annotations
 import datetime as dt
 import io
 from decimal import Decimal
-from typing import cast
+from typing import Any, cast
 
-from conftest import TODAY, FakeProvider, run_app
+from conftest import TODAY, FakeProvider, FakeRates, run_app
 from rich.console import Console
 from test_app import fill, messages, press
 from textual.pilot import Pilot
@@ -13,6 +13,11 @@ from textual.widgets import OptionList, Select, Static
 
 from picciuli import Account, AccountType, Book, CostMethod, SecurityKind
 from picciuli.prices import CachingProvider, register_provider, unregister_provider
+from picciuli.rates import (
+    CachingRateProvider,
+    register_rate_provider,
+    unregister_rate_provider,
+)
 from picciuli_tui.app import PicciuliApp
 from picciuli_tui.screens.accounts import AccountsScreen, RegisterScreen
 from picciuli_tui.screens.investments import (
@@ -239,3 +244,103 @@ def test_helpers() -> None:
     assert guess_kind(SecurityInfo("A", "A", kind="Equity")) is SecurityKind.STOCK
     assert guess_kind(SecurityInfo("A", "A")) is SecurityKind.OTHER
     assert dt.date(2025, 3, 12) == TODAY
+
+
+def test_converted_price_columns(book: Book, checking: Account) -> None:
+    book.settings.update(currency_code="EUR")
+    broker = book.accounts.create("Broker", AccountType.INVESTMENT)
+    apple = book.securities.create("Apple", currency="USD", symbol="AAPL")
+    etf = book.securities.create("ETF", currency="EUR", symbol="E")
+    gbp = book.securities.create("Pounds", currency="GBP")
+    book.securities.create("Unpriced", currency="USD")
+    for security in (apple, etf):
+        book.investments.record_buy(
+            TODAY,
+            account_id=broker.id,
+            security_id=security.id,
+            quantity=1,
+            cost=10000,
+            from_account_id=checking.id,
+        )
+    book.securities.set_price(gbp.id, TODAY, Decimal("0.5"))
+    provider = FakeProvider()
+    provider.prices.update({"AAPL": Decimal("356.27"), "E": Decimal("130.4")})
+    provider.currencies["AAPL"] = "USD"
+    rates = FakeRates()
+    rates.rates["USD"] = Decimal("0.9068")
+
+    async def scenario(app: PicciuliApp, pilot: Pilot[None]) -> None:
+        await press(pilot, "6")
+        assert holdings(app).columns[cast(Any, "converted")].label.plain == (
+            "Price (EUR)"
+        )
+        assert "rates Fake rates" in str(
+            app.screen.query_one("#holdings-title").render()
+        )
+        assert str(holdings(app).get_row(f"{broker.id}:{apple.id}")[4]) == ""
+        await press(pilot, "r")
+        await settle(app, pilot)
+        assert str(holdings(app).get_row(f"{broker.id}:{apple.id}")[4]) == (
+            "323.07 EUR"
+        )
+        assert str(holdings(app).get_row(f"{broker.id}:{etf.id}")[4]) == ("130.40 EUR")
+        rows = {
+            name: securities(app).get_row(str(s.id))
+            for name, s in (("apple", apple), ("etf", etf), ("gbp", gbp))
+        }
+        assert str(rows["apple"][6]) == "323.07 EUR"
+        assert str(rows["etf"][6]) == "130.40 EUR"
+        assert str(rows["gbp"][6]) == "?"
+        book.securities.set_exchange_rate("GBP", TODAY, Decimal("1.2"))
+        book.settings.update(currency_code="USD")
+        book.securities.set_exchange_rate("GBP", TODAY, Decimal("1.3"))
+        cast(InvestmentsScreen, app.screen).reload()
+        await pilot.pause()
+        assert securities(app).columns[cast(Any, "converted")].label.plain == (
+            "Price (USD)"
+        )
+        assert str(securities(app).get_row(str(gbp.id))[6]) == "0.65 USD"
+        assert str(securities(app).get_row(str(apple.id))[6]) == "356.27 USD"
+
+    run_app(book, scenario, price_provider=provider, rate_provider=rates)
+
+
+def test_rate_provider_setting_and_cache(book: Book) -> None:
+    register_rate_provider(FakeRates)
+    try:
+
+        async def scenario(app: PicciuliApp, pilot: Pilot[None]) -> None:
+            await press(pilot, "s")
+            select = app.screen.query_one("#field-rate_provider", Select)
+            assert select.value == "yahoo"
+            help_text = str(app.screen.query_one(".form-help").render())
+            assert "Exchange-rate providers" in help_text and "Fake rates" in help_text
+            await fill(pilot, rate_provider="fakerates")
+            await press(pilot, "ctrl+s")
+            assert book.settings.get().rate_provider == "fakerates"
+            rates = app.rate_provider()
+            assert isinstance(rates, CachingRateProvider)
+            assert rates.id == "fakerates" and app.rate_provider() is rates
+            unregister_rate_provider("fakerates")
+            app._rate_provider = None
+            await press(pilot, "s")
+            options = app.screen.query_one("#field-rate_provider", Select)
+            assert options.value == "fakerates"
+            await press(pilot, "escape", "6")
+            title = str(app.screen.query_one("#holdings-title").render())
+            assert "rates fakerates" in title
+            book.settings.update(currency_code="EUR")
+            book.securities.create("US", currency="USD", symbol="US")
+            prices = FakeProvider()
+            prices.prices["US"] = Decimal(1)
+            prices.currencies["US"] = "USD"
+            app._fixed_provider = prices
+            await press(pilot, "r")
+            await settle(app, pilot)
+            assert any(
+                "unknown exchange-rate provider 'fakerates'" in m for m in messages(app)
+            )
+
+        run_app(book, scenario, rate_provider=None)
+    finally:
+        unregister_rate_provider("fakerates")

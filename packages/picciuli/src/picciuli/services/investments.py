@@ -51,6 +51,7 @@ from picciuli.model import (
     Transaction,
 )
 from picciuli.prices import PricePoint, PriceProvider, create_provider
+from picciuli.rates import ExchangeRateProvider, create_rate_provider
 
 from .securities import store_price, store_rate
 from .settings import read_settings
@@ -463,6 +464,7 @@ class InvestmentService:
         self,
         provider: PriceProvider | None = None,
         *,
+        rate_provider: ExchangeRateProvider | None = None,
         security_ids: Collection[int] | None = None,
         history_start: dt.date | None = None,
     ) -> PriceUpdate:
@@ -475,18 +477,20 @@ class InvestmentService:
         that follows the market. With `history_start`, daily closing prices
         since that day are stored too.
 
-        Exchange rates are downloaded for every currency of those securities
-        that differs from the book's
+        Exchange rates are downloaded, with the exchange-rate provider, for
+        every currency of those securities that differs from the book's
         [currency code][picciuli.model.Settings].
 
         Network access happens before the database is touched; failures of
-        single securities are reported in
+        single securities or currencies are reported in
         [`PriceUpdate.errors`][picciuli.model.PriceUpdate] and do not stop the
         others.
 
         Args:
-            provider: Provider to use; `None` creates the one selected in the
-                book settings.
+            provider: Price provider to use; `None` creates the one selected
+                in the book settings.
+            rate_provider: Exchange-rate provider to use; `None` creates the
+                one selected in the book settings (only if a rate is needed).
             security_ids: Securities to refresh; `None` refreshes all those
                 with a symbol.
             history_start: First day of the daily history to download, or
@@ -495,7 +499,8 @@ class InvestmentService:
         Raises:
             NotFoundError: If a security in `security_ids` does not exist.
             ValidationError: If an argument is invalid.
-            PriceProviderError: If the provider in the settings is unknown.
+            PriceProviderError: If the price provider in the settings is
+                unknown.
         """
         history_start = v.optional_date(history_start, "history_start")
         with self._uow.session() as session:
@@ -540,26 +545,9 @@ class InvestmentService:
             prices.append((security.id, quote.date, quote.price))
             if security.currency != settings.currency_code:
                 currencies.add(security.currency)
-        rates: list[tuple[str, dt.date, Decimal]] = []
-        code = settings.currency_code
-        for currency in sorted(currencies):
-            if code is None:
-                errors.append(
-                    f"{currency}: set the book currency code to convert prices"
-                )
-                continue
-            symbol = provider.exchange_rate_symbol(currency, code)
-            if symbol is None:
-                errors.append(f"{currency}: {provider.name} cannot convert currencies")
-                continue
-            try:
-                quote = provider.latest(symbol)
-                points = _history(provider, symbol, history_start, today)
-            except PriceProviderError as exc:
-                errors.append(f"{currency}: {exc}")
-                continue
-            rates.extend((currency, p.date, p.price) for p in points)
-            rates.append((currency, quote.date, quote.price))
+        rates = _fetch_rates(
+            rate_provider, settings, currencies, history_start, today, errors
+        )
         with self._uow.session() as session:
             stored_prices = [
                 to_price(store_price(session, sid, day, price, provider.id))
@@ -574,6 +562,97 @@ class InvestmentService:
             exchange_rates=_last_per_key(stored_rates, lambda r: (r.currency, r.date)),
             errors=tuple(errors),
         )
+
+    def refresh_exchange_rates(
+        self,
+        rate_provider: ExchangeRateProvider | None = None,
+        *,
+        currencies: Collection[str] | None = None,
+        history_start: dt.date | None = None,
+    ) -> PriceUpdate:
+        """Download and store exchange rates into the book currency.
+
+        Args:
+            rate_provider: Provider to use; `None` creates the one selected in
+                the book settings.
+            currencies: ISO codes to refresh; `None` refreshes every currency
+                of the securities that differs from the book currency.
+            history_start: First day of the daily history to download, or
+                `None` for the latest rates only.
+
+        Returns:
+            The stored rates, with no prices, and one error message per
+            currency that could not be refreshed.
+
+        Raises:
+            ValidationError: If an argument is invalid.
+        """
+        history_start = v.optional_date(history_start, "history_start")
+        with self._uow.session() as session:
+            settings = read_settings(session)
+            if currencies is None:
+                codes = {
+                    row
+                    for row in session.scalars(select(SecurityRow.currency).distinct())
+                }
+            else:
+                codes = {v.currency_code(c) for c in currencies}
+        codes.discard(settings.currency_code or "")
+        errors: list[str] = []
+        rates = _fetch_rates(
+            rate_provider, settings, codes, history_start, dt.date.today(), errors
+        )
+        with self._uow.session() as session:
+            stored = [
+                to_exchange_rate(store_rate(session, currency, day, rate))
+                for currency, day, rate in rates
+            ]
+        return PriceUpdate(
+            prices=(),
+            exchange_rates=_last_per_key(stored, lambda r: (r.currency, r.date)),
+            errors=tuple(errors),
+        )
+
+
+def _fetch_rates(
+    rate_provider: ExchangeRateProvider | None,
+    settings: Settings,
+    currencies: Collection[str],
+    history_start: dt.date | None,
+    today: dt.date,
+    errors: builtins.list[str],
+) -> builtins.list[tuple[str, dt.date, Decimal]]:
+    """Download rates of `currencies` into the book currency; record failures."""
+    rates: builtins.list[tuple[str, dt.date, Decimal]] = []
+    if not currencies:
+        return rates
+    code = settings.currency_code
+    if code is None:
+        errors.extend(
+            f"{currency}: set the book currency code to convert prices"
+            for currency in sorted(currencies)
+        )
+        return rates
+    if rate_provider is None:
+        try:
+            rate_provider = create_rate_provider(settings.rate_provider)
+        except PriceProviderError as exc:
+            errors.append(f"exchange rates: {exc}")
+            return rates
+    for currency in sorted(currencies):
+        try:
+            quote = rate_provider.latest(currency, code)
+            points = (
+                []
+                if history_start is None or history_start > today
+                else rate_provider.history(currency, code, history_start, today)
+            )
+        except PriceProviderError as exc:
+            errors.append(f"{currency}: {exc}")
+            continue
+        rates.extend((currency, p.date, p.rate) for p in points)
+        rates.append((currency, quote.date, quote.rate))
+    return rates
 
 
 def _history(
