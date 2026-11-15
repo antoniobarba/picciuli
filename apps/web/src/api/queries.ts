@@ -4,11 +4,13 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type QueryKey,
   type UseQueryResult,
 } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { Day } from '../lib/dates';
 import { MoneyFormat } from '../lib/money';
+import { applyMove, type Positioned } from '../lib/reorder';
 import { unwrap, type ApiClient } from './client';
 import { useApi } from './context';
 import type { LatestPrice, Security } from './types';
@@ -25,6 +27,38 @@ export function useApiMutation<TVariables, TResult = unknown>(
   return useMutation({
     mutationFn: (variables: TVariables) => run(api, variables),
     onSuccess: () => client.invalidateQueries(),
+  });
+}
+
+export interface Move {
+  id: number;
+  /** New 1-based position among its siblings. */
+  position: number;
+}
+
+/**
+ * Move an item of the list cached under `queryKey`: the new order shows at
+ * once, and the old one comes back if the server refuses the move.
+ */
+export function useOptimisticMove<T extends Positioned>(
+  queryKey: QueryKey,
+  run: (api: ApiClient, move: Move) => Promise<unknown>,
+  sameGroup?: (a: T, b: T) => boolean,
+) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (move: Move) => run(api, move),
+    onMutate: async ({ id, position }) => {
+      await client.cancelQueries({ queryKey });
+      const previous = client.getQueryData<T[]>(queryKey);
+      if (previous) client.setQueryData(queryKey, applyMove(previous, id, position, sameGroup));
+      return { previous };
+    },
+    onError: (_error, _move, context) => {
+      if (context?.previous) client.setQueryData(queryKey, context.previous);
+    },
+    onSettled: () => client.invalidateQueries(),
   });
 }
 

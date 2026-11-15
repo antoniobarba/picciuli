@@ -38,12 +38,16 @@ when you are offline.
 On wide screens the tabs at the top switch screens; on phones the bar at the
 bottom shows Overview, Accounts, Budgets and Investments, and **More** has the
 rest. Every list row opens when clicked; its **⋯** menu has the other actions.
+Accounts and categories are reordered by dragging the **⠿** handle at the
+start of their row, with the mouse or a finger; a subcategory moves only among
+the subcategories of the same parent, and a category takes its subcategories
+along.
 
 | Screen | What you can do |
 |--------|-----------------|
 | Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions; the period's categories against their budgets; balances and net worth at the end of the day, where a balance row opens that account's **register**. Swipe the calendar to change month on a phone. |
-| Accounts | Accounts with balance, market value, goal and progress; create, edit, close or reopen, reorder and delete. A row opens the **register** with running balances. |
-| Categories | The two-level tree: create, edit, reorder, delete (moving the transactions of a category in use). |
+| Accounts | Accounts with balance, market value, goal and progress; create, edit, close or reopen, reorder (drag the handle) and delete. A row opens the **register** with running balances. |
+| Categories | The two-level tree: create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). |
 | Periods | Create, edit and delete periods. |
 | Budgets | Budgets of a period with their progress; copy them from another period. |
 | Investments | Holdings at market value, securities and their latest prices; find a security online, buy, sell (with a preview of the cost basis and gain), enter prices, refresh prices, download the price history, live prices. |
@@ -79,6 +83,8 @@ list and `ctrl+k` for the command palette.
 |-----|--------|
 | `1` … `6`, `s` | Switch screen, settings |
 | `n` / `e` / `d` | New / edit / delete the selected item |
+| `shift+↑ ↓` | Move the selected account or category up / down |
+| `alt+↑ ↓`; `space`, `↑ ↓`, `space` | On a focused **⠿** handle: move the row one step; or pick it up, choose its place and drop it (`esc` cancels) |
 | `← → ↑ ↓`, `pgup` `pgdn`, `t`, `g` | Calendar: day, week, month, today, go to a date |
 | `[` `]`, `p` | Previous / next period covering the day, start a period |
 | `f`, `b`, `x`, `p`, `r`, `h`, `l` | Investments: find, buy, sell, price, refresh, history, live prices |

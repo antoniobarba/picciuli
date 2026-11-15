@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { unwrap, type ApiClient } from '../api/client';
 import { useApi } from '../api/context';
-import { useApiMutation, useCategories } from '../api/queries';
+import { useApiMutation, useCategories, useOptimisticMove } from '../api/queries';
 import type { Category } from '../api/types';
 import { useNotify } from '../components/feedback';
 import { errorMessage, FormDialog, SelectField, TextField } from '../components/forms';
+import { DragHandle, useSortable } from '../components/SortableList';
 import { Empty, Loading, PageHeader, RowMenu } from '../components/ui';
 import { categoryTree } from '../lib/format';
 import { NONE_ID, optionalText } from '../lib/forms';
@@ -29,22 +30,35 @@ export function Categories() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = tree.find((c) => c.id === selectedId) ?? null;
 
-  const move = useApiMutation((client, { id, position }: { id: number; position: number }) =>
-    unwrap(
-      client.PATCH('/api/v1/categories/{category_id}', { params: { path: { category_id: id } }, body: { position } }),
-    ),
+  const move = useOptimisticMove<Category>(
+    ['categories'],
+    (client, { id, position }) =>
+      unwrap(
+        client.PATCH('/api/v1/categories/{category_id}', { params: { path: { category_id: id } }, body: { position } }),
+      ),
+    (a, b) => a.parent_id === b.parent_id,
   );
 
-  const moveCategory = async (category: Category, step: number) => {
-    const siblings = tree.filter((c) => c.parent_id === category.parent_id).length;
-    const position = Math.min(Math.max(category.position + step, 1), siblings);
-    if (position === category.position) return;
+  // Categories reorder among the siblings under the same parent; a parent moves with its children.
+  const siblingsOf = (category: Category) => tree.filter((c) => c.parent_id === category.parent_id);
+  const moveCategory = async (category: Category, index: number) => {
+    const target = siblingsOf(category)[index];
+    if (!target || target.id === category.id) return;
     try {
-      await move.mutateAsync({ id: category.id, position });
+      await move.mutateAsync({ id: category.id, position: index + 1 });
     } catch (error) {
       notify(errorMessage(error), { title: 'Cannot do that', kind: 'error' });
     }
   };
+  const step = (category: Category, by: number) =>
+    void moveCategory(category, siblingsOf(category).indexOf(category) + by);
+  const sortable = useSortable<Category>({
+    getId: (category) => category.id,
+    siblingsOf,
+    extentOf: (category) => [category, ...tree.filter((c) => c.parent_id === category.id)],
+    label: (category) => category.name,
+    onMove: (category, index) => void moveCategory(category, index),
+  });
 
   const askDelete = async (category: Category) => {
     if (tree.some((c) => c.parent_id === category.id)) {
@@ -62,8 +76,8 @@ export function Categories() {
     n: () => setDialog({ kind: 'edit', category: null, parentId: null }),
     e: () => selected && setDialog({ kind: 'edit', category: selected, parentId: selected.parent_id }),
     d: () => selected && void askDelete(selected),
-    'shift+ArrowUp': () => selected && void moveCategory(selected, -1),
-    'shift+ArrowDown': () => selected && void moveCategory(selected, 1),
+    'shift+ArrowUp': () => selected && step(selected, -1),
+    'shift+ArrowDown': () => selected && step(selected, 1),
   });
 
   return (
@@ -86,6 +100,7 @@ export function Categories() {
           <table className="table rows-clickable">
             <thead>
               <tr>
+                <th className="handle-cell" aria-label="Reorder" />
                 <th>Name</th>
                 <th>Symbol</th>
                 <th aria-label="Actions" />
@@ -93,17 +108,20 @@ export function Categories() {
             </thead>
             <tbody>
               {tree.map((category) => {
-                const siblings = tree.filter((c) => c.parent_id === category.parent_id).length;
                 const edit = () => setDialog({ kind: 'edit', category, parentId: category.parent_id });
                 return (
                   <tr
                     key={category.id}
+                    ref={sortable.rowRef(category.id)}
                     tabIndex={0}
-                    className={`${category.parent_id !== null ? 'child' : 'parent'}${category.id === selectedId ? ' selected' : ''}`}
+                    className={`${category.parent_id !== null ? 'child' : 'parent'}${category.id === selectedId ? ' selected' : ''} ${sortable.rowClass(category)}`}
                     onFocus={() => setSelectedId(category.id)}
                     onClick={edit}
                     onKeyDown={(e) => e.key === 'Enter' && edit()}
                   >
+                    <td className="handle-cell">
+                      <DragHandle {...sortable.handleProps(category)} />
+                    </td>
                     <td>{category.parent_id !== null ? `└ ${category.name}` : <strong>{category.name}</strong>}</td>
                     <td className="muted">{category.symbol}</td>
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
@@ -114,12 +132,6 @@ export function Categories() {
                             label: 'Add subcategory',
                             onSelect: () => setDialog({ kind: 'edit', category: null, parentId: category.id }),
                           },
-                          { label: 'Move up', onSelect: () => void moveCategory(category, -1), disabled: category.position <= 1 },
-                          {
-                            label: 'Move down',
-                            onSelect: () => void moveCategory(category, 1),
-                            disabled: category.position >= siblings,
-                          },
                           { label: 'Delete', onSelect: () => void askDelete(category), danger: true, shortcut: 'd' },
                         ]}
                       />
@@ -129,6 +141,7 @@ export function Categories() {
               })}
             </tbody>
           </table>
+          {sortable.status}
         </div>
       )}
       {dialog?.kind === 'edit' ? (

@@ -30,6 +30,8 @@ const SECTIONS: [string, [string, string][]][] = [
     'Lists',
     [
       ['shift+↑ ↓', 'Move the account or category up / down'],
+      ['⠿ alt+↑ ↓', 'On a drag handle: move the row up / down'],
+      ['⠿ space ↑ ↓ space', 'On a drag handle: pick the row up, choose its place, drop it (esc cancels)'],
       ['c', 'Close or reopen the account'],
       ['[ ] y', 'Budgets: change period, copy budgets from another period'],
     ],

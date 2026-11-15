@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { unwrap } from '../api/client';
-import { useAccounts, useApiMutation, useBalances, useMoney, useNetWorth, useValuations } from '../api/queries';
+import { useAccounts, useApiMutation, useBalances, useMoney, useNetWorth, useOptimisticMove, useValuations } from '../api/queries';
 import type { Account } from '../api/types';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
+import { DragHandle, useSortable } from '../components/SortableList';
 import { Amount, Empty, Loading, PageHeader, ProgressBar, RowMenu } from '../components/ui';
 import { shortDate } from '../lib/dates';
 import { ACCOUNT_TYPE_LABELS } from '../lib/format';
@@ -47,7 +48,7 @@ export function Accounts() {
   const reopen = useApiMutation((api, id: number) =>
     unwrap(api.POST('/api/v1/accounts/{account_id}/reopen', { params: { path: { account_id: id } } })),
   );
-  const move = useApiMutation((api, { id, position }: { id: number; position: number }) =>
+  const move = useOptimisticMove<Account>(['accounts', true], (api, { id, position }) =>
     unwrap(
       api.POST('/api/v1/accounts/{account_id}/move', { params: { path: { account_id: id } }, body: { position } }),
     ),
@@ -67,18 +68,27 @@ export function Accounts() {
       setDialog({ kind: 'close', account });
     }
   };
-  const moveAccount = (account: Account, step: number) => {
-    const position = Math.min(Math.max(account.position + step, 1), list.length);
-    if (position !== account.position) void run(() => move.mutateAsync({ id: account.id, position }));
+  const moveAccount = (account: Account, index: number) => {
+    const target = list[index];
+    if (target && target.id !== account.id) {
+      void run(() => move.mutateAsync({ id: account.id, position: index + 1 }));
+    }
   };
+  const sortable = useSortable<Account>({
+    getId: (account) => account.id,
+    siblingsOf: () => list,
+    label: (account) => account.name,
+    onMove: moveAccount,
+  });
+  const step = (account: Account, by: number) => moveAccount(account, list.indexOf(account) + by);
 
   useHotkeys({
     n: () => setDialog({ kind: 'edit', account: null }),
     e: () => selected && setDialog({ kind: 'edit', account: selected }),
     d: () => selected && void deleteAccount(selected),
     c: () => selected && void closeOrReopen(selected),
-    'shift+ArrowUp': () => selected && moveAccount(selected, -1),
-    'shift+ArrowDown': () => selected && moveAccount(selected, 1),
+    'shift+ArrowUp': () => selected && step(selected, -1),
+    'shift+ArrowDown': () => selected && step(selected, 1),
   });
 
   return (
@@ -97,6 +107,7 @@ export function Accounts() {
           <table className="table rows-clickable">
             <thead>
               <tr>
+                <th className="handle-cell" aria-label="Reorder" />
                 <th>Name</th>
                 <th className="hide-sm">Type</th>
                 <th className="num">Balance</th>
@@ -116,12 +127,16 @@ export function Accounts() {
                 return (
                   <tr
                     key={account.id}
-                    className={`${account.is_closed ? 'closed' : ''}${account.id === selectedId ? ' selected' : ''}`}
+                    ref={sortable.rowRef(account.id)}
+                    className={`${account.is_closed ? 'closed' : ''}${account.id === selectedId ? ' selected' : ''} ${sortable.rowClass(account)}`}
                     tabIndex={0}
                     onFocus={() => setSelectedId(account.id)}
                     onClick={() => navigate(`/accounts/${account.id}`)}
                     onKeyDown={(e) => e.key === 'Enter' && navigate(`/accounts/${account.id}`)}
                   >
+                    <td className="handle-cell">
+                      <DragHandle {...sortable.handleProps(account)} />
+                    </td>
                     <td>
                       <span className="strong">{account.name}</span>
                       <span className="show-sm muted small">{ACCOUNT_TYPE_LABELS[account.type]}</span>
@@ -160,12 +175,6 @@ export function Accounts() {
                             onSelect: () => void closeOrReopen(account),
                             shortcut: 'c',
                           },
-                          { label: 'Move up', onSelect: () => moveAccount(account, -1), disabled: account.position <= 1 },
-                          {
-                            label: 'Move down',
-                            onSelect: () => moveAccount(account, 1),
-                            disabled: account.position >= list.length,
-                          },
                           { label: 'Delete', onSelect: () => void deleteAccount(account), danger: true, shortcut: 'd' },
                         ]}
                       />
@@ -175,6 +184,7 @@ export function Accounts() {
               })}
             </tbody>
           </table>
+          {sortable.status}
           {worth ? (
             <div className="totals">
               <span>
