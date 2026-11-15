@@ -1,0 +1,114 @@
+name: Deploy
+
+# After CI succeeds on master: build the API image, push it to GitHub Container
+# Registry and deploy it to the server over SSH. Run it by hand ("Run
+# workflow") with a commit SHA to roll back to an earlier image.
+#
+# Repository settings needed (Settings > Secrets and variables > Actions):
+#   secrets  DEPLOY_SSH_KEY       private key of the server's "deploy" user
+#            DEPLOY_KNOWN_HOSTS   output of `ssh-keyscan <server>`
+#   vars     DEPLOY_HOST          server address
+#            DEPLOY_USER          usually "deploy"
+#            API_DOMAIN           e.g. api.example.com
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (commit SHA) to deploy; empty builds the current commit"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/picciuli-api
+
+jobs:
+  image:
+    # workflow_run also fires for CI runs of pull requests, even from forks whose
+    # branch happens to be called "master": only deploy pushes to this repository.
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && inputs.tag == '')
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - id: meta
+        run: echo "tag=$SHA" >> "$GITHUB_OUTPUT"
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    if: >-
+      !failure() && !cancelled() && vars.DEPLOY_HOST != '' &&
+      (needs.image.result == 'success' || inputs.tag != '')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.API_DOMAIN }}/docs
+    env:
+      TAG: ${{ inputs.tag || needs.image.outputs.tag }}
+      TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.workflow_run.head_sha || github.sha }}
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload the stack definition
+        run: |
+          scp deploy/compose.yml deploy/Caddyfile deploy/deploy.sh deploy/backup.sh \
+            deploy/.env.example "$TARGET:/opt/picciuli/"
+          ssh "$TARGET" chmod +x /opt/picciuli/deploy.sh /opt/picciuli/backup.sh
+      - name: Deploy
+        run: ssh "$TARGET" "/opt/picciuli/deploy.sh $TAG"
+      - name: Smoke test
+        run: |
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 \
+            --retry-all-errors "https://${{ vars.API_DOMAIN }}/healthz"

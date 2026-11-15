@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "picciuli-api"
+version = "2.0.0.dev0"
+description = "Multi-user REST API server for Picciuli, the personal budgeting and money tracking engine."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Antonio Barba" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Framework :: FastAPI",
+    "Typing :: Typed",
+    "Topic :: Office/Business :: Financial :: Accounting",
+]
+dependencies = [
+    "picciuli==2.0.0.dev0",
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.7,<3",
+    "pyjwt[crypto]>=2.9,<3",
+]
+
+[project.optional-dependencies]
+dev = ["picciuli[dev]", "httpx2>=2.16"]
+
+[project.scripts]
+picciuli-api = "picciuli_api.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/picciuli_api"]

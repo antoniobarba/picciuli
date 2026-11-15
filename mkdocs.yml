@@ -14,6 +14,8 @@ nav:
   - Getting started: getting-started.md
   - Concepts: concepts.md
   - Console interface: tui.md
+  - API server: api-server.md
+  - Deployment: deployment.md
   - Development: development.md
   - API reference:
       - Book: api/book.md

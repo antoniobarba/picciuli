@@ -5,6 +5,9 @@
 ```
 packages/picciuli/   core library (src layout, tests next to it)
 apps/tui/            console user interface (Textual), with its tests
+apps/api/            multi-user REST API (FastAPI), tests in apps/api/api_tests,
+                     committed OpenAPI schema in apps/api/openapi.json
+deploy/              production stack (Docker Compose, Caddy, Zitadel) and scripts
 docs/, mkdocs.yml    this documentation
 pyproject.toml       uv workspace root + shared ruff / mypy / pytest configuration
 ```
@@ -12,7 +15,6 @@ pyproject.toml       uv workspace root + shared ruff / mypy / pytest configurati
 Future clients will live next to the library, all in this same repository:
 
 ```
-apps/api/        FastAPI web backend (generates openapi.json, serves apps/web)
 apps/web/        TypeScript web/PWA front-end with a client generated from openapi.json
 apps/desktop/    optional desktop wrapper
 ```
@@ -25,6 +27,7 @@ imports.
 
 ```bash
 pip install -e "packages/picciuli[dev,docs]" -e apps/tui   # or: uv sync
+pip install -e "apps/api[dev]"                             # API server, Python 3.11+
 
 pytest --cov             # tests with branch coverage (fails below 95 %)
 ruff check . && ruff format --check .
@@ -32,6 +35,7 @@ mypy                     # strict type checking
 mkdocs serve             # live documentation at http://127.0.0.1:8000
 mkdocs build --strict    # what CI runs
 picciuli-tui --demo demo.db && picciuli-tui demo.db   # try the console UI
+picciuli-api openapi --output apps/api/openapi.json   # after changing the API
 ```
 
 The console interface keeps its logic in widget-free modules

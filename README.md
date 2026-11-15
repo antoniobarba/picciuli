@@ -63,6 +63,18 @@ picciuli-tui demo.db             # open it; press ? for the keys
 A calendar-centred overview shows each day's net flow, the selected period with
 its budgets, and your balances. See [docs/tui.md](docs/tui.md).
 
+## API server
+
+```bash
+pip install -e "apps/api[dev]"   # Python 3.11+
+picciuli-api                     # Swagger UI at http://127.0.0.1:8000/docs
+```
+
+A multi-user REST API (FastAPI) for web and mobile front-ends: every user gets
+a private book, and logins are handled by an OpenID Connect provider (Zitadel).
+See [docs/api-server.md](docs/api-server.md) and, to put it online with
+automatic deployments, [docs/deployment.md](docs/deployment.md).
+
 ## Documentation
 
 The documentation is generated with MkDocs from the Markdown pages in `docs/`

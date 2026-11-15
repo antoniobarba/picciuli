@@ -1,0 +1,145 @@
+"""Investment endpoints: valuations, buying, selling and price refreshes."""
+
+from __future__ import annotations
+
+import datetime as dt
+from decimal import Decimal
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
+
+from picciuli_api.deps import BookDep, ContextDep
+from picciuli_api.schemas.accounts import NetWorthOut
+from picciuli_api.schemas.investments import (
+    AccountValuationOut,
+    BuyCreate,
+    HoldingOut,
+    PriceUpdateOut,
+    RefreshExchangeRates,
+    RefreshPrices,
+    SaleCostOut,
+    SellCreate,
+)
+from picciuli_api.schemas.transactions import TransactionOut
+
+router = APIRouter(prefix="/investments", tags=["investments"])
+
+
+@router.get("/valuations")
+def list_valuations(
+    book: BookDep, as_of: dt.date | None = None, include_closed: bool = False
+) -> list[AccountValuationOut]:
+    """Market value of every account."""
+    found = book.investments.valuations(as_of=as_of, include_closed=include_closed)
+    return [AccountValuationOut.model_validate(v) for v in found]
+
+
+@router.get("/net-worth")
+def market_net_worth(book: BookDep, as_of: dt.date | None = None) -> NetWorthOut:
+    """Net worth with holdings at market value."""
+    return NetWorthOut.model_validate(book.investments.net_worth(as_of=as_of))
+
+
+@router.post("/buy", status_code=status.HTTP_201_CREATED)
+def buy(book: BookDep, body: BuyCreate) -> TransactionOut:
+    """Record a purchase of shares, paid from cash or from another account."""
+    transaction = book.investments.record_buy(
+        body.date,
+        account_id=body.account_id,
+        security_id=body.security_id,
+        quantity=body.quantity,
+        cost=body.cost,
+        from_account_id=body.from_account_id,
+        fee=body.fee,
+        fee_category_id=body.fee_category_id,
+        description=body.description,
+        notes=body.notes,
+    )
+    return TransactionOut.model_validate(transaction)
+
+
+@router.post("/sell", status_code=status.HTTP_201_CREATED)
+def sell(book: BookDep, body: SellCreate) -> TransactionOut:
+    """Record a sale of shares with its realized gain or loss."""
+    transaction = book.investments.record_sell(
+        body.date,
+        account_id=body.account_id,
+        security_id=body.security_id,
+        quantity=body.quantity,
+        proceeds=body.proceeds,
+        to_account_id=body.to_account_id,
+        fee=body.fee,
+        fee_category_id=body.fee_category_id,
+        tax=body.tax,
+        tax_category_id=body.tax_category_id,
+        gain_category_id=body.gain_category_id,
+        description=body.description,
+        notes=body.notes,
+    )
+    return TransactionOut.model_validate(transaction)
+
+
+@router.post("/refresh-prices")
+def refresh_prices(
+    book: BookDep, context: ContextDep, body: RefreshPrices | None = None
+) -> PriceUpdateOut:
+    """Download the latest prices and the exchange rates they need.
+
+    Quotes are shared between users and reused for 15 minutes (configurable),
+    so refreshing often does not overload the price provider.
+    """
+    body = body or RefreshPrices()
+    settings = book.settings.get()
+    update = book.investments.refresh_prices(
+        context.providers.prices(settings.price_provider),
+        rate_provider=context.providers.rates(settings.rate_provider),
+        security_ids=body.security_ids,
+        history_start=body.history_start,
+    )
+    return PriceUpdateOut.model_validate(update)
+
+
+@router.post("/refresh-exchange-rates")
+def refresh_exchange_rates(
+    book: BookDep, context: ContextDep, body: RefreshExchangeRates | None = None
+) -> PriceUpdateOut:
+    """Download the latest exchange rates (shared cache, like prices)."""
+    body = body or RefreshExchangeRates()
+    settings = book.settings.get()
+    update = book.investments.refresh_exchange_rates(
+        context.providers.rates(settings.rate_provider),
+        currencies=body.currencies,
+        history_start=body.history_start,
+    )
+    return PriceUpdateOut.model_validate(update)
+
+
+@router.get("/{account_id}/valuation")
+def account_valuation(
+    book: BookDep, account_id: int, as_of: dt.date | None = None
+) -> AccountValuationOut:
+    """Market value of one account."""
+    valuation = book.investments.valuation(account_id, as_of=as_of)
+    return AccountValuationOut.model_validate(valuation)
+
+
+@router.get("/{account_id}/holdings")
+def account_holdings(
+    book: BookDep, account_id: int, as_of: dt.date | None = None
+) -> list[HoldingOut]:
+    """Securities held in one account."""
+    found = book.investments.holdings(account_id, as_of=as_of)
+    return [HoldingOut.model_validate(h) for h in found]
+
+
+@router.get("/{account_id}/sale-cost")
+def sale_cost(
+    book: BookDep,
+    account_id: int,
+    security_id: int,
+    quantity: Annotated[Decimal, Query(examples=["1.5"])],
+    date: dt.date,
+) -> SaleCostOut:
+    """Cost basis that selling `quantity` shares on `date` would remove."""
+    cost = book.investments.sale_cost(account_id, security_id, quantity, date=date)
+    return SaleCostOut(cost=cost)

@@ -1,0 +1,22 @@
+# Caddy obtains and renews the HTTPS certificates automatically.
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:8000
+}
+
+{$AUTH_DOMAIN} {
+	# Zitadel: the Login UI (Next.js) under /ui/v2/login, everything else
+	# (OIDC endpoints, console, gRPC APIs) to the core over HTTP/2 cleartext.
+	@root path /
+	rewrite @root /ui/v2/login/
+	handle /ui/v2/login* {
+		reverse_proxy zitadel-login:3000
+	}
+	handle {
+		reverse_proxy h2c://zitadel-api:8080
+	}
+}
