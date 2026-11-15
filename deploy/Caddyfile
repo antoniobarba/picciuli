@@ -8,6 +8,16 @@
 	reverse_proxy api:8000
 }
 
+{$APP_DOMAIN} {
+	reverse_proxy web:8080
+}
+
+# Other names of the front-end (e.g. "www.example.com, example.com") redirect
+# to it. The placeholder address only matches a host that does not exist.
+{$WEB_REDIRECT_DOMAINS:http://redirect.invalid} {
+	redir https://{$APP_DOMAIN}{uri} permanent
+}
+
 {$AUTH_DOMAIN} {
 	# Zitadel: the Login UI (Next.js) under /ui/v2/login, everything else
 	# (OIDC endpoints, console, gRPC APIs) to the core over HTTP/2 cleartext.

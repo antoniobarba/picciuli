@@ -19,3 +19,8 @@ site/
 *.db
 data/
 reports/
+
+# Node (apps/web)
+node_modules/
+*.tsbuildinfo
+.env.local
