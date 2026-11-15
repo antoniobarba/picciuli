@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -49,6 +50,7 @@ from picciuli_tui.forms import (
     save_settings,
     save_transaction,
     simple_lines,
+    trade_from_transaction,
 )
 
 TODAY = dt.date(2025, 3, 12)
@@ -488,7 +490,134 @@ def test_buy_sell_and_price(
     assert (price.date, price.price) == (TODAY, Decimal("35.5"))
 
 
-def test_share_transactions_open_in_the_split_editor(
+def test_read_and_update_recorded_trades(
+    book: Book,
+    money: MoneyFormat,
+    checking: Account,
+    broker: Account,
+    etf: Security,
+    food: Category,
+) -> None:
+    gains = book.categories.create("Gains")
+    taxes = book.categories.create("Taxes")
+    bought = book.investments.record_buy(
+        TODAY,
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=Decimal("1.5"),
+        cost=3500,
+        from_account_id=checking.id,
+        fee=100,
+        fee_category_id=food.id,
+        description="Buy ETF",
+        notes="Monthly purchase",
+    )
+    parsed_buy = trade_from_transaction(bought, money)
+    assert parsed_buy == (
+        False,
+        TradeDraft(
+            date=TODAY.isoformat(),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity="1.5",
+            amount="35.00",
+            other_account_id=checking.id,
+            fee="1.00",
+            tax="",
+            category_id=food.id,
+            fee_category_id=food.id,
+            tax_category_id=None,
+            description="Buy ETF",
+            notes="Monthly purchase",
+        ),
+    )
+    altered = replace(
+        bought,
+        splits=(
+            bought.splits[0],
+            bought.splits[1],
+            ExternalSplit(-100, food.id, "Custom fee"),
+        ),
+    )
+    assert trade_from_transaction(altered, money) is None
+    edited_buy = save_buy(
+        book,
+        TradeDraft(
+            **{
+                **parsed_buy[1].__dict__,
+                "quantity": "2",
+                "amount": "40.00",
+                "fee": "2.00",
+                "description": "Edited buy",
+            }
+        ),
+        money,
+        today=TODAY,
+        transaction_id=bought.id,
+    )
+    assert edited_buy.id == bought.id
+    assert edited_buy.description == "Edited buy"
+    assert edited_buy.notes == "Monthly purchase"
+    assert [s.quantity for s in edited_buy.account_splits if s.quantity] == [Decimal(2)]
+
+    sold = book.investments.record_sell(
+        TODAY + dt.timedelta(days=1),
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=1,
+        proceeds=5000,
+        to_account_id=checking.id,
+        fee=100,
+        fee_category_id=food.id,
+        tax=50,
+        tax_category_id=taxes.id,
+        gain_category_id=gains.id,
+        description="Sell ETF",
+    )
+    parsed_sell = trade_from_transaction(sold, money)
+    assert parsed_sell == (
+        True,
+        TradeDraft(
+            date=(TODAY + dt.timedelta(days=1)).isoformat(),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity="1",
+            amount="50.00",
+            other_account_id=checking.id,
+            fee="1.00",
+            tax="0.50",
+            category_id=gains.id,
+            fee_category_id=food.id,
+            tax_category_id=taxes.id,
+            description="Sell ETF",
+            notes="",
+        ),
+    )
+    edited_sell = save_sell(
+        book,
+        TradeDraft(
+            **{
+                **parsed_sell[1].__dict__,
+                "quantity": "0.5",
+                "amount": "30.00",
+            }
+        ),
+        money,
+        today=TODAY,
+        transaction_id=sold.id,
+    )
+    assert edited_sell.id == sold.id
+    assert [s.quantity for s in edited_sell.account_splits if s.quantity] == [
+        Decimal("-0.5")
+    ]
+    assert {s.memo: s.category_id for s in edited_sell.external_splits} == {
+        "Realized gain": gains.id,
+        "Fee": food.id,
+        "Tax": taxes.id,
+    }
+
+
+def test_share_transaction_draft_preserves_share_quantity(
     book: Book, money: MoneyFormat, checking: Account, broker: Account, etf: Security
 ) -> None:
     bought = book.investments.record_buy(

@@ -85,10 +85,11 @@ The transaction form has four kinds:
   three lines (one source account and two destinations is the common case).
 
 Editing a transaction opens the simple form when it is a plain expense, income
-or transfer, and the split editor otherwise. Purchases and sales of shares
-always open in the split editor. Their share lines show the quantity, which is
-kept as is. Transactions of closed accounts cannot be changed until the account
-is reopened.
+or transfer, and the split editor otherwise. Recognizable purchases and sales
+of shares open in the Buy/Sell form, where quantity, cost or proceeds, fees,
+and the other trade details can be changed. Other investment transactions
+remain in the split editor. Transactions of closed accounts cannot be changed
+until the account is reopened.
 
 ## Investments
 

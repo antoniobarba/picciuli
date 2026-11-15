@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
 from decimal import Decimal
 from typing import ClassVar
 
@@ -12,7 +11,6 @@ from textual.binding import Binding, BindingType
 from textual.widgets import Footer, Static
 
 from picciuli import (
-    AccountType,
     AccountValuation,
     PicciuliError,
     Price,
@@ -23,7 +21,6 @@ from picciuli import (
 from picciuli.prices import SecurityInfo
 from picciuli_tui.formatting import (
     SECURITY_KIND_LABELS,
-    category_label,
     percent_text,
     price_text,
     quantity_text,
@@ -31,26 +28,22 @@ from picciuli_tui.formatting import (
     short_date,
 )
 from picciuli_tui.forms import (
-    NONE_ID,
     InputError,
     SecurityDraft,
-    TradeDraft,
     optional_text,
-    save_buy,
     save_price,
     save_security,
-    save_sell,
 )
 from picciuli_tui.screens.accounts import RegisterScreen
 from picciuli_tui.screens.base import BookScreen
 from picciuli_tui.screens.modals import (
     ChoiceField,
     ConfirmScreen,
-    Field,
     FormScreen,
     FormValues,
     PickScreen,
     TextField,
+    trade_form,
 )
 from picciuli_tui.widgets import ListTable, amount_text
 
@@ -515,99 +508,20 @@ class InvestmentsScreen(BookScreen):
     # Trades
 
     def _trade_form(self, selling: bool) -> None:
-        book = self.book
-        accounts = book.accounts.list(include_closed=False)
-        brokers = [a for a in accounts if a.type is AccountType.INVESTMENT]
-        if not brokers or not self.securities:
+        security = self.selected_security()
+        form = trade_form(
+            self.book,
+            self.money,
+            today=self.today(),
+            selling=selling,
+            account_id=self.selected_account_id(),
+            security_id=security.id if security else None,
+        )
+        if form is None:
             self.notify("Create an investment account and a security first.")
             return
-        today = self.today()
-        account_id = self.selected_account_id()
-        if account_id not in {a.id for a in brokers}:
-            account_id = brokers[0].id
-        security = self.selected_security() or self.securities[0]
-        others: list[tuple[str, Hashable]] = [
-            ("Cash of the investment account", NONE_ID)
-        ]
-        others += [
-            (a.name, a.id) for a in accounts if a.type is not AccountType.INVESTMENT
-        ]
-        categories = book.categories.list()
-        by_id = {c.id: c for c in categories}
-        category_options: list[tuple[str, Hashable]] = [("Uncategorized", NONE_ID)]
-        category_options += [(category_label(c.id, by_id), c.id) for c in categories]
-        fields: list[Field] = [
-            TextField("date", "Date", today.isoformat()),
-            ChoiceField(
-                "account_id",
-                "Investment account",
-                [(a.name, a.id) for a in brokers],
-                account_id,
-            ),
-            ChoiceField(
-                "security_id",
-                "Security",
-                [(s.name, s.id) for s in self.securities],
-                security.id,
-            ),
-            TextField("quantity", "Quantity", placeholder="shares, e.g. 1.5"),
-            TextField(
-                "amount",
-                "Proceeds" if selling else "Cost",
-                placeholder="total for all the shares",
-            ),
-            ChoiceField(
-                "other_account_id",
-                "To account" if selling else "Paid from",
-                others,
-                others[1][1] if len(others) > 1 else NONE_ID,
-            ),
-            TextField("fee", "Fee", placeholder="0"),
-        ]
-        if selling:
-            fields.append(TextField("tax", "Tax", placeholder="0"))
-        fields.append(
-            ChoiceField(
-                "category_id",
-                "Gain category" if selling else "Fee category",
-                category_options,
-                NONE_ID,
-            )
-        )
-
-        def submit(values: FormValues) -> Transaction:
-            draft = TradeDraft(
-                date=values["date"],
-                account_id=values["account_id"],
-                security_id=values["security_id"],
-                quantity=values["quantity"],
-                amount=values["amount"],
-                other_account_id=values["other_account_id"],
-                fee=values["fee"],
-                tax=values.get("tax", ""),
-                category_id=values["category_id"],
-            )
-            if selling:
-                return save_sell(book, draft, self.money, today=today)
-            return save_buy(book, draft, self.money, today=today)
-
-        help_text = (
-            "Proceeds: gross amount received. The cost of the shares sold is "
-            "computed with the cost method of the settings; the difference is "
-            "the realized gain. Fee and tax are deducted from the money received."
-            if selling
-            else "Cost: total paid for the shares; it becomes their cost basis. "
-            "The fee is recorded as an expense: add it to the cost to include "
-            "it in the cost basis instead."
-        )
         self.app.push_screen(
-            FormScreen(
-                "Sell shares" if selling else "Buy shares",
-                fields,
-                submit,
-                help=help_text,
-                save_label="Sell" if selling else "Buy",
-            ),
+            form,
             self._traded,
         )
 

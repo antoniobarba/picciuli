@@ -42,6 +42,7 @@ from picciuli_tui.screens.modals import (
     FormValues,
     TextField,
     TransactionForm,
+    trade_form,
 )
 from picciuli_tui.widgets import CalendarWidget, ListTable, amount_text
 
@@ -356,8 +357,15 @@ class OverviewScreen(BookScreen):
         if transaction is None:
             self.notify("No transaction selected on this day.")
             return
+        form = trade_form(
+            self.book,
+            self.money,
+            today=self.today(),
+            transaction=transaction,
+        )
         self.app.push_screen(
-            TransactionForm(
+            form
+            or TransactionForm(
                 self.book,
                 self.money,
                 today=self.today(),

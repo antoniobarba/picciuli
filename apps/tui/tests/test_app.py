@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 from typing import Any, cast
 
 from conftest import TODAY, run_app
@@ -276,6 +277,65 @@ def test_transaction_lifecycle(
         await press(pilot, "d", "y")
         assert not book.transactions.list()
         assert table(app).row_count == 0
+
+    run_app(book, scenario)
+
+
+def test_editing_investment_transaction_uses_trade_form(
+    book: Book,
+    checking: Account,
+    food: Category,
+) -> None:
+    broker = book.accounts.create("Broker", AccountType.INVESTMENT)
+    etf = book.securities.create("ETF", currency="USD")
+    bought = book.investments.record_buy(
+        TODAY,
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=Decimal("1.5"),
+        cost=3500,
+        from_account_id=checking.id,
+        fee=100,
+        fee_category_id=food.id,
+        description="Buy ETF",
+        notes="Monthly purchase",
+    )
+
+    async def scenario(app: PicciuliApp, pilot: Pilot[None]) -> None:
+        screen = cast(OverviewScreen, app.screen)
+        screen.query_one("#day-list", ListTable).move_cursor(row=0)
+        await press(pilot, "e")
+        form = cast(FormScreen[object], app.screen)
+        assert form.form_title == "Edit purchase"
+        assert form.values() == {
+            "date": TODAY.isoformat(),
+            "account_id": broker.id,
+            "security_id": etf.id,
+            "quantity": "1.5",
+            "amount": "35.00",
+            "other_account_id": checking.id,
+            "fee": "1.00",
+            "category_id": food.id,
+            "description": "Buy ETF",
+            "notes": "Monthly purchase",
+        }
+        await fill(
+            pilot,
+            quantity="2",
+            amount="40.00",
+            fee="2.00",
+            description="Edited buy",
+            notes="Updated notes",
+        )
+        await press(pilot, "ctrl+s")
+        updated = book.transactions.get(bought.id)
+        assert updated.id == bought.id
+        assert updated.description == "Edited buy"
+        assert updated.notes == "Updated notes"
+        assert [s.quantity for s in updated.account_splits if s.quantity] == [
+            Decimal("2")
+        ]
+        assert sum(s.amount for s in updated.external_splits) == -200
 
     run_app(book, scenario)
 

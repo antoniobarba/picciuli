@@ -648,6 +648,80 @@ class TradeDraft:
     fee: str = ""
     tax: str = ""
     category_id: int | None = None
+    fee_category_id: int | None = None
+    tax_category_id: int | None = None
+    description: str = ""
+    notes: str = ""
+
+
+def trade_from_transaction(
+    transaction: Transaction, money: MoneyFormat
+) -> tuple[bool, TradeDraft] | None:
+    """Read a recorded buy or sell, or return `None` for another transaction."""
+    shares = [
+        split for split in transaction.account_splits if split.security_id is not None
+    ]
+    cash = [split for split in transaction.account_splits if split.security_id is None]
+    external = transaction.external_splits
+    if len(shares) != 1 or len(cash) > 1:
+        return None
+
+    share = shares[0]
+    if share.quantity is None or share.quantity == 0:
+        return None
+    memos = {split.memo or "": split for split in external}
+    if len(memos) != len(external):
+        return None
+    selling = share.quantity < 0
+    allowed = {"Realized gain", "Fee", "Tax"} if selling else {"Fee"}
+    if memos.keys() - allowed:
+        return None
+
+    fee_split = memos.get("Fee")
+    tax_split = memos.get("Tax")
+    gain_split = memos.get("Realized gain")
+    fee = -(fee_split.amount if fee_split else 0)
+    tax = -(tax_split.amount if tax_split else 0)
+    if fee < 0 or tax < 0:
+        return None
+    cash_split = cash[0] if cash else None
+    amount = (
+        -share.amount + (gain_split.amount if gain_split else 0)
+        if selling
+        else share.amount
+    )
+    expected_cash = amount - fee - tax if selling else -(amount + fee)
+    if (
+        amount <= 0
+        or (cash_split.amount if cash_split else 0) != expected_cash
+        or (not selling and cash_split is None)
+    ):
+        return None
+    return selling, TradeDraft(
+        date=transaction.date.isoformat(),
+        account_id=share.account_id,
+        security_id=share.security_id,
+        quantity=str(abs(share.quantity)),
+        amount=money.plain(amount),
+        other_account_id=(
+            cash_split.account_id
+            if cash_split is not None and cash_split.account_id != share.account_id
+            else NONE_ID
+        ),
+        fee=money.plain(fee) if fee else "",
+        tax=money.plain(tax) if tax else "",
+        category_id=(
+            gain_split.category_id
+            if selling and gain_split
+            else fee_split.category_id
+            if fee_split
+            else NONE_ID
+        ),
+        fee_category_id=fee_split.category_id if fee_split else None,
+        tax_category_id=tax_split.category_id if tax_split else None,
+        description=transaction.description or "",
+        notes=transaction.notes or "",
+    )
 
 
 def _non_negative(text: str, money: MoneyFormat, label: str) -> int:
@@ -658,35 +732,103 @@ def _non_negative(text: str, money: MoneyFormat, label: str) -> int:
 
 
 def save_buy(
-    book: Book, draft: TradeDraft, money: MoneyFormat, *, today: dt.date
+    book: Book,
+    draft: TradeDraft,
+    money: MoneyFormat,
+    *,
+    today: dt.date,
+    transaction_id: int | None = None,
 ) -> Transaction:
     """Record a purchase of shares; the fee goes to `draft.category_id`."""
+    date = parse_date(draft.date, today=today)
+    account_id = required_id(draft.account_id, "an investment account")
+    security_id = required_id(draft.security_id, "a security")
+    quantity = parse_quantity(draft.quantity)
+    cost = positive_amount(draft.amount, money)
+    from_account_id = draft.other_account_id or None
+    fee = _non_negative(draft.fee, money, "fee")
+    fee_category_id = draft.category_id or None
+    description = optional_text(draft.description)
+    notes = optional_text(draft.notes)
+    if transaction_id is not None:
+        return book.investments.update_buy(
+            transaction_id,
+            date,
+            account_id=account_id,
+            security_id=security_id,
+            quantity=quantity,
+            cost=cost,
+            from_account_id=from_account_id,
+            fee=fee,
+            fee_category_id=fee_category_id,
+            description=description,
+            notes=notes,
+        )
     return book.investments.record_buy(
-        parse_date(draft.date, today=today),
-        account_id=required_id(draft.account_id, "an investment account"),
-        security_id=required_id(draft.security_id, "a security"),
-        quantity=parse_quantity(draft.quantity),
-        cost=positive_amount(draft.amount, money),
-        from_account_id=draft.other_account_id or None,
-        fee=_non_negative(draft.fee, money, "fee"),
-        fee_category_id=draft.category_id or None,
+        date,
+        account_id=account_id,
+        security_id=security_id,
+        quantity=quantity,
+        cost=cost,
+        from_account_id=from_account_id,
+        fee=fee,
+        fee_category_id=fee_category_id,
+        description=description,
+        notes=notes,
     )
 
 
 def save_sell(
-    book: Book, draft: TradeDraft, money: MoneyFormat, *, today: dt.date
+    book: Book,
+    draft: TradeDraft,
+    money: MoneyFormat,
+    *,
+    today: dt.date,
+    transaction_id: int | None = None,
 ) -> Transaction:
     """Record a sale of shares; the gain goes to `draft.category_id`."""
+    date = parse_date(draft.date, today=today)
+    account_id = required_id(draft.account_id, "an investment account")
+    security_id = required_id(draft.security_id, "a security")
+    quantity = parse_quantity(draft.quantity)
+    proceeds = positive_amount(draft.amount, money)
+    to_account_id = draft.other_account_id or None
+    fee = _non_negative(draft.fee, money, "fee")
+    tax = _non_negative(draft.tax, money, "tax")
+    gain_category_id = draft.category_id or None
+    description = optional_text(draft.description)
+    notes = optional_text(draft.notes)
+    if transaction_id is not None:
+        return book.investments.update_sell(
+            transaction_id,
+            date,
+            account_id=account_id,
+            security_id=security_id,
+            quantity=quantity,
+            proceeds=proceeds,
+            to_account_id=to_account_id,
+            fee=fee,
+            fee_category_id=draft.fee_category_id,
+            tax=tax,
+            tax_category_id=draft.tax_category_id,
+            gain_category_id=gain_category_id,
+            description=description,
+            notes=notes,
+        )
     return book.investments.record_sell(
-        parse_date(draft.date, today=today),
-        account_id=required_id(draft.account_id, "an investment account"),
-        security_id=required_id(draft.security_id, "a security"),
-        quantity=parse_quantity(draft.quantity),
-        proceeds=positive_amount(draft.amount, money),
-        to_account_id=draft.other_account_id or None,
-        fee=_non_negative(draft.fee, money, "fee"),
-        tax=_non_negative(draft.tax, money, "tax"),
-        gain_category_id=draft.category_id or None,
+        date,
+        account_id=account_id,
+        security_id=security_id,
+        quantity=quantity,
+        proceeds=proceeds,
+        to_account_id=to_account_id,
+        fee=fee,
+        fee_category_id=draft.fee_category_id,
+        tax=tax,
+        tax_category_id=draft.tax_category_id,
+        gain_category_id=gain_category_id,
+        description=description,
+        notes=notes,
     )
 
 

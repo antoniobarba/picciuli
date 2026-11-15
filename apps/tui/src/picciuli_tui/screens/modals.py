@@ -13,7 +13,7 @@ from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Markdown, OptionList, Select, Static
 
-from picciuli import Account, Book, Category, PicciuliError, Transaction
+from picciuli import Account, AccountType, Book, Category, PicciuliError, Transaction
 from picciuli_tui.formatting import MoneyFormat, category_label
 from picciuli_tui.forms import (
     ENTRY_KIND_LABELS,
@@ -21,13 +21,17 @@ from picciuli_tui.forms import (
     EntryKind,
     InputError,
     LineDraft,
+    TradeDraft,
     TransactionDraft,
     account_target,
     category_target,
     draft_from_transaction,
     line_totals,
+    save_buy,
+    save_sell,
     save_transaction,
     simple_lines,
+    trade_from_transaction,
 )
 
 T = TypeVar("T")
@@ -166,6 +170,171 @@ class FormScreen(ModalScreen[T], Generic[T]):
             self.action_submit()
         else:
             self.action_cancel()
+
+
+def trade_form(
+    book: Book,
+    money: MoneyFormat,
+    *,
+    today: dt.date,
+    selling: bool | None = None,
+    account_id: int | None = None,
+    security_id: int | None = None,
+    transaction: Transaction | None = None,
+) -> FormScreen[Transaction] | None:
+    """Build the same trade form for recording or editing a buy or sell."""
+    parsed = trade_from_transaction(transaction, money) if transaction else None
+    if transaction is not None and parsed is None:
+        return None
+    if parsed:
+        selling, draft = parsed
+    else:
+        draft = TradeDraft()
+    if selling is None:
+        raise ValueError("choose whether this is a buy or sell")
+
+    all_accounts = book.accounts.list(include_closed=True)
+    accounts = [a for a in all_accounts if not a.is_closed]
+    brokers = [a for a in accounts if a.type is AccountType.INVESTMENT]
+    if transaction is not None and draft.account_id is not None:
+        closed_broker = next(
+            (a for a in all_accounts if a.id == draft.account_id and a.is_closed),
+            None,
+        )
+        if closed_broker is not None:
+            brokers.append(closed_broker)
+    securities = book.securities.list()
+    if not brokers or not securities:
+        return None
+
+    broker_ids = {a.id for a in brokers}
+    selected_account = (
+        draft.account_id
+        if parsed and draft.account_id in broker_ids
+        else account_id
+        if account_id in broker_ids
+        else brokers[0].id
+    )
+    security_ids = {s.id for s in securities}
+    selected_security = (
+        draft.security_id
+        if parsed and draft.security_id in security_ids
+        else security_id
+        if security_id in security_ids
+        else securities[0].id
+    )
+    other_accounts = [a for a in accounts if a.id != selected_account]
+    if parsed and draft.other_account_id not in (None, NONE_ID):
+        closed_other = next(
+            (a for a in all_accounts if a.id == draft.other_account_id and a.is_closed),
+            None,
+        )
+        if closed_other is not None:
+            other_accounts.append(closed_other)
+    other_options: list[tuple[str, Hashable]] = [
+        ("Cash of the investment account", NONE_ID),
+        *[
+            (f"{a.name} (closed)" if a.is_closed else a.name, a.id)
+            for a in other_accounts
+        ],
+    ]
+    categories = book.categories.list()
+    by_id = {c.id: c for c in categories}
+    category_options: list[tuple[str, Hashable]] = [("Uncategorized", NONE_ID)]
+    category_options += [(category_label(c.id, by_id), c.id) for c in categories]
+    fields: list[Field] = [
+        TextField("date", "Date", draft.date or today.isoformat()),
+        ChoiceField(
+            "account_id",
+            "Investment account",
+            [(f"{a.name} (closed)" if a.is_closed else a.name, a.id) for a in brokers],
+            selected_account,
+        ),
+        ChoiceField(
+            "security_id",
+            "Security",
+            [(s.name, s.id) for s in securities],
+            selected_security,
+        ),
+        TextField("quantity", "Quantity", draft.quantity, "shares, e.g. 1.5"),
+        TextField(
+            "amount",
+            "Proceeds" if selling else "Cost",
+            draft.amount,
+            "total for all the shares",
+        ),
+        ChoiceField(
+            "other_account_id",
+            "To account" if selling else "Paid from",
+            other_options,
+            draft.other_account_id
+            if draft.other_account_id in {value for _, value in other_options}
+            else other_accounts[0].id
+            if other_accounts
+            else NONE_ID,
+        ),
+        TextField("fee", "Fee", draft.fee, "0"),
+    ]
+    if selling:
+        fields.append(TextField("tax", "Tax", draft.tax, "0"))
+    fields.extend(
+        [
+            ChoiceField(
+                "category_id",
+                "Gain category" if selling else "Fee category",
+                category_options,
+                draft.category_id
+                if draft.category_id in {value for _, value in category_options}
+                else NONE_ID,
+            ),
+            TextField("description", "Description", draft.description),
+            TextField("notes", "Notes", draft.notes),
+        ]
+    )
+
+    def submit(values: FormValues) -> Transaction:
+        edited = TradeDraft(
+            date=values["date"],
+            account_id=values["account_id"],
+            security_id=values["security_id"],
+            quantity=values["quantity"],
+            amount=values["amount"],
+            other_account_id=values["other_account_id"],
+            fee=values["fee"],
+            tax=values.get("tax", ""),
+            category_id=values["category_id"],
+            fee_category_id=draft.fee_category_id,
+            tax_category_id=draft.tax_category_id,
+            description=values["description"],
+            notes=values["notes"],
+        )
+        transaction_id = transaction.id if transaction else None
+        if selling:
+            return save_sell(
+                book, edited, money, today=today, transaction_id=transaction_id
+            )
+        return save_buy(book, edited, money, today=today, transaction_id=transaction_id)
+
+    title = (
+        ("Edit sale" if selling else "Edit purchase")
+        if transaction
+        else ("Sell shares" if selling else "Buy shares")
+    )
+    help_text = (
+        "Proceeds are the gross amount received. The cost of the shares sold "
+        "is computed with the cost method of the settings; fee and tax are "
+        "deducted from the money received."
+        if selling
+        else "Cost is the total paid for the shares; it becomes their cost "
+        "basis. The fee is recorded as an expense."
+    )
+    return FormScreen(
+        title,
+        fields,
+        submit,
+        help=help_text,
+        save_label="Save" if transaction else "Sell" if selling else "Buy",
+    )
 
 
 class ConfirmScreen(ModalScreen[bool]):
