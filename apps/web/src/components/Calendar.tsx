@@ -11,6 +11,8 @@ export interface CalendarProps {
   period: Period | null;
   money: MoneyFormat;
   onSelect: (day: Day) => void;
+  /** Double-click on a day, e.g. to start a new transaction on it. */
+  onActivate?: (day: Day) => void;
   onMonth: (step: number) => void;
   autoFocus?: boolean;
 }
@@ -21,7 +23,7 @@ const STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -
  * The month calendar of the overview: each day shows its net flow, `↔` marks
  * days with only transfers, and the selected period is drawn as a band.
  */
-export function Calendar({ day, today, flows, period, money, onSelect, onMonth, autoFocus }: CalendarProps) {
+export function Calendar({ day, today, flows, period, money, onSelect, onActivate, onMonth, autoFocus }: CalendarProps) {
   const { year, month } = parts(day);
   const grid = monthGrid(year, month);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -123,6 +125,7 @@ export function Calendar({ day, today, flows, period, money, onSelect, onMonth, 
                     aria-label={label}
                     aria-current={cell === today ? 'date' : undefined}
                     onClick={() => onSelect(cell)}
+                    onDoubleClick={onActivate ? () => onActivate(cell) : undefined}
                   >
                     <span className="day-number">{parts(cell).day}</span>
                     {flow ? (

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { unwrap } from '../api/client';
 import {
   useAccounts,
@@ -84,12 +84,12 @@ export function Overview() {
 
   const selected = dayTransactions.find((t) => t.id === selectedId) ?? (dayTransactions.length === 1 ? dayTransactions[0] : undefined);
 
-  const newTransaction = () => {
+  const newTransaction = (on: Day = day) => {
     if (accounts.data && !hasOpenAccounts) {
       notify('Create an account first: open Accounts, then New.', { title: 'No accounts', kind: 'warning' });
       return;
     }
-    editors.newTransaction({ day });
+    editors.newTransaction({ day: on });
   };
 
   const deleteTransaction = async (transaction: Transaction | undefined) => {
@@ -115,7 +115,7 @@ export function Overview() {
   };
 
   useHotkeys({
-    n: newTransaction,
+    n: () => newTransaction(),
     e: () => (selected ? editors.editTransaction(selected) : notify('No transaction selected on this day.')),
     d: () => void deleteTransaction(selected),
     Delete: () => void deleteTransaction(selected),
@@ -139,6 +139,7 @@ export function Overview() {
           period={period}
           money={money}
           onSelect={selectDay}
+          onActivate={newTransaction}
           onMonth={(step) => selectDay(shiftMonth(day, step))}
           autoFocus={window.matchMedia?.('(pointer: fine)').matches}
         />
@@ -167,7 +168,7 @@ export function Overview() {
                 {dayTransactions.length === 1 ? '' : 's'}
               </small>
             </h2>
-            <button type="button" className="button primary small hide-mobile" onClick={newTransaction}>
+            <button type="button" className="button primary small hide-mobile" onClick={() => newTransaction()}>
               + New
             </button>
           </div>
@@ -218,7 +219,7 @@ export function Overview() {
         <BalancesPanel day={day} money={money} />
       </div>
 
-      <button type="button" className="fab" onClick={newTransaction} aria-label="New transaction">
+      <button type="button" className="fab" onClick={() => newTransaction()} aria-label="New transaction">
         +
       </button>
 
@@ -320,7 +321,7 @@ function PeriodPanel({
               const line = lines.get(item.category.id);
               return (
                 <tr key={item.category.id} className={item.category.parent_id !== null ? 'child' : ''}>
-                  <td>{item.category.parent_id !== null ? `└ ${item.category.name}` : item.category.name}</td>
+                  <td>{item.category.name}</td>
                   <td className="num">
                     <Amount value={item.total} money={money} />
                   </td>
@@ -363,6 +364,7 @@ function PeriodPanel({
 }
 
 function BalancesPanel({ day, money }: { day: Day; money: MoneyFormat }) {
+  const navigate = useNavigate();
   const balances = useBalances(day).data ?? [];
   const valuations = useValuations(day).data ?? [];
   const worth = useNetWorth(day).data;
@@ -375,11 +377,20 @@ function BalancesPanel({ day, money }: { day: Day; money: MoneyFormat }) {
           Balances <small className="muted">{shortDate(day)}</small>
         </h2>
       </div>
-      <table className="table compact">
+      <table className="table compact rows-clickable">
         <tbody>
           {balances.map((balance) => (
-            <tr key={balance.account.id}>
-              <td>{balance.account.name}</td>
+            <tr key={balance.account.id} onClick={() => navigate(`/accounts/${balance.account.id}`)}>
+              <td>
+                {/* The link gives the row keyboard focus and Enter; clicks elsewhere in the row use the row handler. */}
+                <Link
+                  to={`/accounts/${balance.account.id}`}
+                  className="row-link"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {balance.account.name}
+                </Link>
+              </td>
               <td className="num">
                 <Amount value={market.get(balance.account.id) ?? balance.balance} money={money} />
               </td>

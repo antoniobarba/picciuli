@@ -41,7 +41,7 @@ rest. Every list row opens when clicked; its **⋯** menu has the other actions.
 
 | Screen | What you can do |
 |--------|-----------------|
-| Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; the day's transactions; the period's categories against their budgets; balances and net worth at the end of the day. Swipe the calendar to change month on a phone. |
+| Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions; the period's categories against their budgets; balances and net worth at the end of the day, where a balance row opens that account's **register**. Swipe the calendar to change month on a phone. |
 | Accounts | Accounts with balance, market value, goal and progress; create, edit, close or reopen, reorder and delete. A row opens the **register** with running balances. |
 | Categories | The two-level tree: create, edit, reorder, delete (moving the transactions of a category in use). |
 | Periods | Create, edit and delete periods. |
