@@ -3,7 +3,33 @@
 	email {$ACME_EMAIL}
 }
 
+# Every site: browsers must only use HTTPS from now on (HSTS), and neither
+# Caddy nor the upstream server announces itself.
+(common) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}
+
 {$API_DOMAIN} {
+	import common
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+	# Responses carry financial data: never store them in any cache.
+	header /api/* Cache-Control no-store
+	# Request bodies are small, except the data import, which may be as large
+	# as the API's PICCIULI_MAX_IMPORT_BYTES (50 MB by default).
+	@importBody path /api/v1/me/import /api/v1/me/import/
+	request_body @importBody {
+		max_size 50MB
+	}
+	@otherBody not path /api/v1/me/import /api/v1/me/import/
+	request_body @otherBody {
+		max_size 1MB
+	}
 	# TEMPORARY until import is sandboxed (SEC-01): reject uploads at the edge.
 	@import {
 		method POST
@@ -15,6 +41,7 @@
 }
 
 {$APP_DOMAIN} {
+	import common
 	@identity path /api/auth/*
 	handle @identity {
 		header Cache-Control no-store
@@ -32,10 +59,12 @@
 # Other names of the front-end (e.g. "www.example.com, example.com") redirect
 # to it. The placeholder address only matches a host that does not exist.
 {$WEB_REDIRECT_DOMAINS:http://redirect.invalid} {
+	import common
 	redir https://{$APP_DOMAIN}{uri} permanent
 }
 
 {$AUTH_DOMAIN} {
+	import common
 	# Zitadel: the Login UI (Next.js) under /ui/v2/login, everything else
 	# (OIDC endpoints, console, gRPC APIs) to the core over HTTP/2 cleartext.
 	@root path /

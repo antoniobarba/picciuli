@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Start or update the stack. Run on the server from /opt/picciuli:
-#   ./deploy.sh            deploy the latest images
-#   ./deploy.sh <sha>      deploy (or roll back to) the images of a commit
+# Start or update the stack. Run as root on the server from /opt/picciuli:
+#   sudo ./deploy.sh            deploy the latest images
+#   sudo ./deploy.sh <sha>      deploy (or roll back to) the images of a commit
+# The Deploy workflow runs it through /usr/local/sbin/picciuli-deploy, which
+# first installs the stack definition of that commit.
 set -euo pipefail
 cd "$(dirname "$0")"
 

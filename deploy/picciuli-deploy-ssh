@@ -1,0 +1,13 @@
+#!/bin/sh
+# Forced command of the deploy user's SSH key, installed by bootstrap-vm.sh as
+# /usr/local/sbin/picciuli-deploy-ssh. Whatever the client asks for, the only
+# thing this key can do is "deploy <full commit sha>".
+set -eu
+set -f
+# shellcheck disable=SC2086 # split the requested command into words
+set -- ${SSH_ORIGINAL_COMMAND:-}
+if [ "$#" -ne 2 ] || [ "$1" != deploy ]; then
+    echo 'only "deploy <full commit sha>" is allowed' >&2
+    exit 2
+fi
+exec sudo -n /usr/local/sbin/picciuli-deploy "$2"

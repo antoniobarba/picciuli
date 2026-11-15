@@ -77,5 +77,6 @@ def test_cli_serves(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
             "port": 8000,
             "proxy_headers": True,
             "forwarded_allow_ips": "*",
+            "server_header": False,
         }
     ]
