@@ -1,4 +1,5 @@
-# Production stack: Caddy (HTTPS) -> Picciuli API + Zitadel (identity) -> Postgres.
+# Production stack: Caddy (HTTPS) -> Picciuli API + web front-end + Zitadel
+# (identity) -> Postgres.
 # Lives in /opt/picciuli on the server next to Caddyfile, deploy.sh, backup.sh
 # and .env (copied from .env.example). Start or update with ./deploy.sh.
 name: picciuli
@@ -14,6 +15,8 @@ services:
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
       AUTH_DOMAIN: ${AUTH_DOMAIN:?set AUTH_DOMAIN in .env}
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
+      WEB_REDIRECT_DOMAINS: ${WEB_REDIRECT_DOMAINS:-}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -36,6 +39,19 @@ services:
       PICCIULI_FORWARDED_ALLOW_IPS: "*"
     volumes:
       - ./data/picciuli:/data
+    networks: [web]
+
+  web:
+    image: ghcr.io/antoniobarba/picciuli-web:${WEB_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      # Read by the browser from /config.json.
+      PICCIULI_API_URL: https://${API_DOMAIN}
+      PICCIULI_OIDC_ISSUER: https://${AUTH_DOMAIN}
+      PICCIULI_OIDC_CLIENT_ID: ${WEB_CLIENT_ID:-}
+      PICCIULI_OIDC_PROJECT_ID: ${OIDC_AUDIENCE:-}
+    read_only: true
+    tmpfs: [/tmp]
     networks: [web]
 
   zitadel-api:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start or update the stack. Run on the server from /opt/picciuli:
-#   ./deploy.sh            deploy the latest image
-#   ./deploy.sh <sha>      deploy (or roll back to) the image of a commit
+#   ./deploy.sh            deploy the latest images
+#   ./deploy.sh <sha>      deploy (or roll back to) the images of a commit
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -15,14 +15,17 @@ if [[ ! -f .env ]]; then
     exit 1
 fi
 
-if grep -q '^API_TAG=' .env; then
-    sed -i "s/^API_TAG=.*/API_TAG=$tag/" .env
-else
-    echo "API_TAG=$tag" >>.env
-fi
+# The API and the web front-end are built from the same commit.
+for name in API_TAG WEB_TAG; do
+    if grep -q "^$name=" .env; then
+        sed -i "s/^$name=.*/$name=$tag/" .env
+    else
+        echo "$name=$tag" >>.env
+    fi
+done
 
 mkdir -p data/picciuli
 docker compose pull --quiet
 docker compose up --detach --remove-orphans --wait --wait-timeout 300
 docker image prune --force >/dev/null
-echo "deployed picciuli-api:$tag"
+echo "deployed picciuli-api and picciuli-web:$tag"

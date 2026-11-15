@@ -1,0 +1,45 @@
+# Static server of the web front-end, inside its container. HTTPS is handled
+# by the Caddy in front of the whole stack (deploy/Caddyfile).
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' {$PICCIULI_API_URL} {$PICCIULI_OIDC_ISSUER}; frame-src {$PICCIULI_OIDC_ISSUER}; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self' {$PICCIULI_OIDC_ISSUER}; frame-ancestors 'none'; object-src 'none'"
+		-Server
+	}
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# Runtime configuration, so one image fits every environment.
+	handle /config.json {
+		header Content-Type application/json
+		header Cache-Control no-store
+		respond `{"apiUrl":"{$PICCIULI_API_URL}","oidcIssuer":"{$PICCIULI_OIDC_ISSUER}","oidcClientId":"{$PICCIULI_OIDC_CLIENT_ID}","oidcProjectId":"{$PICCIULI_OIDC_PROJECT_ID}"}` 200
+	}
+
+	# Hashed assets never change; everything else must be revalidated so
+	# that a new version (and its service worker) is picked up quickly.
+	@hashed path /assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@mutable not path /assets/*
+	header @mutable Cache-Control "no-cache"
+
+	# Single-page application: unknown paths (/accounts, /callback…) get index.html.
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

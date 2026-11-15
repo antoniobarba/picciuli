@@ -1,0 +1,35 @@
+import type { components } from './schema';
+
+type S = components['schemas'];
+
+export type Account = S['AccountOut'];
+export type AccountType = S['AccountType'];
+export type AccountBalance = S['AccountBalanceOut'];
+export type NetWorth = S['NetWorthOut'];
+export type Category = S['CategoryOut'];
+export type Transaction = S['TransactionOut'];
+export type AccountSplit = S['AccountSplitOut'];
+export type ExternalSplit = S['ExternalSplitOut'];
+export type Split = AccountSplit | ExternalSplit;
+export type SplitIn = S['AccountSplitIn'] | S['ExternalSplitIn'];
+export type TransactionKind = S['TransactionKind'];
+export type Period = S['PeriodOut'];
+export type PeriodSummary = S['PeriodSummaryOut'];
+export type Budget = S['BudgetOut'];
+export type BudgetReport = S['BudgetReportOut'];
+export type BudgetLine = S['BudgetLineOut'];
+export type Register = S['RegisterOut'];
+export type RegisterEntry = S['RegisterEntryOut'];
+export type Settings = S['SettingsOut'];
+export type SettingsUpdate = S['SettingsUpdate'];
+export type CostMethod = S['CostMethod'];
+export type Security = S['SecurityOut'];
+export type SecurityKind = S['SecurityKind'];
+export type SecurityInfo = S['SecurityInfoOut'];
+export type LatestPrice = S['LatestPriceOut'];
+export type Holding = S['HoldingOut'];
+export type AccountValuation = S['AccountValuationOut'];
+export type PriceUpdate = S['PriceUpdateOut'];
+export type Provider = S['ProviderOut'];
+export type Me = S['MeOut'];
+export type ErrorResponse = S['ErrorResponse'];

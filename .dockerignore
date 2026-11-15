@@ -12,3 +12,7 @@ site
 docs
 deploy
 apps/tui
+apps/web/node_modules
+apps/web/dist
+apps/web/dev-dist
+apps/web/.env.local

@@ -6,24 +6,26 @@ The production stack runs on one Linux server with Docker Compose:
 |-----------------|--------------------------------------------------------------|
 | `caddy`         | HTTPS reverse proxy; gets Let's Encrypt certificates itself  |
 | `api`           | the Picciuli API (image built by GitHub Actions)             |
+| `web`           | the web front-end: static files (image built by GitHub Actions) |
 | `zitadel-api`   | identity provider: users, registration, login, MFA          |
 | `zitadel-login` | Zitadel's login pages                                        |
 | `postgres`      | Zitadel's database (not reachable from outside)              |
 
 Every push to `master` runs CI; when it passes, the **Deploy** workflow builds
-the image, pushes it to GitHub Container Registry (`ghcr.io`) and updates the
-server over SSH. The user databases live in `/opt/picciuli/data/picciuli/users`
-and are backed up every night.
+the API and web images from the same commit, pushes them to GitHub Container
+Registry (`ghcr.io`) and updates the server over SSH. The user databases live
+in `/opt/picciuli/data/picciuli/users` and are backed up every night.
 
 ## 1. Domain name
 
-You need a domain with three names pointing to the server:
+You need a domain with three names pointing to the server (plus, optionally,
+`www` and the bare domain, which redirect to the front-end):
 
 | Name                | Used by                       |
 |---------------------|-------------------------------|
 | `api.example.com`   | the API (and its `/docs`)     |
 | `auth.example.com`  | Zitadel (login, registration) |
-| `app.example.com`   | the future web front-end      |
+| `app.example.com`   | the web front-end             |
 
 Cheap and trustworthy registrars:
 
@@ -93,22 +95,26 @@ In the repository, **Settings → Secrets and variables → Actions**:
 | variable | `DEPLOY_HOST`        | server address                                |
 | variable | `DEPLOY_USER`        | `deploy`                                      |
 | variable | `API_DOMAIN`         | `api.example.com`                             |
+| variable | `APP_DOMAIN`         | `app.example.com` (smoke test of the front-end) |
 
 Create a `production` environment (**Settings → Environments**) with yourself
 as required reviewer to approve each deployment, and protect the `master`
 branch (**Settings → Branches**): only commits pushed to `master` of this
 repository are ever deployed.
 
-The image is pushed to `ghcr.io/antoniobarba/picciuli-api`, which is private
-by default. Before the first deployment let the server pull it:
+The images are pushed to `ghcr.io/antoniobarba/picciuli-api` and
+`ghcr.io/antoniobarba/picciuli-web`, which are private by default. Before the
+first deployment let the server pull them:
 
 ```bash
 # as the deploy user, with a classic token that has only read:packages
 echo <token> | docker login ghcr.io -u antoniobarba --password-stdin
 ```
 
-(Alternatively, after the first push make the package public: **Packages →
-picciuli-api → Package settings → Change visibility**.)
+(Alternatively, after the first push make the packages public: **Packages →
+picciuli-api** (and **picciuli-web**) **→ Package settings → Change
+visibility**. The Deploy workflow pushes the images before waiting for your
+approval, so a new package can be made public before approving.)
 
 Then run the **Deploy** workflow (**Actions → Deploy → Run workflow**) or push
 to `master`. The first start of Zitadel takes a minute or two.
@@ -120,32 +126,39 @@ password from `.env`.
 
 1. **Project.** *Projects → Create*, name it `Picciuli`. Copy its **Resource
    Id**: this is `OIDC_AUDIENCE`.
-2. **Application for the front-end and Swagger UI.** In the project,
-   *New → User Agent → PKCE*. Redirect URIs:
-   `https://api.example.com/docs/oauth2-redirect` (Swagger UI) and later the
-   front-end's callback, e.g. `https://app.example.com/callback`. Post-logout:
-   `https://app.example.com/`. Copy the **Client Id**: this is
-   `SWAGGER_CLIENT_ID` (and the front-end's client id).
-3. In the application's **Token Settings**, set **Auth Token Type** to **JWT**.
-   The API validates JWT access tokens; opaque tokens are rejected.
-4. **Self-registration.** *Default settings → Login behavior and security*:
+2. **Application for Swagger UI.** In the project,
+   *New → User Agent → PKCE*. Redirect URI:
+   `https://api.example.com/docs/oauth2-redirect`. Copy the **Client Id**:
+   this is `SWAGGER_CLIENT_ID`.
+3. **Application for the web front-end.** Again *New → User Agent → PKCE*,
+   named e.g. *Picciuli front-end*: redirect URI
+   `https://app.example.com/callback`, post-logout URI
+   `https://app.example.com/`, grant types **Authorization Code** and
+   **Refresh Token** (so that the app stays signed in). Its **Client Id** is
+   `WEB_CLIENT_ID`. For local development add a second application with
+   **Development mode** on and the URIs `http://localhost:5173/callback` and
+   `http://localhost:5173/`.
+4. In the **Token Settings** of each application, set **Auth Token Type** to
+   **JWT**. The API validates JWT access tokens; opaque tokens are rejected.
+5. **Self-registration.** *Default settings → Login behavior and security*:
    enable **Register allowed**. Under *Password complexity* and *Lockout* pick
    your rules; enable passkeys or OTP under *Login behavior* if you like.
-5. **E-mail.** *Default settings → SMTP provider*: add an SMTP server (your
+6. **E-mail.** *Default settings → SMTP provider*: add an SMTP server (your
    mail provider, Brevo, Mailgun, Amazon SES...) so that Zitadel can verify
    addresses and send password resets.
 
-Put the two values in `/opt/picciuli/.env`:
+Put the values in `/opt/picciuli/.env`:
 
 ```bash
 OIDC_AUDIENCE=<project resource id>
-SWAGGER_CLIENT_ID=<client id>
+SWAGGER_CLIENT_ID=<client id of the Swagger UI application>
 SWAGGER_SCOPES=openid profile email urn:zitadel:iam:org:project:id:<project resource id>:aud
+WEB_CLIENT_ID=<client id of the front-end application>
 CORS_ORIGINS=https://app.example.com
 ```
 
 The `urn:zitadel:iam:org:project:id:<id>:aud` scope makes Zitadel put the
-project id in the token's audience; the front-end must request it too.
+project id in the token's audience; the front-end requests it too.
 
 and apply them with `./deploy.sh <current tag>` (or just re-run the workflow).
 
@@ -153,6 +166,8 @@ and apply them with `./deploy.sh <current tag>` (or just re-run the workflow).
 
 - `https://api.example.com/healthz` answers `{"status":"ok"}`;
 - `https://api.example.com/docs` → **Authorize** → log in → try `GET /api/v1/me`;
+- `https://app.example.com` → **Sign in** shows the overview; `www` and the
+  bare domain redirect to it;
 - register a second user from the login page and check that they see an empty
   book.
 
@@ -168,7 +183,7 @@ image, or on the server:
 cd /opt/picciuli && ./deploy.sh <commit sha>
 ```
 
-**Logs:** `docker compose logs -f api` (or `zitadel-api`, `caddy`).
+**Logs:** `docker compose logs -f api` (or `web`, `zitadel-api`, `caddy`).
 
 **Upgrade Zitadel:** change `ZITADEL_VERSION` in `.env` after reading its
 release notes, back up first, then `./deploy.sh <current tag>`.
