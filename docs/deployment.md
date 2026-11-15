@@ -140,8 +140,12 @@ Put the two values in `/opt/picciuli/.env`:
 ```bash
 OIDC_AUDIENCE=<project resource id>
 SWAGGER_CLIENT_ID=<client id>
+SWAGGER_SCOPES=openid profile email urn:zitadel:iam:org:project:id:<project resource id>:aud
 CORS_ORIGINS=https://app.example.com
 ```
+
+The `urn:zitadel:iam:org:project:id:<id>:aud` scope makes Zitadel put the
+project id in the token's audience; the front-end must request it too.
 
 and apply them with `./deploy.sh <current tag>` (or just re-run the workflow).
 
