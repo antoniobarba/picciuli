@@ -55,10 +55,18 @@ sudo bash bootstrap-vm.sh "$(cat picciuli-deploy.pub)"
 sudo install -o deploy -g deploy -m 600 .env.example /opt/picciuli/.env
 ```
 
-It installs Docker and the Compose plugin, enables the firewall (only SSH,
-HTTP and HTTPS are open), automatic security updates, log rotation and the
-nightly backup, and creates the `deploy` user and `/opt/picciuli`. Run it again
-with `HARDEN_SSH=1` to disable password logins once your own SSH key works.
+It installs Docker and the Compose plugin, opens only SSH, HTTP and HTTPS in the
+server's firewall (ufw, or the iptables rules of Oracle Cloud images), enables
+automatic security updates, log rotation and the nightly backup, and creates
+the `deploy` user and `/opt/picciuli`. Run it again with `HARDEN_SSH=1` to
+disable password logins once your own SSH key works.
+
+!!! note "Cloud firewalls"
+    Most clouds filter traffic before it reaches the server. On Oracle Cloud,
+    open the web ports in the subnet's security list: *Networking → Virtual
+    cloud networks → your VCN → Subnets → your subnet → Security → the
+    security list → Add Ingress Rules*, source `0.0.0.0/0`, TCP destination
+    ports `80,443`, and a second rule for UDP port `443` (HTTP/3, optional).
 
 ## 3. Configure the stack (once)
 

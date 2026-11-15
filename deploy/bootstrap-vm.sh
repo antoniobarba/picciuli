@@ -20,8 +20,36 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl ufw sqlite3 unattended-upgrades \
+apt-get install -y ca-certificates curl sqlite3 unattended-upgrades \
     docker.io docker-compose-v2
+
+# Only SSH and HTTP(S) are reachable from the internet. Oracle Cloud images
+# filter with iptables (netfilter-persistent) instead of ufw: open the web
+# ports in the saved rules, before their final REJECT.
+if [[ -f /etc/iptables/rules.v4 ]]; then
+    for rule in "-p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT" \
+        "-p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT" \
+        "-p udp -m udp --dport 443 -j ACCEPT"; do
+        if ! grep -qF -- "-A INPUT $rule" /etc/iptables/rules.v4; then
+            sed -i "0,/^-A INPUT -j REJECT/s//-A INPUT $rule\n&/" /etc/iptables/rules.v4
+        fi
+        # shellcheck disable=SC2086
+        if ! iptables -C INPUT $rule 2>/dev/null; then
+            reject=$(iptables -L INPUT --line-numbers | awk '$2 == "REJECT" {print $1; exit}')
+            # shellcheck disable=SC2086
+            iptables -I INPUT "${reject:-1}" $rule
+        fi
+    done
+else
+    apt-get install -y ufw
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow OpenSSH
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    ufw allow 443/udp
+    ufw --force enable
+fi
 systemctl enable --now docker
 
 # Rotate container logs instead of filling the disk.
@@ -35,15 +63,7 @@ JSON
     systemctl restart docker
 fi
 
-# Only SSH and HTTP(S) are reachable from the internet.
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 443/udp
-ufw --force enable
-
+# Only SSH and HTTP(S) are reachable from the internet (see above).
 dpkg-reconfigure -f noninteractive unattended-upgrades
 
 # Deploy user: may run docker (which is root-equivalent: keep its key safe).
