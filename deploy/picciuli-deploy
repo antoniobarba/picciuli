@@ -41,8 +41,15 @@ for name in "${files[@]}"; do
     curl -fsS --retry 3 -o "$tmp/$name" \
         "https://raw.githubusercontent.com/$repo/$sha/deploy/$name"
 done
-install -m 644 -o root -g root "$tmp/compose.yml" "$tmp/Caddyfile" \
-    "$tmp/.env.example" "$app_dir/"
-install -m 755 -o root -g root "$tmp/deploy.sh" "$tmp/backup.sh" "$app_dir/"
+# Overwrite the files in place rather than replacing them (as install or mv
+# would): Caddy's single-file bind mount keeps the old inode otherwise, and
+# "caddy reload" would read the previous Caddyfile.
+for name in "${files[@]}"; do
+    cp "$tmp/$name" "$app_dir/$name"
+done
+cd "$app_dir"
+chown root:root "${files[@]}"
+chmod 644 compose.yml Caddyfile .env.example
+chmod 755 deploy.sh backup.sh
 
 exec "$app_dir/deploy.sh" "$sha"
