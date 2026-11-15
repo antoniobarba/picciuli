@@ -8,8 +8,17 @@ the same screens as the [console interface](tui.md) and talks only to the
 ## Using it
 
 Open the front-end address (in production `https://app.picciuli.party`), then
-**Sign in** or **Create an account**. Logins are handled by Zitadel; the app
-never sees your password.
+**Sign in** or **Create an account**. With native login enabled, sign-in,
+registration, email verification, password recovery and authenticator codes
+stay in Picciuli. Zitadel still stores identities, checks passwords and issues
+tokens; Picciuli's confidential backend forwards credentials over HTTPS without
+storing them. Existing accounts and their books are unchanged.
+
+Registration requires email verification before the first sign-in. **Forgot
+password?** sends a link back to Picciuli; opening an email link does not consume
+its code until you submit the form. Required password changes and authenticator
+setup are also handled in the app. Accounts requiring unsupported security keys
+or SMS/email second factors are rejected rather than silently skipping MFA.
 
 To install it:
 
@@ -86,7 +95,8 @@ The code is organized as follows:
 ```
 src/api/         typed client (openapi-fetch) and TanStack Query hooks;
                  schema.d.ts is generated from apps/api/openapi.json
-src/auth/        OpenID Connect login with PKCE (oidc-client-ts)
+src/auth/        native identity screens and OpenID Connect with PKCE
+                 (oidc-client-ts); server operations are in picciuli_api/login.py
 src/lib/         logic without components, ported from the console interface:
                  money.ts, dates.ts, calendar.ts, forms.ts, format.ts
 src/components/  calendar, dialogs, form fields, menus
@@ -110,5 +120,63 @@ as `/config.json`, so the same image works for every installation:
 | `PICCIULI_OIDC_ISSUER`     | Zitadel address                             |
 | `PICCIULI_OIDC_CLIENT_ID`  | client id of the front-end application      |
 | `PICCIULI_OIDC_PROJECT_ID` | Zitadel project id (the API's audience)     |
+| `PICCIULI_NATIVE_LOGIN`   | `true` after the native backend and Zitadel application are configured; defaults to `false` |
 
 The [deployment guide](deployment.md) explains how it is wired into the stack.
+
+### Enabling native login
+
+Roll out the images before switching the application's login URL. Hosted login
+remains available for the Zitadel console and Swagger UI; do **not** replace
+the instance-wide login URL.
+
+1. Provision an `IAM_LOGIN_CLIENT` service-account PAT. The existing deployment's
+   login-client PAT can be used; do not give the web application an administrator
+   PAT. Install a copy as `/opt/picciuli/secrets/login-client.pat`, with directory
+   mode `700`, file mode `400`, and owner `10001:10001` (the API container user).
+   Neither this PAT nor the encryption key belongs in browser configuration.
+2. Set the following in the server's `.env`:
+
+   ```ini
+   LOGIN_ORIGIN=https://app.example.com
+   LOGIN_ORG_ID=<Zitadel organization resource ID, not project ID>
+   PICCIULI_LOGIN_COOKIE_SECRET=<at least 32 random characters>
+   NATIVE_LOGIN=true
+   ```
+
+   `WEB_CLIENT_ID` must identify the web application's OIDC client. Generate the
+   independent cookie key with `openssl rand -base64 48`. Rotating it expires
+   in-progress login flows and the native logout cookies.
+3. Recreate the API/web containers and reload Caddy with the new stack
+   definition. `/api/auth/*` must be proxied from the **web origin** to the API;
+   the provided Caddy configuration does this. These are private browser
+   endpoints, not part of the versioned book API or its generated OpenAPI client.
+4. In **the web application's** Zitadel OIDC configuration, select Login V2 and
+   set its custom base URI to `https://app.example.com/`. Zitadel appends
+   `login?authRequest=...`, so do not append `/login` to the base URI. Keep
+   authorization code, PKCE, refresh tokens and the existing `/callback` URI.
+   The equivalent configuration is
+   `loginVersion: { loginV2: { baseUri: "https://app.example.com/" } }`.
+5. Keep registration and local password login enabled in the organization.
+   Configure and test SMTP with a Picciuli sender name. New verification/reset
+   messages use Picciuli links; already-sent messages keep their old links.
+6. Verify registration, email delivery, password reset, MFA and sign-out before
+   ending the rollout. Roll back by restoring the application's previous login
+   base URI and setting `NATIVE_LOGIN=false`; do not remove the old Zitadel login
+   container.
+
+Login cookies are encrypted, HttpOnly, host-only, SameSite=Lax, and Secure on
+HTTPS. Login flows expire after ten minutes; Zitadel sessions have a 30-day
+lifetime. Session tokens never reach JavaScript. The existing OIDC access and
+refresh token storage is unchanged. Native sign-out terminates the current
+Zitadel session and revokes the app's tokens; it does not sign out other devices.
+Anonymous endpoints are limited to 30 requests per minute per client IP per
+API process. Keep the supplied single-process deployment or add a shared
+edge rate limiter when scaling it.
+
+For local native-login development, run the API with `PICCIULI_LOGIN_ORIGIN` set
+to `http://localhost:5173`, the development client ID and the same server-only
+organization/PAT/key settings. Point `PICCIULI_API_PROXY` at that API, set
+`VITE_NATIVE_LOGIN=true` in `.env.development.local`, and set only the development
+application's Login V2 base URI to `http://localhost:5173/`. HTTP cookies are
+allowed only for localhost development. Never copy a PAT into a `VITE_*` variable.

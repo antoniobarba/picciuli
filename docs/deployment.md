@@ -145,7 +145,25 @@ password from `.env`.
    your rules; enable passkeys or OTP under *Login behavior* if you like.
 6. **E-mail.** *Default settings → SMTP provider*: add an SMTP server (your
    mail provider, Brevo, Mailgun, Amazon SES...) so that Zitadel can verify
-   addresses and send password resets.
+   addresses and send password resets. Test delivery and activate the provider
+   before inviting users: without an active provider, the login UI can ask for
+   a verification code even though no email can be delivered.
+
+   For **Resend**, first verify your sending domain using the DNS records
+   supplied by Resend, then configure:
+
+   | Setting | Value |
+   |---------|-------|
+   | SMTP host | `smtp.resend.com:587` |
+   | TLS (STARTTLS) | Enabled |
+   | Username | `resend` |
+   | Password | Your Resend API key |
+   | Sender address | `noreply@<your verified domain>` |
+   | Sender name | `Picciuli` |
+
+   Enter the key only in Zitadel's SMTP credentials; never commit it. Zitadel
+   stores the provider in its database, so no application redeploy is needed.
+   After testing and activating it, use **Resend code** on the login page.
 
 Put the values in `/opt/picciuli/.env`:
 
@@ -173,8 +191,18 @@ and apply them with `./deploy.sh <current tag>` (or just re-run the workflow).
 
 ## Everyday operations
 
-**Deploy:** push to `master`. CI runs lint, type checks and tests, builds and
-smoke-tests the image; then the Deploy workflow ships it.
+**Deploy:** push to `master`. CI retains lint, type checks, coverage, frontend
+tests/build and strict documentation validation. Python tests run on the
+production runtime (Linux 3.13), the library minimum (Linux 3.10), and Windows
+3.14 rather than every OS/version combination. Pull requests additionally build
+and smoke-test both images; master avoids repeating those image builds before
+Deploy. Production images are built natively on ARM64 (not emulated or also
+built for unused AMD64) and the deployed services are health-checked. Stale CI
+runs are cancelled; production deployments are not.
+
+To move sign-in and registration into Picciuli, follow
+[Enabling native login](web.md#enabling-native-login). It is a per-application
+rollout; keep the hosted Zitadel interface for administration.
 
 **Roll back:** run the Deploy workflow by hand with the commit SHA of a previous
 image, or on the server:

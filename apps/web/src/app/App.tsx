@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { ApiError, createApi } from '../api/client';
 import { ApiContext } from '../api/context';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
+import { isIdentityPath, IdentityScreen } from '../auth/IdentityScreen';
 import type { AppConfig } from '../config';
 import { ConfirmProvider, ToastProvider, useNotify } from '../components/feedback';
 import { Overview } from '../screens/Overview';
@@ -22,16 +23,17 @@ const Settings = lazy(() => import('../screens/Settings').then((m) => ({ default
 
 export function App({ config, manager }: { config: AppConfig; manager: UserManager }) {
   return (
-    <AuthProvider manager={manager}>
-      <ToastProvider>
+    <ToastProvider>
+      <AuthProvider manager={manager} nativeLogin={config.nativeLogin}>
         <Gate config={config} />
-      </ToastProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 
 function Gate({ config }: { config: AppConfig }) {
   const auth = useAuth();
+  if (isIdentityPath()) return <IdentityScreen />;
   if (auth.status === 'loading') return <Splash />;
   if (auth.status === 'error') {
     return (

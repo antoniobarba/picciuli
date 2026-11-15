@@ -27,5 +27,7 @@ done
 mkdir -p data/picciuli
 docker compose pull --quiet
 docker compose up --detach --remove-orphans --wait --wait-timeout 300
+# Bind-mounted configuration changes do not recreate the Caddy container.
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 docker image prune --force >/dev/null
 echo "deployed picciuli-api and picciuli-web:$tag"

@@ -1131,6 +1131,93 @@ input[type='checkbox'] {
 
 /* Overview */
 
+.identity {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 2rem 1rem;
+}
+
+.identity-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.identity-card {
+  width: min(100%, 440px);
+  padding: clamp(1.25rem, 5vw, 2rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.identity-form fieldset {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  border: 0;
+  min-width: 0;
+}
+
+.identity-form label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 500;
+}
+
+.identity-names {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.identity-names input {
+  min-width: 0;
+  width: 100%;
+}
+
+.identity-form .identity-show {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.identity-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.identity-links button {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  padding: 0.25rem 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.identity-secret {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+  background: var(--surface-2);
+}
+
 .overview {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(330px, 1fr);

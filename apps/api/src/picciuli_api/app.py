@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 import picciuli
@@ -15,6 +15,7 @@ from picciuli_api.books import BookRegistry
 from picciuli_api.config import Settings
 from picciuli_api.deps import AppContext, get_current_user
 from picciuli_api.errors import ERROR_RESPONSES, install_error_handlers
+from picciuli_api.login import create_login_router
 from picciuli_api.providers import SharedProviders
 from picciuli_api.routers import (
     accounts,
@@ -125,6 +126,19 @@ def create_app(
     )
     app.state.context = context
     install_error_handlers(app)
+    if settings.login_origin:
+        app.include_router(create_login_router(settings))
+
+        @app.middleware("http")
+        async def private_login_responses(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            response = await call_next(request)
+            if request.url.path.startswith("/api/auth/"):
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["Referrer-Policy"] = "no-referrer"
+            return response
+
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,

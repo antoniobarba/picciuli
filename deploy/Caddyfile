@@ -9,6 +9,17 @@
 }
 
 {$APP_DOMAIN} {
+	@identity path /api/auth/*
+	handle @identity {
+		header Cache-Control no-store
+		header Referrer-Policy no-referrer
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy api:8000
+	}
+	@loginPages path /login /verify-email /reset-password /callback
+	header @loginPages Referrer-Policy no-referrer
 	reverse_proxy web:8080
 }
 

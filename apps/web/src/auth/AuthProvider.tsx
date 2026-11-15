@@ -1,6 +1,8 @@
 import type { User, UserManager } from 'oidc-client-ts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ReturnState } from './oidc';
+import { loginRequest } from './login';
+import { useNotify } from '../components/feedback';
 
 type Status = 'loading' | 'signedOut' | 'signedIn' | 'error';
 
@@ -32,10 +34,15 @@ let callbackOnce: Promise<User> | null = null;
 
 function currentLocation(): string {
   const { pathname, search, hash } = window.location;
-  return pathname === CALLBACK_PATH ? '/' : `${pathname}${search}${hash}`;
+  if ([CALLBACK_PATH, '/login', '/verify-email', '/reset-password'].includes(pathname)) {
+    const saved = sessionStorage.getItem('picciuli-return-to') || '/';
+    return saved.startsWith('/') && !saved.startsWith('//') ? saved : '/';
+  }
+  return `${pathname}${search}${hash}`;
 }
 
-export function AuthProvider({ manager, children }: { manager: UserManager; children: ReactNode }) {
+export function AuthProvider({ manager, children, nativeLogin = false }: { manager: UserManager; children: ReactNode; nativeLogin?: boolean }) {
+  const notify = useNotify();
   const [user, setUser] = useState<User | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +79,7 @@ export function AuthProvider({ manager, children }: { manager: UserManager; chil
           const signedIn = await callbackOnce;
           const state = signedIn.state as ReturnState | undefined;
           window.history.replaceState(null, '', state?.returnTo || '/');
+          sessionStorage.removeItem('picciuli-return-to');
           if (active) {
             setUser(signedIn);
             setStatus('signedIn');
@@ -113,22 +121,36 @@ export function AuthProvider({ manager, children }: { manager: UserManager; chil
   const signIn = useCallback(
     async ({ register = false }: { register?: boolean } = {}) => {
       const state: ReturnState = { returnTo: currentLocation() };
-      await manager.signinRedirect({ state, prompt: register ? 'create' : undefined });
+      sessionStorage.setItem('picciuli-return-to', state.returnTo);
+      sessionStorage.setItem('picciuli-register', String(register));
+      try {
+        await manager.signinRedirect({ state, prompt: nativeLogin ? 'login' : register ? 'create' : undefined });
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : String(failure));
+        setStatus('error');
+        notify(failure instanceof Error ? failure.message : 'Cannot start sign-in.', { kind: 'error' });
+      }
     },
-    [manager],
+    [manager, nativeLogin, notify],
   );
 
   const signOut = useCallback(async () => {
-    const current = await manager.getUser();
-    await manager.removeUser();
-    setUser(null);
-    setStatus('signedOut');
     try {
-      await manager.signoutRedirect({ id_token_hint: current?.id_token });
-    } catch {
-      // The identity provider is unreachable: the local session is gone anyway.
+      const current = await manager.getUser();
+      if (nativeLogin) {
+        await loginRequest('logout');
+        await manager.revokeTokens(['access_token', 'refresh_token']);
+      } else {
+        await manager.signoutRedirect({ id_token_hint: current?.id_token });
+      }
+      await manager.removeUser();
+      setUser(null);
+      setStatus('signedOut');
+      window.history.replaceState(null, '', '/');
+    } catch (failure) {
+      notify(failure instanceof Error ? failure.message : 'Sign-out failed. Please try again.', { kind: 'error' });
     }
-  }, [manager]);
+  }, [manager, nativeLogin, notify]);
 
   const getToken = useCallback(async () => {
     let current = await manager.getUser();
