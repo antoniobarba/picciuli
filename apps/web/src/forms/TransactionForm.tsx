@@ -41,11 +41,15 @@ function accountOptions(accounts: readonly Account[], keep: ReadonlySet<number>)
 }
 
 export function categoryOptions(categories: readonly Category[]): Option<number>[] {
+  const names = new Map(categories.map((category) => [category.id, category.name]));
   return [
     { value: NONE_ID, label: 'Uncategorized' },
     ...categoryTree(categories).map((category) => ({
       value: category.id,
-      label: category.parent_id === null ? category.name : `   └ ${category.name}`,
+      label:
+        category.parent_id === null
+          ? category.name
+          : `${names.get(category.parent_id) ?? ''} › ${category.name}`,
     })),
   ];
 }

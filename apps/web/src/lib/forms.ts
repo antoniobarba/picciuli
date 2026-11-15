@@ -220,7 +220,16 @@ export function simpleSplits(draft: TransactionDraft, money: MoneyFormat): Split
 }
 
 export function draftSplits(draft: TransactionDraft, money: MoneyFormat): SplitIn[] {
-  return draft.kind === 'split' ? lineSplits(draft.lines, money) : simpleSplits(draft, money);
+  if (draft.kind !== 'split') return simpleSplits(draft, money);
+  const splits = lineSplits(draft.lines, money);
+  const accounts = splits.filter((s) => s.type === 'account').reduce((sum, s) => sum + s.amount, 0);
+  const external = splits.filter((s) => s.type === 'external').reduce((sum, s) => sum + s.amount, 0);
+  if (accounts !== external) {
+    throw new InputError(
+      `the account lines (${money.amount(accounts)}) and the income/expense lines (${money.amount(external)}) must match`,
+    );
+  }
+  return splits;
 }
 
 /** Minimum number of lines shown when switching to the split editor. */

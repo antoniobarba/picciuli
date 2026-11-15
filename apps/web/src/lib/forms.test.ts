@@ -79,10 +79,15 @@ describe('draftSplits', () => {
       emptyLine(),
     ];
     expect(lineTotals(lines, money)).toEqual([-3000, -1000]);
-    expect(draftSplits(draft({ kind: 'split', lines: lines.slice(0, 2) }), money)).toEqual([
+    const balanced = [...lines.slice(0, 2), { ...emptyLine('c:0'), amount: '-20' }, emptyLine()];
+    expect(draftSplits(draft({ kind: 'split', lines: balanced }), money)).toEqual([
       { type: 'account', account_id: 1, amount: -3000, memo: null },
       { type: 'external', amount: -1000, category_id: 2, memo: 'food' },
+      { type: 'external', amount: -2000, category_id: null, memo: null },
     ]);
+    expect(() => draftSplits(draft({ kind: 'split', lines: lines.slice(0, 2) }), money)).toThrow(
+      'the account lines (-€30.00) and the income/expense lines (-€10.00) must match',
+    );
   });
 
   it('switches a simple draft to at least three split lines', () => {

@@ -20,9 +20,10 @@ export function Modal({ open, onClose, title, description, wide, children }: Mod
           className={`dialog${wide ? ' dialog-wide' : ''}`}
           onOpenAutoFocus={(event) => {
             // Focus the first field rather than the close button.
-            const target = (event.currentTarget as HTMLElement).querySelector<HTMLElement>(
-              '[data-autofocus], input:not([type=hidden]), select, textarea',
-            );
+            const content = event.currentTarget as HTMLElement;
+            const target =
+              content.querySelector<HTMLElement>('[data-autofocus]') ??
+              content.querySelector<HTMLElement>('input:not([type=hidden]):not([tabindex="-1"]), select, textarea');
             if (target) {
               event.preventDefault();
               target.focus();

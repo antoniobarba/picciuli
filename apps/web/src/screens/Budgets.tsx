@@ -54,8 +54,9 @@ export function Budgets() {
     }
   };
   const newBudget = () => {
+    if (!periods.data || !categories.data) return;
     if (!current) notify('Create a period first: open Periods, then New.', { kind: 'warning' });
-    else if (!categories.data?.length) notify('Create a category first: open Categories, then New.', { kind: 'warning' });
+    else if (!categories.data.length) notify('Create a category first: open Categories, then New.', { kind: 'warning' });
     else setDialog({ kind: 'edit', line: null });
   };
   const copy = () => {
@@ -78,7 +79,7 @@ export function Budgets() {
         <button type="button" className="button" onClick={copy} disabled={!current}>
           Copy from…
         </button>
-        <button type="button" className="button primary" onClick={newBudget}>
+        <button type="button" className="button primary" onClick={newBudget} disabled={!periods.data || !categories.data}>
           + New budget
         </button>
       </PageHeader>

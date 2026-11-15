@@ -33,7 +33,8 @@ export function Investments() {
   const settings = useSettings().data;
   const bookCurrency = settings?.currency_code ?? '';
   const valuations = useValuations();
-  const accounts = useAccounts(false).data ?? [];
+  const accountsQuery = useAccounts(false);
+  const accounts = accountsQuery.data ?? [];
   const securities = useSecurities();
   const latest = useLatestPrices(securities.data);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -79,6 +80,7 @@ export function Investments() {
   };
 
   const trade = (selling: boolean) => {
+    if (!accountsQuery.data || !securities.data) return;
     if (!accounts.some((a) => a.type === 'investment')) {
       notify('Create an investment account first (Accounts → New, type Investment).', { kind: 'warning' });
     } else if (!securities.data?.length) {
@@ -110,10 +112,10 @@ export function Investments() {
           <input type="checkbox" checked={live.live} onChange={(e) => live.setLive(e.target.checked)} />
           Live
         </label>
-        <button type="button" className="button" onClick={() => trade(true)}>
+        <button type="button" className="button" onClick={() => trade(true)} disabled={!accountsQuery.data || !securities.data}>
           Sell
         </button>
-        <button type="button" className="button primary" onClick={() => trade(false)}>
+        <button type="button" className="button primary" onClick={() => trade(false)} disabled={!accountsQuery.data || !securities.data}>
           Buy
         </button>
       </PageHeader>

@@ -55,4 +55,14 @@ export const icons = {
       <circle cx="19" cy="12" r="1.2" />
     </Icon>
   ),
+  signOut: (
+    <Icon>
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10" />
+    </Icon>
+  ),
+  install: (
+    <Icon>
+      <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+    </Icon>
+  ),
 };

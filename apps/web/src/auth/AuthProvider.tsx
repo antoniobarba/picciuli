@@ -27,6 +27,9 @@ export function useAuth(): AuthState {
 const CALLBACK_PATH = '/callback';
 const RENEW_MARGIN_SECONDS = 30;
 
+// An authorization code can be redeemed only once, even if the effect runs twice.
+let callbackOnce: Promise<User> | null = null;
+
 function currentLocation(): string {
   const { pathname, search, hash } = window.location;
   return pathname === CALLBACK_PATH ? '/' : `${pathname}${search}${hash}`;
@@ -59,7 +62,8 @@ export function AuthProvider({ manager, children }: { manager: UserManager; chil
     const start = async () => {
       try {
         if (window.location.pathname === CALLBACK_PATH) {
-          const signedIn = await manager.signinRedirectCallback();
+          callbackOnce ??= manager.signinRedirectCallback();
+          const signedIn = await callbackOnce;
           const state = signedIn.state as ReturnState | undefined;
           window.history.replaceState(null, '', state?.returnTo || '/');
           if (active) {

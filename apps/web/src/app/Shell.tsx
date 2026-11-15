@@ -217,13 +217,13 @@ export function Shell() {
           {install ? (
             <li>
               <button type="button" onClick={install}>
-                ⤓ Install the app
+                {icons.install} Install the app
               </button>
             </li>
           ) : null}
           <li>
             <button type="button" onClick={() => void auth.signOut()}>
-              ⎋ Sign out
+              {icons.signOut} Sign out
             </button>
           </li>
         </ul>

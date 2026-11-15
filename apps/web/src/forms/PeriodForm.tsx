@@ -55,7 +55,10 @@ export function PeriodForm({
       open={open}
       onClose={onClose}
       title={period ? `Edit ${period.name}` : start ? 'Start a period' : 'New period'}
-      onSubmit={async () => onSaved?.(await save.mutateAsync(undefined))}
+      onSubmit={async () => {
+        const saved = await save.mutateAsync(undefined);
+        onSaved?.(saved);
+      }}
       help={PERIOD_HELP}
     >
       <TextField label="Name" value={name} onChange={setName} placeholder={placeholder} data-autofocus />

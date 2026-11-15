@@ -85,7 +85,7 @@ export function Overview() {
   const selected = dayTransactions.find((t) => t.id === selectedId) ?? (dayTransactions.length === 1 ? dayTransactions[0] : undefined);
 
   const newTransaction = () => {
-    if (!hasOpenAccounts) {
+    if (accounts.data && !hasOpenAccounts) {
       notify('Create an account first: open Accounts, then New.', { title: 'No accounts', kind: 'warning' });
       return;
     }

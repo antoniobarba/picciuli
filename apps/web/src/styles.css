@@ -430,6 +430,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.8rem 1rem;
   border-bottom: 1px solid var(--border);
@@ -549,6 +550,7 @@ button {
 .table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .table .actions {
@@ -1481,6 +1483,24 @@ input[type='checkbox'] {
 
   .overview-calendar {
     position: static;
+  }
+
+  .period-totals {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.25rem;
+    padding: 0.5rem;
+    font-size: 0.82rem;
+  }
+
+  .period-totals span {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .period-totals .amount {
+    font-size: 0.95rem;
   }
 
   .calendar {
