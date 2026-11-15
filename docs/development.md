@@ -47,6 +47,31 @@ The console interface keeps its logic in widget-free modules
 `Book.in_memory()`. The screens are tested headless with Textual's `Pilot`
 (see `apps/tui/tests/conftest.py`).
 
+## Pinned dependencies
+
+The API image installs third-party packages only from
+`apps/api/requirements.lock` (and its build backend from
+`apps/api/requirements-build.lock`), checking every file's hash; the two
+local packages are installed from source without dependencies, and
+`pip check` fails the image build if the lock no longer satisfies their
+`pyproject.toml`. After changing a dependency of `packages/picciuli` or
+`apps/api` (or to pick up updates), regenerate the locks with uv, from the
+repository root:
+
+```bash
+uv pip compile apps/api/pyproject.toml packages/picciuli/pyproject.toml \
+  --override apps/api/lock-overrides.txt --universal --python-version 3.13 \
+  --generate-hashes --no-emit-package picciuli -o apps/api/requirements.lock
+uv pip compile apps/api/requirements-build.in --universal --python-version 3.13 \
+  --generate-hashes -o apps/api/requirements-build.lock
+```
+
+GitHub Actions are pinned to commit SHAs (with the version in a comment) and
+base images to the digest of their multi-platform index (arm64 for production,
+amd64 for CI). Dependabot (`.github/dependabot.yml`) opens weekly pull
+requests for actions, Python and npm packages, Dockerfiles and the images in
+`deploy/compose.yml`.
+
 ## Publishing documentation
 
 The CI workflow publishes the documentation to
