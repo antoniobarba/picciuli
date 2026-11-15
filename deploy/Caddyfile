@@ -30,12 +30,6 @@
 	request_body @otherBody {
 		max_size 1MB
 	}
-	# TEMPORARY until import is sandboxed (SEC-01): reject uploads at the edge.
-	@import {
-		method POST
-		path /api/v1/me/import /api/v1/me/import/
-	}
-	respond @import "Import is temporarily disabled" 503
 	encode zstd gzip
 	reverse_proxy api:8000
 }

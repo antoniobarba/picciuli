@@ -390,9 +390,7 @@ stop the API (`sudo docker compose stop api`), copy
 and mode (`chown 10001:10001` and `chmod 600`), then
 `sudo docker compose start api`. Users can also download
 their own data at any time with `GET /api/v1/me/export`, and load it back
-with `POST /api/v1/me/import?mode=replace`. (Import is temporarily disabled at
-the edge in `deploy/Caddyfile`, which answers `503`, until it is sandboxed;
-see SEC-01.)
+with `POST /api/v1/me/import?mode=replace`.
 
 **Restore Zitadel:** `sudo docker compose exec -T postgres pg_restore -U postgres
 --clean -d zitadel < zitadel.dump` with the same `ZITADEL_MASTERKEY`.
