@@ -53,9 +53,9 @@ const account = (id: number, name: string, type: string) => ({
   goal: null, notes: null, position: id, closed_on: null, is_closed: false,
 });
 
-function EditButton() {
+function EditButton({ trade = buy }: { trade?: Transaction }) {
   const editors = useEditors();
-  return <button type="button" onClick={() => editors.editTransaction(buy)}>Open</button>;
+  return <button type="button" onClick={() => editors.editTransaction(trade)}>Open</button>;
 }
 
 describe('editing a trade', () => {
@@ -89,5 +89,33 @@ describe('editing a trade', () => {
         description: 'Buy All-World', notes: null, cost: 3500, from_account_id: 1, fee_category_id: 3,
       },
     }));
+  });
+
+  it('opens the sell form for a sale as the API returns it', async () => {
+    const sale = transaction(9, [
+      { type: 'account', account_id: 2, amount: -10000, memo: null, security_id: 5, quantity: '-1' },
+      { type: 'account', account_id: 2, amount: 8900, memo: null, security_id: null, quantity: null },
+      { type: 'external', amount: -1000, category_id: null, memo: 'Realized gain' },
+      { type: 'external', amount: -100, category_id: null, memo: 'Fee' },
+    ]);
+    const { requests } = renderWithApi(
+      <EditorsProvider>
+        <EditButton trade={sale} />
+      </EditorsProvider>,
+      {
+        'GET /api/v1/settings': { currency: '€', minor_digits: 2, currency_code: 'EUR' },
+        'GET /api/v1/accounts': [account(1, 'Checking', 'checking'), account(2, 'Broker', 'investment')],
+        'GET /api/v1/categories': [],
+        'GET /api/v1/securities': [{ id: 5, name: 'All-World', symbol: 'VWCE.DE', isin: null, currency: 'EUR', kind: 'etf', notes: null }],
+        'GET /api/v1/investments/2/sale-cost': { cost: 10000 },
+      },
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByRole('dialog', { name: 'Edit sale' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Proceeds')).toHaveValue('90.00');
+    expect(screen.getByLabelText('Fee')).toHaveValue('1.00');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(requests.find((r) => r.method === 'PUT')?.path).toBe('/api/v1/investments/sell/9'));
   });
 });

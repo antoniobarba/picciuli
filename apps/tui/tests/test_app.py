@@ -20,7 +20,7 @@ from picciuli import (
 )
 from picciuli_tui.app import PicciuliApp
 from picciuli_tui.formatting import MoneyFormat
-from picciuli_tui.forms import EntryKind
+from picciuli_tui.forms import NONE_ID, EntryKind
 from picciuli_tui.screens.accounts import AccountsScreen, RegisterScreen
 from picciuli_tui.screens.budgets import BudgetsScreen
 from picciuli_tui.screens.categories import CategoriesScreen
@@ -336,6 +336,47 @@ def test_editing_investment_transaction_uses_trade_form(
             Decimal("2")
         ]
         assert sum(s.amount for s in updated.external_splits) == -200
+
+    run_app(book, scenario)
+
+
+def test_editing_sale_uses_trade_form(book: Book, checking: Account) -> None:
+    broker = book.accounts.create("Broker", AccountType.INVESTMENT)
+    etf = book.securities.create("ETF", currency="USD")
+    gains = book.categories.create("Gains")
+    book.investments.record_buy(
+        TODAY - dt.timedelta(days=1),
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=3,
+        cost=30000,
+        from_account_id=checking.id,
+    )
+    sold = book.investments.record_sell(
+        TODAY,
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=1,
+        proceeds=9000,
+        fee=100,
+        tax=50,
+        gain_category_id=gains.id,
+    )
+
+    async def scenario(app: PicciuliApp, pilot: Pilot[None]) -> None:
+        screen = cast(OverviewScreen, app.screen)
+        screen.query_one("#day-list", ListTable).move_cursor(row=0)
+        await press(pilot, "e")
+        form = cast(FormScreen[object], app.screen)
+        assert form.form_title == "Edit sale"
+        assert form.values()["amount"] == "90.00"
+        assert form.values()["other_account_id"] == NONE_ID
+        await fill(pilot, quantity="2", amount="250.00")
+        await press(pilot, "ctrl+s")
+        updated = book.transactions.get(sold.id)
+        assert [s.quantity for s in updated.account_splits if s.quantity] == [
+            Decimal("-2")
+        ]
 
     run_app(book, scenario)
 
