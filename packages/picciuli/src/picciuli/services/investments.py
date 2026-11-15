@@ -25,7 +25,7 @@ from picciuli._db.queries import (
     to_security,
 )
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import AccountRow, SecurityRow
+from picciuli._db.tables import AccountRow, SecurityRow, TransactionRow
 from picciuli._decimal import (
     from_scaled,
     market_value,
@@ -280,12 +280,20 @@ class InvestmentService:
         quantity: Decimal | int,
         *,
         date: dt.date,
+        excluding: int | None = None,
     ) -> int:
         """Return the cost basis that selling `quantity` shares would remove.
 
         It uses the [cost method][picciuli.model.Settings] of the
         book and the transactions dated on or before `date`. Useful to preview
         the realized gain before recording a sale.
+
+        Args:
+            account_id: Investment account holding the shares.
+            security_id: The security sold.
+            quantity: Positive number of shares.
+            date: Day of the sale.
+            excluding: A transaction to ignore, such as the sale being edited.
 
         Raises:
             NotFoundError: If the account or the security does not exist.
@@ -298,7 +306,11 @@ class InvestmentService:
             get_row(session, AccountRow, account_id, "account")
             get_row(session, SecurityRow, security_id, "security")
             moves = share_moves(
-                session, account_id=account_id, security_id=security_id, until=day
+                session,
+                account_id=account_id,
+                security_id=security_id,
+                until=day,
+                excluding=excluding,
             )
             return _sale_cost(
                 moves, to_scaled(shares), read_settings(session).cost_method
@@ -345,26 +357,95 @@ class InvestmentService:
                 exist.
             ConflictError: If an account is closed.
         """
+        with self._uow.session() as session:
+            splits, description = self._buy(
+                session,
+                account_id=account_id,
+                security_id=security_id,
+                quantity=quantity,
+                cost=cost,
+                from_account_id=from_account_id,
+                fee=fee,
+                fee_category_id=fee_category_id,
+                description=description,
+            )
+            return self._transactions.create(
+                date, splits, description=description, notes=notes
+            )
+
+    def update_buy(
+        self,
+        transaction_id: int,
+        date: dt.date,
+        *,
+        account_id: int,
+        security_id: int,
+        quantity: Decimal | int,
+        cost: int,
+        from_account_id: int | None = None,
+        fee: int = 0,
+        fee_category_id: int | None = None,
+        description: str | None = None,
+        notes: str | None = None,
+    ) -> Transaction:
+        """Replace a transaction with a purchase of shares.
+
+        The arguments are those of `record_buy`: the transaction keeps its id
+        and gets the splits a new purchase would have.
+
+        Raises:
+            NotFoundError: If the transaction, an account, the security or a
+                category does not exist.
+            ValidationError: If an argument is invalid, or a later sale would
+                need more shares than are held.
+            ConflictError: If an account is closed.
+        """
+        with self._uow.session() as session:
+            get_row(session, TransactionRow, transaction_id, "transaction")
+            splits, description = self._buy(
+                session,
+                account_id=account_id,
+                security_id=security_id,
+                quantity=quantity,
+                cost=cost,
+                from_account_id=from_account_id,
+                fee=fee,
+                fee_category_id=fee_category_id,
+                description=description,
+            )
+            return self._transactions.update(
+                transaction_id,
+                date=date,
+                splits=splits,
+                description=description,
+                notes=notes,
+            )
+
+    def _buy(
+        self,
+        session: Session,
+        *,
+        account_id: int,
+        security_id: int,
+        quantity: Decimal | int,
+        cost: int,
+        from_account_id: int | None,
+        fee: int,
+        fee_category_id: int | None,
+        description: str | None,
+    ) -> tuple[list[Split], str]:
         shares = positive_decimal(quantity, "quantity")
         cost = v.positive_amount(cost, "cost")
         fee = _fee(fee, "fee")
         payer = account_id if from_account_id is None else from_account_id
-        with self._uow.session() as session:
-            security = get_row(session, SecurityRow, security_id, "security")
-            splits: list[Split] = [
-                AccountSplit(
-                    account_id, cost, security_id=security_id, quantity=shares
-                ),
-                AccountSplit(payer, -(cost + fee)),
-            ]
-            if fee:
-                splits.append(ExternalSplit(-fee, fee_category_id, "Fee"))
-            return self._transactions.create(
-                date,
-                splits,
-                description=description or f"Buy {security.name}",
-                notes=notes,
-            )
+        security = get_row(session, SecurityRow, security_id, "security")
+        splits: list[Split] = [
+            AccountSplit(account_id, cost, security_id=security_id, quantity=shares),
+            AccountSplit(payer, -(cost + fee)),
+        ]
+        if fee:
+            splits.append(ExternalSplit(-fee, fee_category_id, "Fee"))
+        return splits, description or f"Buy {security.name}"
 
     def record_sell(
         self,
@@ -421,41 +502,132 @@ class InvestmentService:
             ConflictError: If an account is closed.
         """
         day = v.date(date, "date")
+        with self._uow.session() as session:
+            splits, description = self._sell(
+                session,
+                day,
+                None,
+                account_id=account_id,
+                security_id=security_id,
+                quantity=quantity,
+                proceeds=proceeds,
+                to_account_id=to_account_id,
+                fee=fee,
+                fee_category_id=fee_category_id,
+                tax=tax,
+                tax_category_id=tax_category_id,
+                gain_category_id=gain_category_id,
+                description=description,
+            )
+            return self._transactions.create(
+                day, splits, description=description, notes=notes
+            )
+
+    def update_sell(
+        self,
+        transaction_id: int,
+        date: dt.date,
+        *,
+        account_id: int,
+        security_id: int,
+        quantity: Decimal | int,
+        proceeds: int,
+        to_account_id: int | None = None,
+        fee: int = 0,
+        fee_category_id: int | None = None,
+        tax: int = 0,
+        tax_category_id: int | None = None,
+        gain_category_id: int | None = None,
+        description: str | None = None,
+        notes: str | None = None,
+    ) -> Transaction:
+        """Replace a transaction with a sale of shares.
+
+        The arguments are those of `record_sell`. The cost of the sold shares
+        is computed again, ignoring the transaction itself, as if the sale
+        were recorded anew.
+
+        Raises:
+            NotFoundError: If the transaction, an account, the security or a
+                category does not exist.
+            ValidationError: If an argument is invalid or not enough shares
+                are held.
+            ConflictError: If an account is closed.
+        """
+        day = v.date(date, "date")
+        with self._uow.session() as session:
+            get_row(session, TransactionRow, transaction_id, "transaction")
+            splits, description = self._sell(
+                session,
+                day,
+                transaction_id,
+                account_id=account_id,
+                security_id=security_id,
+                quantity=quantity,
+                proceeds=proceeds,
+                to_account_id=to_account_id,
+                fee=fee,
+                fee_category_id=fee_category_id,
+                tax=tax,
+                tax_category_id=tax_category_id,
+                gain_category_id=gain_category_id,
+                description=description,
+            )
+            return self._transactions.update(
+                transaction_id,
+                date=day,
+                splits=splits,
+                description=description,
+                notes=notes,
+            )
+
+    def _sell(
+        self,
+        session: Session,
+        day: dt.date,
+        excluding: int | None,
+        *,
+        account_id: int,
+        security_id: int,
+        quantity: Decimal | int,
+        proceeds: int,
+        to_account_id: int | None,
+        fee: int,
+        fee_category_id: int | None,
+        tax: int,
+        tax_category_id: int | None,
+        gain_category_id: int | None,
+        description: str | None,
+    ) -> tuple[list[Split], str]:
         shares = positive_decimal(quantity, "quantity")
         proceeds = v.positive_amount(proceeds, "proceeds")
         fee = _fee(fee, "fee")
         tax = _fee(tax, "tax")
         receiver = account_id if to_account_id is None else to_account_id
-        with self._uow.session() as session:
-            get_row(session, AccountRow, account_id, "account")
-            security = get_row(session, SecurityRow, security_id, "security")
-            moves = share_moves(
-                session, account_id=account_id, security_id=security_id, until=day
-            )
-            cost = _sale_cost(
-                moves, to_scaled(shares), read_settings(session).cost_method
-            )
-            splits: list[Split] = [
-                AccountSplit(
-                    account_id, -cost, security_id=security_id, quantity=-shares
-                )
-            ]
-            received = proceeds - fee - tax
-            if received:
-                splits.append(AccountSplit(receiver, received))
-            gain = proceeds - cost
-            if gain:
-                splits.append(ExternalSplit(gain, gain_category_id, "Realized gain"))
-            if fee:
-                splits.append(ExternalSplit(-fee, fee_category_id, "Fee"))
-            if tax:
-                splits.append(ExternalSplit(-tax, tax_category_id, "Tax"))
-            return self._transactions.create(
-                day,
-                splits,
-                description=description or f"Sell {security.name}",
-                notes=notes,
-            )
+        get_row(session, AccountRow, account_id, "account")
+        security = get_row(session, SecurityRow, security_id, "security")
+        moves = share_moves(
+            session,
+            account_id=account_id,
+            security_id=security_id,
+            until=day,
+            excluding=excluding,
+        )
+        cost = _sale_cost(moves, to_scaled(shares), read_settings(session).cost_method)
+        splits: list[Split] = [
+            AccountSplit(account_id, -cost, security_id=security_id, quantity=-shares)
+        ]
+        received = proceeds - fee - tax
+        if received:
+            splits.append(AccountSplit(receiver, received))
+        gain = proceeds - cost
+        if gain:
+            splits.append(ExternalSplit(gain, gain_category_id, "Realized gain"))
+        if fee:
+            splits.append(ExternalSplit(-fee, fee_category_id, "Fee"))
+        if tax:
+            splits.append(ExternalSplit(-tax, tax_category_id, "Tax"))
+        return splits, description or f"Sell {security.name}"
 
     def refresh_prices(
         self,

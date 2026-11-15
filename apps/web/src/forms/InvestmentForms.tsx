@@ -10,11 +10,11 @@ import {
   useSecurities,
   useSettings,
 } from '../api/queries';
-import type { Security, SecurityInfo, SecurityKind } from '../api/types';
+import type { Security, SecurityInfo, SecurityKind, Transaction } from '../api/types';
 import { DateField } from '../components/DateField';
 import { AmountField, FormDialog, SelectField, TextField } from '../components/forms';
-import { todayDay } from '../lib/dates';
-import { SECURITY_KIND_LABELS } from '../lib/format';
+import { todayDay, type Day } from '../lib/dates';
+import { SECURITY_KIND_LABELS, transactionTitle } from '../lib/format';
 import {
   InputError,
   NONE_ID,
@@ -28,6 +28,7 @@ import { parsePrice, parseQuantity } from '../lib/money';
 import { categoryOptions, NotesField } from './TransactionForm';
 import { Modal } from '../components/Modal';
 import { Amount } from '../components/ui';
+import { useConfirm } from '../components/feedback';
 
 const KIND_OPTIONS = (Object.keys(SECURITY_KIND_LABELS) as SecurityKind[]).map((value) => ({
   value,
@@ -224,34 +225,104 @@ export function PriceForm({ security, onClose }: { security: Security; onClose: 
   );
 }
 
+/** A purchase or sale of shares, as the buy and sell endpoints record it. */
+export interface Trade {
+  selling: boolean;
+  date: Day;
+  accountId: number;
+  securityId: number;
+  /** Positive number of shares. */
+  quantity: string;
+  /** Cost of a purchase or proceeds of a sale. */
+  amount: number;
+  /** Account paying or receiving the money; `null` for the investment account's cash. */
+  otherId: number | null;
+  fee: number;
+  feeCategoryId: number | null;
+  tax: number;
+  taxCategoryId: number | null;
+  gainCategoryId: number | null;
+}
+
+/** The trade a transaction records, or `null` when its splits are not those of a buy or sell. */
+export function tradeOf(transaction: Transaction): Trade | null {
+  const shares = transaction.splits.filter((s) => s.type === 'account' && s.security_id != null);
+  const cash = transaction.splits.filter((s) => s.type === 'account' && s.security_id == null);
+  const external = transaction.splits.filter((s) => s.type === 'external');
+  const [share] = shares;
+  if (shares.length !== 1 || share?.type !== 'account' || share.security_id == null || !share.quantity) return null;
+  const memos = new Map(external.map((s) => [s.memo ?? '', s]));
+  if (memos.size !== external.length || cash.length > 1) return null;
+  const selling = share.quantity.startsWith('-');
+  const allowed = selling ? ['Realized gain', 'Fee', 'Tax'] : ['Fee'];
+  if ([...memos.keys()].some((memo) => !allowed.includes(memo))) return null;
+  const fee = 0 - (memos.get('Fee')?.amount ?? 0);
+  const tax = 0 - (memos.get('Tax')?.amount ?? 0);
+  if (fee < 0 || tax < 0) return null;
+  const [money] = cash;
+  const otherId = money?.type === 'account' && money.account_id !== share.account_id ? money.account_id : null;
+  const categoryOf = (memo: string) => {
+    const split = memos.get(memo);
+    return split?.type === 'external' ? (split.category_id ?? null) : null;
+  };
+  const amount = selling ? -share.amount + (memos.get('Realized gain')?.amount ?? 0) : share.amount;
+  const expected = selling ? amount - fee - tax : -(amount + fee);
+  if (amount <= 0 || (money?.amount ?? 0) !== expected || (!selling && !money)) return null;
+  return {
+    selling,
+    date: transaction.date,
+    accountId: share.account_id,
+    securityId: share.security_id,
+    quantity: share.quantity.replace(/^-/, ''),
+    amount,
+    otherId,
+    fee,
+    feeCategoryId: categoryOf('Fee'),
+    tax,
+    taxCategoryId: categoryOf('Tax'),
+    gainCategoryId: categoryOf('Realized gain'),
+  };
+}
+
+/** Buy or sell shares; with `editing`, change a recorded trade in place. */
 export function TradeForm({
-  selling,
+  selling: sellingProp,
   onClose,
   accountId,
   securityId,
+  editing,
 }: {
   selling: boolean;
   onClose: () => void;
   accountId?: number | null;
   securityId?: number | null;
+  editing?: { transaction: Transaction; trade: Trade };
 }) {
   const api = useApi();
   const money = useMoney();
+  const confirm = useConfirm();
   const today = todayDay();
+  const trade = editing?.trade;
+  const selling = trade ? trade.selling : sellingProp;
   const accounts = (useAccounts(false).data ?? []).filter((a) => !a.is_closed);
   const investment = accounts.filter((a) => a.type === 'investment');
   const securities = useSecurities().data ?? [];
   const categories = useCategories().data ?? [];
-  const [date, setDate] = useState(today);
-  const [account, setAccount] = useState<number | null>(accountId ?? investment[0]?.id ?? null);
-  const [security, setSecurity] = useState<number | null>(securityId ?? null);
-  const [quantity, setQuantity] = useState('');
-  const [amount, setAmount] = useState('');
-  const [other, setOther] = useState<number>(NONE_ID);
-  const [fee, setFee] = useState('');
-  const [tax, setTax] = useState('');
-  const [category, setCategory] = useState<number>(NONE_ID);
-  const [description, setDescription] = useState('');
+  const amountText = (value: number | undefined) => (value ? money.plain(value) : '');
+  const [date, setDate] = useState<string>(trade?.date ?? today);
+  const [account, setAccount] = useState<number | null>(trade?.accountId ?? accountId ?? investment[0]?.id ?? null);
+  const [security, setSecurity] = useState<number | null>(trade?.securityId ?? securityId ?? null);
+  const [quantity, setQuantity] = useState(trade?.quantity ?? '');
+  const [amount, setAmount] = useState(amountText(trade?.amount));
+  const [other, setOther] = useState<number>(trade?.otherId ?? NONE_ID);
+  const [fee, setFee] = useState(amountText(trade?.fee));
+  const [tax, setTax] = useState(amountText(trade?.tax));
+  const [category, setCategory] = useState<number>(
+    (selling ? trade?.gainCategoryId : trade?.feeCategoryId) ?? NONE_ID,
+  );
+  const [description, setDescription] = useState(editing?.transaction.description ?? '');
+  const [notes, setNotes] = useState(editing?.transaction.notes ?? '');
+  const transactionId = editing?.transaction.id;
 
   let parsed: { quantity: string; date: string } | null = null;
   try {
@@ -260,13 +331,18 @@ export function TradeForm({
     parsed = null;
   }
   const saleCost = useQuery({
-    queryKey: ['sale-cost', account, security, parsed?.quantity, parsed?.date],
+    queryKey: ['sale-cost', account, security, parsed?.quantity, parsed?.date, transactionId],
     queryFn: () =>
       unwrap(
         api.GET('/api/v1/investments/{account_id}/sale-cost', {
           params: {
             path: { account_id: account! },
-            query: { security_id: security!, quantity: parsed!.quantity, date: parsed!.date },
+            query: {
+              security_id: security!,
+              quantity: parsed!.quantity,
+              date: parsed!.date,
+              ...(transactionId ? { excluding: transactionId } : {}),
+            },
           },
         }),
       ),
@@ -283,31 +359,61 @@ export function TradeForm({
       quantity: parseQuantity(quantity),
       fee: nonNegativeAmount(fee, money, 'fee'),
       description: optionalText(description),
+      notes: optionalText(notes),
     };
     if (selling) {
+      const body = {
+        ...common,
+        proceeds: positiveAmount(amount, money),
+        to_account_id: other || null,
+        tax: nonNegativeAmount(tax, money, 'tax'),
+        gain_category_id: category || null,
+        // The form has no fee and tax categories for a sale: an edit keeps them.
+        fee_category_id: trade?.feeCategoryId ?? null,
+        tax_category_id: trade?.taxCategoryId ?? null,
+      };
       return unwrap(
-        client.POST('/api/v1/investments/sell', {
-          body: {
-            ...common,
-            proceeds: positiveAmount(amount, money),
-            to_account_id: other || null,
-            tax: nonNegativeAmount(tax, money, 'tax'),
-            gain_category_id: category || null,
-          },
-        }),
+        transactionId
+          ? client.PUT('/api/v1/investments/sell/{transaction_id}', {
+              params: { path: { transaction_id: transactionId } },
+              body,
+            })
+          : client.POST('/api/v1/investments/sell', { body }),
       );
     }
+    const body = {
+      ...common,
+      cost: positiveAmount(amount, money),
+      from_account_id: other || null,
+      fee_category_id: category || null,
+    };
     return unwrap(
-      client.POST('/api/v1/investments/buy', {
-        body: {
-          ...common,
-          cost: positiveAmount(amount, money),
-          from_account_id: other || null,
-          fee_category_id: category || null,
-        },
-      }),
+      transactionId
+        ? client.PUT('/api/v1/investments/buy/{transaction_id}', {
+            params: { path: { transaction_id: transactionId } },
+            body,
+          })
+        : client.POST('/api/v1/investments/buy', { body }),
     );
   });
+
+  const remove = useApiMutation((client, id: number) =>
+    unwrap(client.DELETE('/api/v1/transactions/{transaction_id}', { params: { path: { transaction_id: id } } })),
+  );
+  const deleteButton = editing ? (
+    <button
+      type="button"
+      className="button danger-text"
+      onClick={async () => {
+        if (await confirm({ title: `Delete ?${transactionTitle(editing.transaction)}??` })) {
+          await remove.mutateAsync(editing.transaction.id);
+          onClose();
+        }
+      }}
+    >
+      Delete
+    </button>
+  ) : null;
 
   let gain: number | null = null;
   if (selling && saleCost.data) {
@@ -327,9 +433,10 @@ export function TradeForm({
     <FormDialog
       open
       onClose={onClose}
-      title={selling ? 'Sell shares' : 'Buy shares'}
-      saveLabel={selling ? 'Sell' : 'Buy'}
+      title={editing ? (selling ? 'Edit sale' : 'Edit purchase') : selling ? 'Sell shares' : 'Buy shares'}
+      saveLabel={editing ? undefined : selling ? 'Sell' : 'Buy'}
       onSubmit={() => save.mutateAsync(undefined)}
+      secondary={deleteButton}
       help={
         selling
           ? 'Proceeds are the gross amount of the sale; the fee and tax are paid from them. The realized gain (proceeds minus the cost of the shares) goes to the gain category.'
@@ -373,6 +480,7 @@ export function TradeForm({
         onChange={setCategory}
       />
       <TextField label="Description" value={description} onChange={setDescription} placeholder="optional" />
+      <NotesField value={notes} onChange={setNotes} />
       {selling && saleCost.data ? (
         <div className="form-help">
           Cost basis of these shares: {money.amount(saleCost.data.cost)}

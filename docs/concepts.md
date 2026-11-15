@@ -201,6 +201,10 @@ Selling every share removes the whole remaining cost, so nothing is left
 behind. Fees and taxes withheld on a sale are deducted from the money received
 and recorded as expenses. A recorded sale keeps its amounts: changing the cost
 method or editing an earlier purchase does not rewrite it.
+[`update_buy`][picciuli.services.InvestmentService.update_buy] and
+[`update_sell`][picciuli.services.InvestmentService.update_sell] replace a
+recorded trade in place, as if it were recorded again: an edited sale gets its
+cost computed anew, without counting the sale itself.
 
 Other events are ordinary transactions. A **dividend** is income into the
 investment (or checking) account. A **stock split** or bonus shares is a single

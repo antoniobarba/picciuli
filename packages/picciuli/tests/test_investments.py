@@ -412,6 +412,84 @@ class TestBuyAndSell:
             )
         assert book.investments.sale_cost(broker.id, etf.id, 2, date=d(9)) == 833
 
+    def test_update_buy_keeps_the_id_and_rebuilds_the_splits(
+        self, book: Book, checking: Account, broker: Account, etf: Security
+    ) -> None:
+        fees = book.categories.create("Fees")
+        tx = book.investments.record_buy(
+            d(1), account_id=broker.id, security_id=etf.id, quantity=1, cost=3500
+        )
+        updated = book.investments.update_buy(
+            tx.id,
+            d(2),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=Decimal("2.5"),
+            cost=8000,
+            from_account_id=checking.id,
+            fee=150,
+            fee_category_id=fees.id,
+            notes="split order",
+        )
+        assert updated.id == tx.id
+        assert (updated.date, updated.description, updated.notes) == (
+            d(2),
+            "Buy All-World",
+            "split order",
+        )
+        assert updated.splits == (
+            AccountSplit(broker.id, 8000, security_id=etf.id, quantity=Decimal("2.5")),
+            AccountSplit(checking.id, -8150),
+            ExternalSplit(-150, fees.id, "Fee"),
+        )
+
+    def test_update_sell_computes_the_cost_without_itself(
+        self, book: Book, broker: Account, etf: Security, gains: Category
+    ) -> None:
+        buy(book, broker, etf, 1, "2", 1000)
+        tx = book.investments.record_sell(
+            d(2), account_id=broker.id, security_id=etf.id, quantity=1, proceeds=800
+        )
+        assert (
+            book.investments.sale_cost(broker.id, etf.id, 2, date=d(2), excluding=tx.id)
+            == 1000
+        )
+        updated = book.investments.update_sell(
+            tx.id,
+            d(2),
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=2,
+            proceeds=1500,
+            tax=20,
+            gain_category_id=gains.id,
+        )
+        assert updated.id == tx.id
+        assert updated.splits == (
+            AccountSplit(broker.id, -1000, security_id=etf.id, quantity=Decimal(-2)),
+            AccountSplit(broker.id, 1480),
+            ExternalSplit(500, gains.id, "Realized gain"),
+            ExternalSplit(-20, None, "Tax"),
+        )
+        assert book.investments.holdings(broker.id) == []
+
+    def test_update_missing_trade(
+        self, book: Book, broker: Account, etf: Security
+    ) -> None:
+        with pytest.raises(NotFoundError):
+            book.investments.update_buy(
+                999, d(1), account_id=broker.id, security_id=etf.id, quantity=1, cost=1
+            )
+        with pytest.raises(NotFoundError):
+            book.investments.update_sell(
+                999,
+                d(1),
+                account_id=broker.id,
+                security_id=etf.id,
+                quantity=1,
+                proceeds=1,
+            )
+
 
 class TestValuation:
     def test_market_value_with_exchange_rates(

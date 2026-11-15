@@ -59,10 +59,58 @@ def buy(book: BookDep, body: BuyCreate) -> TransactionOut:
     return TransactionOut.model_validate(transaction)
 
 
+@router.put("/buy/{transaction_id:int}")
+def update_buy(
+    book: BookDep, transaction_id: PathId, body: BuyCreate
+) -> TransactionOut:
+    """Replace a transaction with a purchase of shares, keeping its id."""
+    transaction = book.investments.update_buy(
+        transaction_id,
+        body.date,
+        account_id=body.account_id,
+        security_id=body.security_id,
+        quantity=body.quantity,
+        cost=body.cost,
+        from_account_id=body.from_account_id,
+        fee=body.fee,
+        fee_category_id=body.fee_category_id,
+        description=body.description,
+        notes=body.notes,
+    )
+    return TransactionOut.model_validate(transaction)
+
+
 @router.post("/sell", status_code=status.HTTP_201_CREATED)
 def sell(book: BookDep, body: SellCreate) -> TransactionOut:
     """Record a sale of shares with its realized gain or loss."""
     transaction = book.investments.record_sell(
+        body.date,
+        account_id=body.account_id,
+        security_id=body.security_id,
+        quantity=body.quantity,
+        proceeds=body.proceeds,
+        to_account_id=body.to_account_id,
+        fee=body.fee,
+        fee_category_id=body.fee_category_id,
+        tax=body.tax,
+        tax_category_id=body.tax_category_id,
+        gain_category_id=body.gain_category_id,
+        description=body.description,
+        notes=body.notes,
+    )
+    return TransactionOut.model_validate(transaction)
+
+
+@router.put("/sell/{transaction_id:int}")
+def update_sell(
+    book: BookDep, transaction_id: PathId, body: SellCreate
+) -> TransactionOut:
+    """Replace a transaction with a sale of shares, keeping its id.
+
+    The cost of the sold shares is computed again, ignoring the transaction.
+    """
+    transaction = book.investments.update_sell(
+        transaction_id,
         body.date,
         account_id=body.account_id,
         security_id=body.security_id,
@@ -140,7 +188,13 @@ def sale_cost(
     security_id: Annotated[int, Query(ge=1, le=MAX_ID)],
     quantity: Annotated[QueryPositiveDecimal, Query(examples=["1.5"])],
     date: Date,
+    excluding: Annotated[int | None, Query(ge=1, le=MAX_ID)] = None,
 ) -> SaleCostOut:
-    """Cost basis that selling `quantity` shares on `date` would remove."""
-    cost = book.investments.sale_cost(account_id, security_id, quantity, date=date)
+    """Cost basis that selling `quantity` shares on `date` would remove.
+
+    `excluding` ignores one transaction, such as the sale being edited.
+    """
+    cost = book.investments.sale_cost(
+        account_id, security_id, quantity, date=date, excluding=excluding
+    )
     return SaleCostOut(cost=cost)

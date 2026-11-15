@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Transaction } from '../api/types';
 import { todayDay, type Day } from '../lib/dates';
+import { TradeForm, tradeOf } from '../forms/InvestmentForms';
 import { TransactionForm } from '../forms/TransactionForm';
 
 export interface Editors {
@@ -43,16 +44,24 @@ export function EditorsProvider({ children }: { children: ReactNode }) {
   return (
     <EditorsContext.Provider value={value}>
       {children}
-      {state ? (
-        <TransactionForm
-          key={state.key}
-          open
-          onClose={() => setState(null)}
-          day={state.day}
-          accountId={state.accountId}
-          transaction={state.transaction}
-        />
-      ) : null}
+      {state ? <Editor key={state.key} state={state} onClose={() => setState(null)} /> : null}
     </EditorsContext.Provider>
+  );
+}
+
+/** Buys and sells open in the trade form, any other transaction in the transaction form. */
+function Editor({ state, onClose }: { state: TransactionEditorState; onClose: () => void }) {
+  const trade = useMemo(() => (state.transaction ? tradeOf(state.transaction) : null), [state.transaction]);
+  if (state.transaction && trade) {
+    return <TradeForm selling={trade.selling} editing={{ transaction: state.transaction, trade }} onClose={onClose} />;
+  }
+  return (
+    <TransactionForm
+      open
+      onClose={onClose}
+      day={state.day}
+      accountId={state.accountId}
+      transaction={state.transaction}
+    />
   );
 }

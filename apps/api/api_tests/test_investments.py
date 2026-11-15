@@ -224,6 +224,53 @@ class TestInvestments:
         ).json()
         assert holding["quantity"] == "1.5"
 
+    def test_edit_buy_and_sell(
+        self, alice: TestClient, portfolio: dict[str, int]
+    ) -> None:
+        [bought] = alice.get(
+            f"{API}/transactions", params={"account_id": portfolio["broker"]}
+        ).json()
+        trade = {
+            "date": "2025-01-10",
+            "account_id": portfolio["broker"],
+            "security_id": portfolio["etf"],
+            "quantity": "3",
+        }
+        buy = alice.put(
+            f"{API}/investments/buy/{bought['id']}",
+            json={
+                **trade,
+                "cost": 30000,
+                "from_account_id": portfolio["checking"],
+                "fee": 100,
+            },
+        )
+        assert buy.status_code == 200, buy.text
+        assert (buy.json()["id"], buy.json()["net_amount"]) == (bought["id"], -100)
+        sale = alice.post(
+            f"{API}/investments/sell",
+            json={**trade, "date": "2025-02-01", "quantity": "1", "proceeds": 9000},
+        ).json()
+        cost = alice.get(
+            f"{API}/investments/{portfolio['broker']}/sale-cost",
+            params={
+                "security_id": portfolio["etf"],
+                "quantity": "3",
+                "date": "2025-02-01",
+                "excluding": sale["id"],
+            },
+        )
+        assert cost.json() == {"cost": 30000}
+        sell = alice.put(
+            f"{API}/investments/sell/{sale['id']}",
+            json={**trade, "date": "2025-02-01", "proceeds": 33000},
+        )
+        assert sell.status_code == 200, sell.text
+        assert (sell.json()["id"], sell.json()["net_amount"]) == (sale["id"], 3000)
+        assert (
+            alice.get(f"{API}/investments/{portfolio['broker']}/holdings").json() == []
+        )
+
     def test_cannot_sell_more_than_held(
         self, alice: TestClient, portfolio: dict[str, int]
     ) -> None:

@@ -79,9 +79,13 @@ up-to-date console interface before they can be imported.
 
 The transaction form has the four kinds of the console interface: **Expense**,
 **Income**, **Transfer** and **Split**. In the split editor a live line shows
-both totals, and the form refuses to save until they match. Purchases and
-sales of shares open in the split editor with their quantities kept as they
-are.
+both totals, and the form refuses to save until they match. Editing a purchase
+or sale of shares opens the **Buy shares** / **Sell shares** form instead, so
+the quantity, cost or proceeds, paying or receiving account, fee, tax and
+category can all be changed; saving rebuilds the transaction as a new trade
+would (a sale's cost basis is computed again, ignoring the sale itself). A
+trade whose splits were changed by hand opens in the split editor with its
+quantities kept as they are.
 
 Dates can be typed as `2025-02-03`, `3/2/2025`, `3/2`, `3`, `today`, `+7` or
 `-30`, or picked with the calendar button. Amounts accept both `1,234.50` and

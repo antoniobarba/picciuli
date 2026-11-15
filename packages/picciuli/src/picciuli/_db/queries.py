@@ -220,8 +220,12 @@ def share_moves(
     account_id: int | None = None,
     security_id: int | None = None,
     until: dt.date | None = None,
+    excluding: int | None = None,
 ) -> list[ShareMove]:
-    """Splits moving shares in chronological order, optionally filtered."""
+    """Splits moving shares in chronological order, optionally filtered.
+
+    `excluding` leaves out the moves of one transaction.
+    """
     statement = (
         select(
             TransactionRow.date,
@@ -241,6 +245,8 @@ def share_moves(
         statement = statement.where(SplitRow.security_id == security_id)
     if until is not None:
         statement = statement.where(TransactionRow.date <= until)
+    if excluding is not None:
+        statement = statement.where(TransactionRow.id != excluding)
     moves = []
     for day, tx_id, acc, sec, qty, amount in session.execute(statement):
         # The query only selects account splits that move shares.

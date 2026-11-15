@@ -926,6 +926,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/investments/buy/{transaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Buy
+         * @description Replace a transaction with a purchase of shares, keeping its id.
+         */
+        put: operations["update_buy_api_v1_investments_buy__transaction_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/investments/sell": {
         parameters: {
             query?: never;
@@ -940,6 +960,28 @@ export interface paths {
          * @description Record a sale of shares with its realized gain or loss.
          */
         post: operations["sell_api_v1_investments_sell_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/investments/sell/{transaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Sell
+         * @description Replace a transaction with a sale of shares, keeping its id.
+         *
+         *     The cost of the sold shares is computed again, ignoring the transaction.
+         */
+        put: operations["update_sell_api_v1_investments_sell__transaction_id__put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1039,6 +1081,8 @@ export interface paths {
         /**
          * Sale Cost
          * @description Cost basis that selling `quantity` shares on `date` would remove.
+         *
+         *     `excluding` ignores one transaction, such as the sale being edited.
          */
         get: operations["sale_cost_api_v1_investments__account_id__sale_cost_get"];
         put?: never;
@@ -6768,6 +6812,95 @@ export interface operations {
             };
         };
     };
+    update_buy_api_v1_investments_buy__transaction_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     sell_api_v1_investments_sell_post: {
         parameters: {
             query?: never;
@@ -6783,6 +6916,95 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_sell_api_v1_investments_sell__transaction_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SellCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7191,6 +7413,7 @@ export interface operations {
                 security_id: number;
                 quantity: string;
                 date: string;
+                excluding?: number | null;
             };
             header?: never;
             path: {

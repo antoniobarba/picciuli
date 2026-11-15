@@ -95,7 +95,7 @@ picciuli-api openapi --output apps/api/openapi.json
 | budgets        | CRUD, `/copy`                                                             |
 | securities     | CRUD, `/{id}/prices`, `PUT`/`DELETE /{id}/prices/{date}`, `/{id}/latest-price` |
 | exchange rates | `/{currency}`, `/{currency}/latest`, `PUT /{currency}/{date}`             |
-| investments    | `/valuations`, `/net-worth`, `/buy`, `/sell`, `/refresh-prices`, `/refresh-exchange-rates`, `/{account}/valuation`, `/{account}/holdings`, `/{account}/sale-cost` |
+| investments    | `/valuations`, `/net-worth`, `/buy`, `/sell`, `PUT /buy/{transaction}`, `PUT /sell/{transaction}`, `/refresh-prices`, `/refresh-exchange-rates`, `/{account}/valuation`, `/{account}/holdings`, `/{account}/sale-cost` |
 | providers      | `/prices`, `/rates`, `/prices/{id}/search?q=`                             |
 
 `POST /me/import` treats the uploaded file as untrusted: it is opened
