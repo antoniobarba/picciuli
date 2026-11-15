@@ -19,7 +19,9 @@
 		-Server
 	}
 
-	respond /healthz "ok" 200
+	handle /healthz {
+		respond "ok" 200
+	}
 
 	# Runtime configuration, so one image fits every environment.
 	handle /config.json {
@@ -36,6 +38,8 @@
 	header @mutable Cache-Control "no-cache"
 
 	# Single-page application: unknown paths (/accounts, /callback…) get index.html.
-	try_files {path} /index.html
-	file_server
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
 }
