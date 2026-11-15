@@ -13,6 +13,9 @@ Conventions used everywhere in the library:
   mortgages) therefore have negative balances while you owe money.
 * **Dates** are `datetime.date` values without a time component. Date ranges
   are inclusive on both ends.
+* **Quantities, prices and exchange rates** are `decimal.Decimal` values with
+  at most 8 decimal places. Prices are in the *major* units of the security's
+  currency (for example `Decimal("169.86")` euros).
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Final, TypeAlias
 
 __all__ = [
@@ -30,17 +34,25 @@ __all__ = [
     "AccountClass",
     "AccountSplit",
     "AccountType",
+    "AccountValuation",
     "Budget",
     "BudgetLine",
     "BudgetReport",
     "Category",
     "CategoryTotal",
+    "CostMethod",
+    "ExchangeRate",
     "ExternalSplit",
+    "Holding",
     "NetWorth",
     "Period",
     "PeriodSummary",
+    "Price",
+    "PriceUpdate",
     "Register",
     "RegisterEntry",
+    "Security",
+    "SecurityKind",
     "Settings",
     "Split",
     "Transaction",
@@ -121,6 +133,31 @@ class TransactionKind(str, enum.Enum):
     """No external splits: money only moved between your accounts."""
     MIXED = "mixed"
     """External splits with both signs, for example a purchase with a refund."""
+
+
+class SecurityKind(str, enum.Enum):
+    """Kind of security. Informational, for user interfaces."""
+
+    STOCK = "stock"
+    ETF = "etf"
+    FUND = "fund"
+    BOND = "bond"
+    CRYPTO = "crypto"
+    OTHER = "other"
+
+
+class CostMethod(str, enum.Enum):
+    """How the cost of sold shares is computed when a sale is recorded.
+
+    The cost removed from the account sets the realized gain of the sale:
+    `gain = proceeds - cost`.
+    """
+
+    AVERAGE = "average"
+    """Weighted average cost of the shares held (as in the Italian
+    *regime amministrato*)."""
+    FIFO = "fifo"
+    """First in, first out: the oldest shares are sold first."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,15 +267,27 @@ class Budget:
 class AccountSplit:
     """The part of a transaction that changes the balance of one account.
 
+    On an investment account a split can also move shares of a security: a
+    purchase adds a positive `quantity` and its cost to the account, a sale
+    removes a negative `quantity` and the cost of those shares. The amount
+    may be zero only when shares move, for example for a stock split or bonus
+    shares.
+
     Attributes:
         account_id: Affected account.
-        amount: Signed change of the account balance (never zero).
+        amount: Signed change of the account balance (never zero unless a
+            security is given).
         memo: Optional note for this split.
+        security_id: Security whose shares move, or `None` for cash only.
+        quantity: Signed number of shares (never zero), required with
+            `security_id` and forbidden without it.
     """
 
     account_id: int
     amount: int
     memo: str | None = None
+    security_id: int | None = None
+    quantity: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,6 +327,7 @@ class Transaction:
     | Transfer to savings  | checking -100, savings +100                           |
     | Mortgage payment     | checking -500, mortgage +400, external -100 (Interest)|
     | Split card purchase  | card -100, external -60 (Food), external -40 (Home)   |
+    | Buy 1 share          | checking -35, investment +35 (+1 share)               |
 
     Attributes:
         id: Unique identifier.
@@ -504,7 +554,180 @@ class Settings:
     Attributes:
         currency: Currency symbol or code shown by user interfaces.
         minor_digits: Number of decimal digits of the currency (2 for cents).
+        currency_code: ISO 4217 code of the book currency (for example
+            `"EUR"`), used to convert the value of securities quoted in other
+            currencies. `None` if unknown.
+        cost_method: How the cost of sold shares is computed.
+        price_provider: Identifier of the price provider used to refresh
+            security prices (see [`PriceProvider`][picciuli.prices.PriceProvider]).
     """
 
     currency: str
     minor_digits: int
+    currency_code: str | None = None
+    cost_method: CostMethod = CostMethod.AVERAGE
+    price_provider: str = "yahoo"
+
+
+@dataclass(frozen=True, slots=True)
+class Security:
+    """Something you can hold shares of: a stock, an ETF, a fund...
+
+    Attributes:
+        id: Unique identifier.
+        name: Unique display name (case-insensitive).
+        symbol: Symbol used by the price provider (for example `"VWCE.DE"`
+            for Yahoo Finance), or `None` if prices are entered by hand.
+        isin: International Securities Identification Number, or `None`.
+        currency: ISO 4217 code of the currency the security is quoted in.
+        kind: Kind of security.
+        notes: Free text.
+    """
+
+    id: int
+    name: str
+    symbol: str | None
+    isin: str | None
+    currency: str
+    kind: SecurityKind
+    notes: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Price:
+    """The price of one share of a security on a day.
+
+    A security has at most one price per day; refreshing during the day
+    replaces it with the latest quote.
+
+    Attributes:
+        security_id: The security.
+        date: Day of the price.
+        price: Price of one share in the security's currency (major units).
+        source: Where the price comes from (a provider identifier), or `None`
+            if entered by hand.
+    """
+
+    security_id: int
+    date: dt.date
+    price: Decimal
+    source: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExchangeRate:
+    """The value of one unit of a foreign currency in the book currency.
+
+    Attributes:
+        currency: ISO 4217 code of the foreign currency.
+        date: Day of the rate.
+        rate: Book currency per one unit of `currency` (major units).
+    """
+
+    currency: str
+    date: dt.date
+    rate: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class Holding:
+    """Shares of one security held in an investment account on a day.
+
+    Attributes:
+        security: The security.
+        quantity: Number of shares held.
+        cost_basis: What the shares cost, in minor units of the book currency:
+            the sum of the amounts of the splits that moved them.
+        price: Latest known price on or before the day, or `None`.
+        price_date: Day of `price`, or `None`.
+        exchange_rate: Rate used to convert the price into the book currency
+            (`1` for securities quoted in the book currency), or `None` if
+            unknown.
+        market_value: `quantity * price * exchange_rate` in minor units of the
+            book currency, or `None` when the price or the rate is unknown.
+    """
+
+    security: Security
+    quantity: Decimal
+    cost_basis: int
+    price: Decimal | None
+    price_date: dt.date | None
+    exchange_rate: Decimal | None
+    market_value: int | None
+
+    @property
+    def unrealized_gain(self) -> int | None:
+        """Market value minus cost basis, or `None` without a market value."""
+        if self.market_value is None:
+            return None
+        return self.market_value - self.cost_basis
+
+
+@dataclass(frozen=True, slots=True)
+class AccountValuation:
+    """The market value of an account on a day.
+
+    The ledger balance of an investment account is its uninvested cash plus the
+    cost basis of its holdings. The market value replaces that cost basis with
+    the current value of the shares; price changes are never transactions.
+
+    Attributes:
+        account: The account.
+        as_of: Day of the valuation, or `None` for "including every
+            transaction and the latest prices".
+        balance: Ledger balance, as returned by
+            [`AccountService.balance`][picciuli.services.AccountService.balance].
+        holdings: Securities with a non-zero quantity or cost basis.
+    """
+
+    account: Account
+    as_of: dt.date | None
+    balance: int
+    holdings: tuple[Holding, ...]
+
+    @property
+    def cost_basis(self) -> int:
+        """Total cost basis of the holdings."""
+        return sum(h.cost_basis for h in self.holdings)
+
+    @property
+    def cash(self) -> int:
+        """Uninvested money: the balance minus the cost basis of the holdings."""
+        return self.balance - self.cost_basis
+
+    @property
+    def market_value(self) -> int:
+        """Cash plus the market value of the holdings.
+
+        Holdings without a known market value are counted at cost basis.
+        """
+        return self.cash + sum(
+            h.cost_basis if h.market_value is None else h.market_value
+            for h in self.holdings
+        )
+
+    @property
+    def unrealized_gain(self) -> int:
+        """Market value minus ledger balance."""
+        return self.market_value - self.balance
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every holding has a known market value."""
+        return all(h.market_value is not None for h in self.holdings)
+
+
+@dataclass(frozen=True, slots=True)
+class PriceUpdate:
+    """Outcome of refreshing prices from a price provider.
+
+    Attributes:
+        prices: Prices stored (new or replaced).
+        exchange_rates: Exchange rates stored (new or replaced).
+        errors: One message per security or currency that could not be
+            refreshed; the others are still stored.
+    """
+
+    prices: tuple[Price, ...]
+    exchange_rates: tuple[ExchangeRate, ...]
+    errors: tuple[str, ...]

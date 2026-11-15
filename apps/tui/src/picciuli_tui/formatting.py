@@ -11,7 +11,9 @@ from picciuli import (
     Account,
     AccountType,
     Category,
+    CostMethod,
     Period,
+    SecurityKind,
     Settings,
     Transaction,
     TransactionKind,
@@ -177,3 +179,40 @@ def progress_bar(fraction: float, width: int = 10) -> str:
     clamped = min(max(fraction, 0.0), 1.0)
     filled = round(clamped * width)
     return "█" * filled + "░" * (width - filled)
+
+
+SECURITY_KIND_LABELS: Mapping[SecurityKind, str] = {
+    SecurityKind.STOCK: "Stock",
+    SecurityKind.ETF: "ETF",
+    SecurityKind.FUND: "Fund",
+    SecurityKind.BOND: "Bond",
+    SecurityKind.CRYPTO: "Crypto",
+    SecurityKind.OTHER: "Other",
+}
+
+COST_METHOD_LABELS: Mapping[CostMethod, str] = {
+    CostMethod.AVERAGE: "Weighted average cost",
+    CostMethod.FIFO: "First in, first out (FIFO)",
+}
+
+
+def quantity_text(value: Decimal) -> str:
+    """Return a number of shares without useless zeros, e.g. `1,234.5`."""
+    text = f"{value:,f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+def price_text(value: Decimal, currency: str) -> str:
+    """Return a price with at least two decimals, e.g. `169.86 EUR`."""
+    exponent = value.normalize().as_tuple().exponent
+    places = max(2, -exponent) if isinstance(exponent, int) else 2
+    return f"{value:,.{places}f} {currency}"
+
+
+def percent_text(part: int, whole: int) -> str:
+    """Return `part / whole` as a signed percentage, or an empty string."""
+    if not whole:
+        return ""
+    return f"{part / abs(whole):+.1%}"

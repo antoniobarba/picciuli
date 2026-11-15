@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 import pytest
 
@@ -18,8 +19,11 @@ from picciuli_tui.formatting import (
     account_change,
     category_label,
     category_tree_label,
+    percent_text,
     period_range,
+    price_text,
     progress_bar,
+    quantity_text,
     transaction_accounts,
     transaction_category,
     transaction_title,
@@ -120,3 +124,14 @@ def test_transaction_labels(book: Book) -> None:
 )
 def test_progress_bar(fraction: float, expected: str) -> None:
     assert progress_bar(fraction, width=4) == expected
+
+
+def test_investment_formatting() -> None:
+    assert quantity_text(Decimal("1234.5000")) == "1,234.5"
+    assert quantity_text(Decimal(3)) == "3"
+    assert price_text(Decimal("169.8"), "EUR") == "169.80 EUR"
+    assert price_text(Decimal("0.123456"), "USD") == "0.123456 USD"
+    assert price_text(Decimal("1200"), "USD") == "1,200.00 USD"
+    assert percent_text(50, 1000) == "+5.0%"
+    assert percent_text(-50, 1000) == "-5.0%"
+    assert percent_text(5, 0) == ""

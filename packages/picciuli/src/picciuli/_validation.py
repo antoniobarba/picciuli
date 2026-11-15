@@ -80,3 +80,41 @@ def position(value: object, upper: int, field: str = "position") -> int:
     if not 1 <= result <= upper:
         raise ValidationError(f"{field} must be between 1 and {upper}")
     return result
+
+
+def currency_code(value: object, field: str = "currency") -> str:
+    """Validate an ISO 4217 style code: three ASCII letters, returned uppercase."""
+    if not isinstance(value, str):
+        raise ValidationError(f"{field} must be a string")
+    result = value.strip().upper()
+    if len(result) != 3 or not result.isascii() or not result.isalpha():
+        raise ValidationError(f"{field} must be a three-letter code such as 'EUR'")
+    return result
+
+
+def isin(value: object) -> str | None:
+    """Validate an ISIN (12 characters with a valid check digit) or `None`."""
+    text = optional_text(value, "ISIN")
+    if text is None:
+        return None
+    code = text.upper()
+    if (
+        len(code) != 12
+        or not code.isascii()
+        or not code[:2].isalpha()
+        or not code[2:11].isalnum()
+        or not code[11].isdigit()
+    ):
+        raise ValidationError(f"invalid ISIN {text!r}")
+    digits = "".join(str(int(char, 36)) for char in code[:11])
+    total = 0
+    for index, char in enumerate(reversed(digits)):
+        number = int(char)
+        if index % 2 == 0:
+            number *= 2
+            if number > 9:
+                number -= 9
+        total += number
+    if (10 - total % 10) % 10 != int(code[11]):
+        raise ValidationError(f"invalid ISIN {text!r} (wrong check digit)")
+    return code

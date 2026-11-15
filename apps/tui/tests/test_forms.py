@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 import pytest
 
@@ -11,7 +12,10 @@ from picciuli import (
     Book,
     Category,
     ConflictError,
+    CostMethod,
     ExternalSplit,
+    Security,
+    SecurityKind,
     ValidationError,
 )
 from picciuli_tui.formatting import MoneyFormat
@@ -20,6 +24,8 @@ from picciuli_tui.forms import (
     EntryKind,
     InputError,
     LineDraft,
+    SecurityDraft,
+    TradeDraft,
     TransactionDraft,
     account_target,
     category_in_use,
@@ -29,10 +35,17 @@ from picciuli_tui.forms import (
     line_totals,
     move_category,
     parse_date,
+    parse_decimal,
+    parse_price,
+    parse_quantity,
     save_account,
     save_budget,
+    save_buy,
     save_category,
     save_period,
+    save_price,
+    save_security,
+    save_sell,
     save_settings,
     save_transaction,
     simple_lines,
@@ -369,3 +382,134 @@ def test_save_settings(book: Book) -> None:
         save_settings(book, currency="€", digits="two")
     with pytest.raises(ValidationError):
         save_settings(book, currency="€", digits="9")
+
+
+def test_save_settings_for_investments(book: Book) -> None:
+    save_settings(
+        book,
+        currency="€",
+        digits="2",
+        currency_code=" eur ",
+        cost_method=CostMethod.FIFO,
+        price_provider="yahoo",
+    )
+    settings = book.settings.get()
+    assert (settings.currency_code, settings.cost_method) == ("EUR", CostMethod.FIFO)
+    save_settings(book, currency="€", digits="2", currency_code="")
+    assert book.settings.get().currency_code is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("1.5", Decimal("1.5")),
+        ("1,5", Decimal("1.5")),
+        ("1,234.5", Decimal("1234.5")),
+        ("1.234,5", Decimal("1234.5")),
+        (" 2 ", Decimal(2)),
+    ],
+)
+def test_parse_decimal(text: str, expected: Decimal) -> None:
+    assert parse_decimal(text, "quantity") == expected
+
+
+@pytest.mark.parametrize("text", ["", "abc", "inf", "1,2,3"])
+def test_parse_decimal_rejects(text: str) -> None:
+    with pytest.raises(InputError):
+        parse_decimal(text, "quantity")
+
+
+def test_quantities_and_prices_must_be_positive() -> None:
+    assert parse_quantity("-2", signed=True) == -2
+    for text in ("0", "-1"):
+        with pytest.raises(InputError):
+            parse_quantity(text)
+        with pytest.raises(InputError):
+            parse_price(text)
+    assert parse_price("169,86") == Decimal("169.86")
+
+
+@pytest.fixture
+def broker(book: Book) -> Account:
+    return book.accounts.create("Broker", AccountType.INVESTMENT)
+
+
+@pytest.fixture
+def etf(book: Book) -> Security:
+    return book.securities.create("ETF", currency="USD", symbol="E")
+
+
+def test_security_drafts(book: Book) -> None:
+    with pytest.raises(InputError, match="currency"):
+        save_security(book, SecurityDraft(name="X"))
+    draft = SecurityDraft(name="X", symbol=" X.MI ", isin="", currency="eur")
+    created = save_security(book, draft)
+    assert (created.symbol, created.isin, created.currency) == ("X.MI", None, "EUR")
+    edited = SecurityDraft.of(created)
+    edited.notes = "note"
+    edited.kind = SecurityKind.BOND
+    updated = save_security(book, edited, security_id=created.id)
+    assert (updated.notes, updated.kind) == ("note", SecurityKind.BOND)
+
+
+def test_buy_sell_and_price(
+    book: Book, money: MoneyFormat, checking: Account, broker: Account, etf: Security
+) -> None:
+    draft = TradeDraft(
+        date="1",
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity="2",
+        amount="70",
+        other_account_id=checking.id,
+        fee="1",
+    )
+    bought = save_buy(book, draft, money, today=TODAY)
+    assert bought.date == dt.date(2025, 3, 1)
+    assert book.accounts.balance(checking.id) == -7100
+    sell = TradeDraft(
+        date="2",
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity="1,5",
+        amount="60",
+        other_account_id=0,
+        tax="2",
+    )
+    sold = save_sell(book, sell, money, today=TODAY)
+    assert sold.net_amount == 6000 - 5250 - 200
+    with pytest.raises(InputError, match="negative"):
+        save_sell(
+            book, TradeDraft(**{**sell.__dict__, "fee": "-1"}), money, today=TODAY
+        )
+    with pytest.raises(InputError, match="security"):
+        save_buy(book, TradeDraft(date="1", account_id=broker.id), money, today=TODAY)
+    price = save_price(book, etf.id, date="today", price="35.5", today=TODAY)
+    assert (price.date, price.price) == (TODAY, Decimal("35.5"))
+
+
+def test_share_transactions_open_in_the_split_editor(
+    book: Book, money: MoneyFormat, checking: Account, broker: Account, etf: Security
+) -> None:
+    bought = book.investments.record_buy(
+        TODAY,
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=Decimal("1.5"),
+        cost=3500,
+        from_account_id=checking.id,
+    )
+    draft = draft_from_transaction(bought, money)
+    assert draft.kind is EntryKind.SPLIT
+    assert draft.lines[0] == LineDraft(
+        account_target(broker.id), "35.00", "", etf.id, "1.5"
+    )
+    draft.description = "Edited"
+    saved = save_transaction(book, draft, money, today=TODAY, transaction_id=bought.id)
+    assert saved.splits == bought.splits
+    assert saved.description == "Edited"
+    # A zero amount is fine when shares move (a stock split).
+    split = [LineDraft(account_target(broker.id), "0", "", etf.id, "3")]
+    assert line_splits(split, money) == [
+        AccountSplit(broker.id, 0, security_id=etf.id, quantity=Decimal(3))
+    ]

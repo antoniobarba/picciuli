@@ -17,7 +17,12 @@ def test_demo_book_is_consistent() -> None:
     with Book.in_memory() as book:
         populate_demo(book, today)
         assert book.settings.get().currency == "€"
-        assert len(book.accounts.list()) == 5
+        assert len(book.accounts.list()) == 6
+        broker = next(a for a in book.accounts.list() if a.name == "Broker")
+        valuation = book.investments.valuation(broker.id)
+        assert valuation.is_complete
+        assert [h.security.symbol for h in valuation.holdings] == ["AAPL", "VWCE.DE"]
+        assert valuation.cash == 0
         transactions = book.transactions.list()
         assert transactions
         assert max(t.date for t in transactions) <= today
@@ -77,3 +82,16 @@ def test_cli_rejects_foreign_files(
     connection.close()
     assert cli.main([str(target)]) == 1
     assert "not a Picciuli database" in capsys.readouterr().err
+
+
+def test_cli_live_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[float, bool]] = []
+
+    def fake_run(self: PicciuliApp) -> None:
+        seen.append((self.refresh_seconds, self._start_live))
+
+    monkeypatch.setattr(PicciuliApp, "run", fake_run)
+    assert cli.main([str(tmp_path / "new.db"), "--live", "--refresh", "30"]) == 0
+    assert seen == [(30.0, True)]
+    with pytest.raises(SystemExit):
+        cli.main([str(tmp_path / "new.db"), "--refresh", "1"])

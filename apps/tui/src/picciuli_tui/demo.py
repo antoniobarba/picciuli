@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 import os
+from decimal import Decimal
 from pathlib import Path
 
-from picciuli import AccountSplit, AccountType, Book, ExternalSplit
+from picciuli import AccountSplit, AccountType, Book, ExternalSplit, SecurityKind
 from picciuli_tui.calendar_model import shift_month
 
 PAY_DAY = 27
@@ -204,6 +206,80 @@ def populate_demo(book: Book, today: dt.date) -> None:
         holiday_start = max(today - dt.timedelta(days=12), starts[-1])
         book.periods.create(
             holiday_start, end=holiday_start + dt.timedelta(days=7), name="Holiday"
+        )
+        _populate_investments(book, checking.id, starts, today)
+
+
+def _demo_price(base: float, day: int) -> Decimal:
+    """A deterministic, gently rising and wobbling price."""
+    value = base * (1 + 0.001 * day + 0.03 * math.sin(day / 6))
+    return Decimal(f"{value:.2f}")
+
+
+def _populate_investments(
+    book: Book, checking_id: int, starts: list[dt.date], today: dt.date
+) -> None:
+    """An investment account with monthly ETF purchases and offline prices."""
+    first = starts[0]
+    book.settings.update(currency_code="EUR")
+    broker = book.accounts.create("Broker", AccountType.INVESTMENT, opening_date=first)
+    investing = book.categories.create("Investing")
+    gains = book.categories.create("Capital gains", parent_id=investing.id)
+    fees = book.categories.create("Broker fees", parent_id=investing.id, symbol="FEES")
+    etf = book.securities.create(
+        "Vanguard FTSE All-World",
+        currency="EUR",
+        kind=SecurityKind.ETF,
+        symbol="VWCE.DE",
+        isin="IE00BK5BQT80",
+    )
+    apple = book.securities.create(
+        "Apple", currency="USD", symbol="AAPL", isin="US0378331005"
+    )
+    day = first
+    while day <= today:
+        offset = (day - first).days
+        book.securities.set_price(etf.id, day, _demo_price(120, offset))
+        book.securities.set_price(apple.id, day, _demo_price(220, offset))
+        book.securities.set_exchange_rate(
+            "USD", day, Decimal(f"{0.92 + 0.01 * math.sin(offset / 9):.4f}")
+        )
+        day += dt.timedelta(days=1)
+    for start in starts:
+        purchase = start + dt.timedelta(days=2)
+        if purchase > today:
+            continue
+        price = _demo_price(120, (purchase - first).days)
+        book.investments.record_buy(
+            purchase,
+            account_id=broker.id,
+            security_id=etf.id,
+            quantity=(Decimal(200) / price).quantize(Decimal("0.0001")),
+            cost=_cents(200),
+            from_account_id=checking_id,
+            fee=_cents(1),
+            fee_category_id=fees.id,
+            description="Savings plan",
+        )
+    if first + dt.timedelta(days=4) <= today:
+        book.investments.record_buy(
+            first + dt.timedelta(days=4),
+            account_id=broker.id,
+            security_id=apple.id,
+            quantity=2,
+            cost=_cents(405),
+            from_account_id=checking_id,
+        )
+    sale = starts[-1] + dt.timedelta(days=4)
+    if sale <= today:
+        book.investments.record_sell(
+            sale,
+            account_id=broker.id,
+            security_id=apple.id,
+            quantity=1,
+            proceeds=_cents(215),
+            to_account_id=checking_id,
+            gain_category_id=gains.id,
         )
 
 

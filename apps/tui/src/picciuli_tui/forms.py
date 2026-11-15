@@ -11,6 +11,7 @@ import datetime as dt
 import enum
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 
 from picciuli import (
     UNSET,
@@ -19,10 +20,15 @@ from picciuli import (
     AccountType,
     Book,
     Category,
+    CostMethod,
     ExternalSplit,
     Period,
+    Price,
+    Security,
+    SecurityKind,
     Split,
     Transaction,
+    Unset,
 )
 from picciuli_tui.formatting import MoneyFormat
 
@@ -100,6 +106,47 @@ def required_id(value: int | None, label: str) -> int:
     return value
 
 
+def parse_decimal(text: str, label: str) -> Decimal:
+    """Parse a number such as `1.5`, `1,5` or `1,234.5` into a `Decimal`.
+
+    A single comma is a decimal separator; with both separators the last one
+    is the decimal separator.
+    """
+    cleaned = text.strip().replace(" ", "").replace("'", "")
+    if not cleaned:
+        raise InputError(f"{label} is required")
+    if "," in cleaned and "." in cleaned:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif cleaned.count(",") == 1:
+        cleaned = cleaned.replace(",", ".")
+    try:
+        value = Decimal(cleaned)
+    except InvalidOperation:
+        raise InputError(f"invalid {label}: {text.strip()!r}") from None
+    if not value.is_finite():
+        raise InputError(f"invalid {label}: {text.strip()!r}")
+    return value
+
+
+def parse_quantity(text: str, *, signed: bool = False) -> Decimal:
+    """Parse a number of shares; it must be positive unless `signed`."""
+    value = parse_decimal(text, "quantity")
+    if value == 0 or (value < 0 and not signed):
+        raise InputError("enter a positive quantity")
+    return value
+
+
+def parse_price(text: str) -> Decimal:
+    """Parse a positive price."""
+    value = parse_decimal(text, "price")
+    if value <= 0:
+        raise InputError("enter a positive price")
+    return value
+
+
 def default_period_name(start: dt.date) -> str:
     """Return the default name of a period starting on `start`."""
     return start.strftime("%B %Y")
@@ -143,11 +190,16 @@ class LineDraft:
         target: `a:<account id>` or `c:<category id>` (`c:0` for uncategorized).
         amount: Signed amount text.
         memo: Optional memo.
+        security_id: Security whose shares the line moves (kept unchanged
+            when an existing purchase or sale is edited).
+        quantity: Signed number of shares, with `security_id`.
     """
 
     target: str = ""
     amount: str = ""
     memo: str = ""
+    security_id: int | None = None
+    quantity: str = ""
 
 
 @dataclass
@@ -176,10 +228,19 @@ def _line_split(line: LineDraft, money: MoneyFormat) -> Split:
     if not line.amount.strip():
         raise InputError("every split line needs an amount")
     amount = money.parse(line.amount)
-    if amount == 0:
+    shares = prefix == "a" and line.security_id is not None
+    if amount == 0 and not shares:
         raise InputError("split amounts cannot be zero")
     memo = optional_text(line.memo)
     if prefix == "a":
+        if shares:
+            return AccountSplit(
+                int(ident),
+                amount,
+                memo,
+                security_id=line.security_id,
+                quantity=parse_quantity(line.quantity, signed=True),
+            )
         return AccountSplit(int(ident), amount, memo)
     return ExternalSplit(amount, int(ident) or None, memo)
 
@@ -250,16 +311,25 @@ def simple_lines(draft: TransactionDraft, money: MoneyFormat) -> list[LineDraft]
 
 
 def _lines(splits: Sequence[Split], money: MoneyFormat) -> list[LineDraft]:
-    return [
-        LineDraft(
-            account_target(s.account_id)
-            if isinstance(s, AccountSplit)
-            else category_target(s.category_id),
-            money.plain(s.amount),
-            s.memo or "",
-        )
-        for s in splits
-    ]
+    lines = []
+    for s in splits:
+        if isinstance(s, AccountSplit):
+            lines.append(
+                LineDraft(
+                    account_target(s.account_id),
+                    money.plain(s.amount),
+                    s.memo or "",
+                    s.security_id,
+                    "" if s.quantity is None else f"{s.quantity:f}",
+                )
+            )
+        else:
+            lines.append(
+                LineDraft(
+                    category_target(s.category_id), money.plain(s.amount), s.memo or ""
+                )
+            )
+    return lines
 
 
 def draft_from_transaction(
@@ -268,7 +338,8 @@ def draft_from_transaction(
     """Return the draft that edits an existing transaction.
 
     Transactions with a simple shape open in the matching simple kind;
-    everything else opens in the split editor.
+    everything else, including purchases and sales of shares, opens in the
+    split editor.
     """
     draft = TransactionDraft(
         date=transaction.date.isoformat(),
@@ -277,8 +348,10 @@ def draft_from_transaction(
     )
     accounts = transaction.account_splits
     external = transaction.external_splits
-    memos = any(split.memo for split in transaction.splits)
-    if not memos and len(accounts) == 1 and len(external) == 1:
+    simple = not any(split.memo for split in transaction.splits) and not any(
+        split.security_id is not None for split in accounts
+    )
+    if simple and len(accounts) == 1 and len(external) == 1:
         account, flow = accounts[0], external[0]
         draft.kind = EntryKind.EXPENSE if flow.amount < 0 else EntryKind.INCOME
         draft.amount = money.plain(abs(flow.amount))
@@ -286,7 +359,7 @@ def draft_from_transaction(
         draft.category_id = flow.category_id or NONE_ID
         return draft
     if (
-        not memos
+        simple
         and not external
         and len(accounts) == 2
         and accounts[0].amount == -accounts[1].amount
@@ -470,12 +543,155 @@ def save_budget(
         book.budgets.update(budget_id, category_id=category, amount=value)
 
 
-def save_settings(book: Book, *, currency: str, digits: str) -> MoneyFormat:
-    """Change the currency settings and return the new money format."""
+def save_settings(
+    book: Book,
+    *,
+    currency: str,
+    digits: str,
+    currency_code: str | None = None,
+    cost_method: CostMethod | None = None,
+    price_provider: str | None = None,
+) -> MoneyFormat:
+    """Change the book settings and return the new money format.
+
+    `currency_code`, `cost_method` and `price_provider` are left unchanged when
+    `None`; an empty currency code clears it.
+    """
     try:
         minor_digits = int(digits.strip())
     except ValueError as exc:
         raise InputError("decimal digits must be a whole number") from exc
+    code: str | None | Unset = UNSET
+    if currency_code is not None:
+        code = optional_text(currency_code)
     return MoneyFormat.from_settings(
-        book.settings.update(currency=currency.strip(), minor_digits=minor_digits)
+        book.settings.update(
+            currency=currency.strip(),
+            minor_digits=minor_digits,
+            currency_code=code,
+            cost_method=UNSET if cost_method is None else cost_method,
+            price_provider=UNSET if price_provider is None else price_provider,
+        )
+    )
+
+
+# Investments
+
+
+@dataclass
+class SecurityDraft:
+    """The content of the security form."""
+
+    name: str = ""
+    symbol: str = ""
+    isin: str = ""
+    currency: str = ""
+    kind: SecurityKind = SecurityKind.ETF
+    notes: str = ""
+
+    @classmethod
+    def of(cls, security: Security) -> SecurityDraft:
+        """Return the draft that edits an existing security."""
+        return cls(
+            name=security.name,
+            symbol=security.symbol or "",
+            isin=security.isin or "",
+            currency=security.currency,
+            kind=security.kind,
+            notes=security.notes or "",
+        )
+
+
+def save_security(
+    book: Book, draft: SecurityDraft, *, security_id: int | None = None
+) -> Security:
+    """Create or update a security."""
+    if not draft.currency.strip():
+        raise InputError("a currency code such as EUR is required")
+    if security_id is None:
+        return book.securities.create(
+            draft.name,
+            currency=draft.currency,
+            kind=draft.kind,
+            symbol=optional_text(draft.symbol),
+            isin=optional_text(draft.isin),
+            notes=optional_text(draft.notes),
+        )
+    return book.securities.update(
+        security_id,
+        name=draft.name,
+        currency=draft.currency,
+        kind=draft.kind,
+        symbol=optional_text(draft.symbol),
+        isin=optional_text(draft.isin),
+        notes=optional_text(draft.notes),
+    )
+
+
+@dataclass
+class TradeDraft:
+    """The content of the buy and sell forms.
+
+    `amount` is the cost of a purchase or the gross proceeds of a sale, and
+    `other_account_id` the account paying or receiving the money (`NONE_ID`
+    for the cash of the investment account itself).
+    """
+
+    date: str = ""
+    account_id: int | None = None
+    security_id: int | None = None
+    quantity: str = ""
+    amount: str = ""
+    other_account_id: int | None = None
+    fee: str = ""
+    tax: str = ""
+    category_id: int | None = None
+
+
+def _non_negative(text: str, money: MoneyFormat, label: str) -> int:
+    value = optional_amount(text, money) or 0
+    if value < 0:
+        raise InputError(f"the {label} cannot be negative")
+    return value
+
+
+def save_buy(
+    book: Book, draft: TradeDraft, money: MoneyFormat, *, today: dt.date
+) -> Transaction:
+    """Record a purchase of shares; the fee goes to `draft.category_id`."""
+    return book.investments.record_buy(
+        parse_date(draft.date, today=today),
+        account_id=required_id(draft.account_id, "an investment account"),
+        security_id=required_id(draft.security_id, "a security"),
+        quantity=parse_quantity(draft.quantity),
+        cost=positive_amount(draft.amount, money),
+        from_account_id=draft.other_account_id or None,
+        fee=_non_negative(draft.fee, money, "fee"),
+        fee_category_id=draft.category_id or None,
+    )
+
+
+def save_sell(
+    book: Book, draft: TradeDraft, money: MoneyFormat, *, today: dt.date
+) -> Transaction:
+    """Record a sale of shares; the gain goes to `draft.category_id`."""
+    return book.investments.record_sell(
+        parse_date(draft.date, today=today),
+        account_id=required_id(draft.account_id, "an investment account"),
+        security_id=required_id(draft.security_id, "a security"),
+        quantity=parse_quantity(draft.quantity),
+        proceeds=positive_amount(draft.amount, money),
+        to_account_id=draft.other_account_id or None,
+        fee=_non_negative(draft.fee, money, "fee"),
+        tax=_non_negative(draft.tax, money, "tax"),
+        gain_category_id=draft.category_id or None,
+    )
+
+
+def save_price(
+    book: Book, security_id: int, *, date: str, price: str, today: dt.date
+) -> Price:
+    """Store a price typed by hand."""
+    return book.securities.set_price(
+        security_id, parse_date(date, today=today), parse_price(price)
     )

@@ -7,7 +7,7 @@ import picciuli
 import picciuli_tui
 
 SOURCE = Path(picciuli_tui.__file__).parent
-PUBLIC_MODULES = {"picciuli", "picciuli.money"}
+PUBLIC_MODULES = {"picciuli", "picciuli.money", "picciuli.prices"}
 
 
 def _imports(path: Path) -> list[tuple[str, list[str]]]:

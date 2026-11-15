@@ -21,6 +21,9 @@ What it handles:
   with a summary of what happened.
 - **Budgets** per category and period, with reports comparing them to actual
   spending.
+- **Investments**: shares of stocks and ETFs held in investment accounts. The
+  ledger records what you paid. Market values come from prices that a
+  modular price provider downloads, for example from Yahoo Finance.
 
 Start with [Getting started](getting-started.md), then read
 [Concepts](concepts.md) to understand the accounting model. To use Picciuli

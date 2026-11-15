@@ -256,12 +256,17 @@ class OverviewScreen(BookScreen):
         panel.add_row(
             Text("Balances", style="b"), Text(f"{day:%d %b %Y}", style="dim"), "", ""
         )
+        market = {
+            v.account.id: v.market_value
+            for v in self.book.investments.valuations(as_of=day)
+        }
         for balance in self.book.accounts.balances(as_of=day):
+            value = market.get(balance.account.id, balance.balance)
             panel.add_row(
-                f"  {balance.account.name}", amount_text(money, balance.balance), "", ""
+                f"  {balance.account.name}", amount_text(money, value), "", ""
             )
         if accounts:
-            worth = self.book.accounts.net_worth(as_of=day)
+            worth = self.book.investments.net_worth(as_of=day)
             panel.add_row(
                 Text("Net worth", style="b"),
                 amount_text(money, worth.net_worth, bold=True),

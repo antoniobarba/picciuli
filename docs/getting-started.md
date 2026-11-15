@@ -85,6 +85,56 @@ february = book.periods.create(dt.date(2025, 2, 1))  # closes January on the 31s
 book.budgets.copy(january.id, february.id)
 ```
 
+## Investments
+
+```python
+from decimal import Decimal
+
+with Book.open("finance.db") as book:
+    book.settings.update(currency_code="EUR", cost_method="average")
+    broker = book.accounts.create("Scalable", AccountType.INVESTMENT)
+    gains = book.categories.create("Capital gains")
+    etf = book.securities.create(
+        "Vanguard FTSE All-World",
+        currency="EUR",
+        kind="etf",
+        symbol="VWCE.DE",  # Yahoo Finance symbol (XETRA listing)
+        isin="IE00BK5BQT80",
+    )
+
+    # 1 share for 35 €, paid from checking: a transfer that also moves the share.
+    book.investments.record_buy(
+        dt.date(2025, 2, 3),
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=Decimal("1"),
+        cost=3500,
+        from_account_id=checking.id,
+    )
+
+    # Prices are not transactions: store them by hand or download them.
+    book.securities.set_price(etf.id, dt.date(2025, 2, 4), Decimal("37.20"))
+    book.investments.refresh_prices()  # latest quotes from Yahoo Finance
+
+    valuation = book.investments.valuation(broker.id)
+    print(valuation.balance, valuation.market_value, valuation.unrealized_gain)
+
+    # Selling records the realized gain in a category.
+    book.investments.record_sell(
+        dt.date(2025, 3, 3),
+        account_id=broker.id,
+        security_id=etf.id,
+        quantity=Decimal("1"),
+        proceeds=4000,
+        to_account_id=checking.id,
+        gain_category_id=gains.id,
+    )
+    print(book.investments.net_worth().net_worth)  # investments at market value
+```
+
+See [Concepts](concepts.md#investments) for the model, and
+[Price providers](api/prices.md) for the data sources.
+
 ## Grouping operations
 
 Each method call is its own database transaction. To make several calls succeed
@@ -102,5 +152,6 @@ with book.atomic():
 
 All errors derive from [`PicciuliError`][picciuli.errors.PicciuliError]:
 `ValidationError` (bad input), `NotFoundError` (unknown id), `ConflictError`
-(conflicts with stored data, such as a duplicate name or a closed account) and
-`SchemaVersionError` (the file cannot be used).
+(conflicts with stored data, such as a duplicate name or a closed account),
+`SchemaVersionError` (the file cannot be used) and `PriceProviderError` (a
+price provider failed).

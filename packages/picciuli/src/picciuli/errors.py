@@ -11,6 +11,7 @@ backends:
 | `NotFoundError`      | A referenced entity does not exist        | 404  |
 | `ConflictError`      | The operation conflicts with stored state | 409  |
 | `SchemaVersionError` | The database file cannot be used          | 500  |
+| `PriceProviderError` | A price provider failed or is unavailable | 502  |
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ __all__ = [
     "ConflictError",
     "NotFoundError",
     "PicciuliError",
+    "PriceProviderError",
     "SchemaVersionError",
     "ValidationError",
 ]
@@ -51,5 +53,13 @@ class SchemaVersionError(PicciuliError):
     """The database file is not a Picciuli database or has an unsupported version.
 
     It is raised when the file was created by a newer library version or by the
-    legacy (v1) application, which must be converted with the migration tool.
+    legacy (v1) application, which is not supported.
+    """
+
+
+class PriceProviderError(PicciuliError):
+    """A price provider could not deliver a quote.
+
+    Examples: the network is down, the symbol is unknown to the provider, or
+    the provider identifier is not registered.
     """

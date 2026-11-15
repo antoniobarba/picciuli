@@ -21,7 +21,9 @@ from picciuli.services import (
     AccountService,
     BudgetService,
     CategoryService,
+    InvestmentService,
     PeriodService,
+    SecurityService,
     SettingsService,
     TransactionService,
 )
@@ -65,6 +67,10 @@ class Book:
     """Budgets and budget reports."""
     settings: SettingsService
     """Book-wide settings such as the currency."""
+    securities: SecurityService
+    """Securities, prices and exchange rates."""
+    investments: InvestmentService
+    """Buying and selling shares, valuations and price refreshes."""
 
     def __init__(self, engine: Engine) -> None:
         """Wrap an already prepared engine. Prefer `open` or `in_memory`."""
@@ -76,6 +82,8 @@ class Book:
         self.periods = PeriodService(self._uow)
         self.budgets = BudgetService(self._uow)
         self.settings = SettingsService(self._uow)
+        self.securities = SecurityService(self._uow)
+        self.investments = InvestmentService(self._uow, self.transactions)
 
     @classmethod
     def open(cls, path: str | os.PathLike[str], *, create: bool = True) -> Book:

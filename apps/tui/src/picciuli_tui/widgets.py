@@ -39,6 +39,7 @@ SCREEN_TABS = (
     ("categories", "3 Categories"),
     ("periods", "4 Periods"),
     ("budgets", "5 Budgets"),
+    ("investments", "6 Investments"),
 )
 """Application modes in tab order, with their labels (including the hotkey)."""
 

@@ -5,7 +5,6 @@
 ```
 packages/picciuli/   core library (src layout, tests next to it)
 apps/tui/            console user interface (Textual), with its tests
-tools/               maintenance scripts, e.g. the v1 migration, with their tests
 docs/, mkdocs.yml    this documentation
 pyproject.toml       uv workspace root + shared ruff / mypy / pytest configuration
 ```
@@ -67,7 +66,10 @@ commit. Three boundaries still need explicit compatibility handling:
       registered in `picciuli/_db/schema.py`.
     - It refuses files written by a newer version.
     - To change the schema, bump `SCHEMA_VERSION`, add a migration step and
-      test it.
+      test it. Write the step's DDL out in full instead of reusing the ORM
+      tables, so that it keeps producing the same schema when the tables change
+      later (see the version 1 → 2 step). The test in `tests/test_book.py`
+      checks that an upgraded file has the same structure as a new one.
 2. **The future HTTP API.** Browsers and phones update on their own schedule.
     - Changes to the API should be additive.
     - Breaking changes go under a new path prefix (`/v2`), while `/v1` is kept

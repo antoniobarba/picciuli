@@ -20,9 +20,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from picciuli.model import AccountType
+from picciuli.model import AccountType, SecurityKind
 
 _ACCOUNT_TYPES = ", ".join(f"'{t.value}'" for t in AccountType)
+_SECURITY_KINDS = ", ".join(f"'{k.value}'" for k in SecurityKind)
 
 
 class Base(DeclarativeBase):
@@ -124,12 +125,21 @@ class TransactionRow(Base):
 class SplitRow(Base):
     __tablename__ = "splits"
     __table_args__ = (
-        CheckConstraint("amount != 0", name="ck_split_amount"),
+        CheckConstraint(
+            "amount != 0 OR security_id IS NOT NULL", name="ck_split_amount"
+        ),
         CheckConstraint(
             "account_id IS NULL OR category_id IS NULL", name="ck_split_kind"
         ),
+        CheckConstraint(
+            "(security_id IS NULL AND quantity IS NULL) OR "
+            "(security_id IS NOT NULL AND quantity IS NOT NULL "
+            "AND quantity != 0 AND account_id IS NOT NULL)",
+            name="ck_split_security",
+        ),
         Index("ix_splits_account", "account_id"),
         Index("ix_splits_category", "category_id"),
+        Index("ix_splits_security", "security_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -145,4 +155,57 @@ class SplitRow(Base):
     )
     amount: Mapped[int] = mapped_column(Integer)
     memo: Mapped[str | None] = mapped_column(String)
+    security_id: Mapped[int | None] = mapped_column(
+        ForeignKey("securities.id", ondelete="RESTRICT")
+    )
+    # Number of shares scaled by 10**8 (see picciuli._decimal.SCALE).
+    quantity: Mapped[int | None] = mapped_column(Integer)
     transaction: Mapped[TransactionRow] = relationship(back_populates="splits")
+
+
+class SecurityRow(Base):
+    __tablename__ = "securities"
+    __table_args__ = (
+        CheckConstraint(f"kind IN ({_SECURITY_KINDS})", name="ck_security_kind"),
+        CheckConstraint("length(currency) = 3", name="ck_security_currency"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(collation="NOCASE"), unique=True)
+    symbol: Mapped[str | None] = mapped_column(String)
+    isin: Mapped[str | None] = mapped_column(String(12), unique=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    kind: Mapped[str] = mapped_column(String)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class PriceRow(Base):
+    __tablename__ = "prices"
+    __table_args__ = (
+        CheckConstraint("price > 0", name="ck_price_positive"),
+        UniqueConstraint("security_id", "date", name="uq_price_security_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    security_id: Mapped[int] = mapped_column(
+        ForeignKey("securities.id", ondelete="CASCADE")
+    )
+    date: Mapped[dt.date] = mapped_column(Date)
+    # Price scaled by 10**8.
+    price: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str | None] = mapped_column(String)
+
+
+class ExchangeRateRow(Base):
+    __tablename__ = "exchange_rates"
+    __table_args__ = (
+        CheckConstraint("rate > 0", name="ck_exchange_rate_positive"),
+        CheckConstraint("length(currency) = 3", name="ck_exchange_rate_currency"),
+        UniqueConstraint("currency", "date", name="uq_exchange_rate_currency_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    date: Mapped[dt.date] = mapped_column(Date)
+    # Rate scaled by 10**8.
+    rate: Mapped[int] = mapped_column(Integer)

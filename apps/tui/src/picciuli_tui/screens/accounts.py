@@ -65,16 +65,28 @@ class AccountsScreen(BookScreen):
     def on_mount(self) -> None:
         """Add the columns."""
         table = self.query_one(ListTable)
-        for label in ("Name", "Type", "Balance", "Goal", "Progress", "State"):
+        for label in (
+            "Name",
+            "Type",
+            "Balance",
+            "Market value",
+            "Goal",
+            "Progress",
+            "State",
+        ):
             table.add_column(label, key=label.lower())
 
     def reload(self) -> None:
-        """Read accounts and balances."""
+        """Read accounts, balances and the market value of investments."""
         money = self.money
         self.accounts = self.book.accounts.list()
         balances = {
             b.account.id: b.balance
             for b in self.book.accounts.balances(include_closed=True)
+        }
+        market = {
+            v.account.id: v.market_value
+            for v in self.book.investments.valuations(include_closed=True)
         }
         table = self.query_one(ListTable)
         selected = table.selected_key()
@@ -83,19 +95,20 @@ class AccountsScreen(BookScreen):
             balance = balances.get(account.id, 0)
             progress = ""
             if account.goal:
-                fraction = balance / account.goal
+                fraction = market.get(account.id, balance) / account.goal
                 progress = f"{progress_bar(fraction)} {fraction:4.0%}"
             table.add_row(
                 Text(account.name, style="dim" if account.is_closed else ""),
                 ACCOUNT_TYPE_LABELS[account.type],
                 amount_text(money, balance),
+                amount_text(money, market[account.id]) if account.id in market else "",
                 money.amount(account.goal) if account.goal is not None else "",
                 progress,
                 f"closed {short_date(account.closed_on)}" if account.closed_on else "",
                 key=str(account.id),
             )
         table.select_key(selected)
-        worth = self.book.accounts.net_worth()
+        worth = self.book.investments.net_worth()
         total = Text()
         for label, value in (
             ("Assets ", worth.assets),
@@ -104,6 +117,8 @@ class AccountsScreen(BookScreen):
         ):
             total.append(label, style="dim")
             total.append_text(amount_text(money, value))
+        if market:
+            total.append("   (investments at market value)", style="dim")
         self.query_one("#accounts-total", Static).update(total)
 
     def selected(self) -> Account | None:

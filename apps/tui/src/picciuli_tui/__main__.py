@@ -24,8 +24,23 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="create a new demonstration book at BOOK and exit",
     )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="start with live prices on (they can be toggled with the l key)",
+    )
+    parser.add_argument(
+        "--refresh",
+        type=float,
+        default=60.0,
+        metavar="SECONDS",
+        help="interval between live price refreshes (default: 60)",
+    )
     parser.add_argument("--version", action="version", version=__version__)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.refresh < 5:
+        parser.error("--refresh must be at least 5 seconds")
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -47,7 +62,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     from picciuli_tui.app import PicciuliApp
 
     with book:
-        PicciuliApp(book, name=args.book.name).run()
+        PicciuliApp(
+            book, name=args.book.name, refresh_seconds=args.refresh, live=args.live
+        ).run()
     return 0
 
 

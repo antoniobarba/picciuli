@@ -4,19 +4,27 @@ from __future__ import annotations
 
 import builtins
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from picciuli import _validation as v
-from picciuli._db.queries import get_row, to_transaction
+from picciuli._db.queries import check_holdings, get_row, to_split, to_transaction
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import AccountRow, CategoryRow, SplitRow, TransactionRow
+from picciuli._db.tables import (
+    AccountRow,
+    CategoryRow,
+    SecurityRow,
+    SplitRow,
+    TransactionRow,
+)
+from picciuli._decimal import to_decimal, to_scaled
 from picciuli.errors import ConflictError, ValidationError
 from picciuli.model import (
     UNSET,
     AccountSplit,
+    AccountType,
     ExternalSplit,
     Split,
     Transaction,
@@ -24,6 +32,14 @@ from picciuli.model import (
 )
 
 __all__ = ["TransactionService"]
+
+
+def _security_pairs(rows: Iterable[SplitRow]) -> set[tuple[int, int]]:
+    return {
+        (row.account_id, row.security_id)
+        for row in rows
+        if row.account_id is not None and row.security_id is not None
+    }
 
 
 def _validated_splits(
@@ -41,7 +57,10 @@ def _validated_splits(
                 f"split {position} must be an AccountSplit or an ExternalSplit"
             )
         amount = v.integer(split.amount, f"split {position} amount")
-        if amount == 0:
+        moves_shares = isinstance(split, AccountSplit) and (
+            split.security_id is not None or split.quantity is not None
+        )
+        if amount == 0 and not moves_shares:
             raise ValidationError(f"split {position} amount cannot be zero")
         memo = v.optional_text(split.memo, f"split {position} memo")
         if isinstance(split, AccountSplit):
@@ -54,10 +73,34 @@ def _validated_splits(
                     f"account {account.name!r} opens on "
                     f"{account.opening_date.isoformat()}, after the transaction date"
                 )
+            security_id = quantity = None
+            if moves_shares:
+                if split.security_id is None or split.quantity is None:
+                    raise ValidationError(
+                        f"split {position} needs both a security and a quantity"
+                    )
+                if account.type != AccountType.INVESTMENT.value:
+                    raise ValidationError(
+                        f"account {account.name!r} is not an investment account "
+                        "and cannot hold securities"
+                    )
+                security_id = v.identifier(
+                    split.security_id, f"split {position} security id"
+                )
+                get_row(session, SecurityRow, security_id, "security")
+                shares = to_decimal(split.quantity, f"split {position} quantity")
+                if shares == 0:
+                    raise ValidationError(f"split {position} quantity cannot be zero")
+                quantity = to_scaled(shares)
             account_total += amount
             rows.append(
                 SplitRow(
-                    position=position, account_id=account_id, amount=amount, memo=memo
+                    position=position,
+                    account_id=account_id,
+                    amount=amount,
+                    memo=memo,
+                    security_id=security_id,
+                    quantity=quantity,
                 )
             )
         else:
@@ -145,6 +188,7 @@ class TransactionService:
                 splits=_validated_splits(session, day, splits),
             )
             session.add(row)
+            check_holdings(session, _security_pairs(row.splits))
             session.flush()
             return to_transaction(row)
 
@@ -185,13 +229,9 @@ class TransactionService:
             row = get_row(session, TransactionRow, transaction_id, "transaction")
             _ensure_editable(session, row)
             day = row.date if isinstance(date, Unset) else v.date(date, "date")
+            affected = _security_pairs(row.splits)
             if isinstance(splits, Unset):
-                current = [
-                    AccountSplit(s.account_id, s.amount, s.memo)
-                    if s.account_id is not None
-                    else ExternalSplit(s.amount, s.category_id, s.memo)
-                    for s in row.splits
-                ]
+                current = [to_split(s) for s in row.splits]
                 new_rows = _validated_splits(session, day, current)
             else:
                 new_rows = _validated_splits(session, day, splits)
@@ -204,6 +244,7 @@ class TransactionService:
                 row.splits.clear()
                 session.flush()
                 row.splits.extend(new_rows)
+            check_holdings(session, affected | _security_pairs(new_rows))
             session.flush()
             return to_transaction(row)
 
@@ -213,11 +254,15 @@ class TransactionService:
         Raises:
             NotFoundError: If the transaction does not exist.
             ConflictError: If the transaction involves a closed account.
+            ValidationError: If removing it would make a share quantity
+                negative (a later sale needs the shares it bought).
         """
         with self._uow.session() as session:
             row = get_row(session, TransactionRow, transaction_id, "transaction")
             _ensure_editable(session, row)
+            affected = _security_pairs(row.splits)
             session.delete(row)
+            check_holdings(session, affected)
 
     def list(
         self,

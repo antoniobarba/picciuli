@@ -14,12 +14,12 @@ nav:
   - Getting started: getting-started.md
   - Concepts: concepts.md
   - Console interface: tui.md
-  - Migrating from v1: migration.md
   - Development: development.md
   - API reference:
       - Book: api/book.md
       - Services: api/services.md
       - Model: api/model.md
+      - Price providers: api/prices.md
       - Money helpers: api/money.md
       - Errors: api/errors.md
 

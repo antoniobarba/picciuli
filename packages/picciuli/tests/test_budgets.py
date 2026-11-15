@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from picciuli import (
@@ -8,6 +10,7 @@ from picciuli import (
     Budget,
     Category,
     ConflictError,
+    CostMethod,
     NotFoundError,
     Period,
     Settings,
@@ -147,15 +150,41 @@ class TestReport:
 
 class TestSettings:
     def test_defaults_and_update(self, book: Book) -> None:
-        assert book.settings.get() == Settings(currency="$", minor_digits=2)
-        assert book.settings.update(currency=" € ") == Settings("€", 2)
-        assert book.settings.update(minor_digits=0) == Settings("€", 0)
-        assert book.settings.get() == Settings("€", 0)
+        usd = Settings("$", 2, "USD")
+        assert book.settings.get() == usd
+        assert usd.cost_method is CostMethod.AVERAGE
+        assert usd.price_provider == "yahoo"
+        assert book.settings.update(currency=" € ") == Settings("€", 2, "USD")
+        assert book.settings.update(minor_digits=0) == Settings("€", 0, "USD")
+        assert book.settings.get() == Settings("€", 0, "USD")
+
+    def test_investment_settings(self, book: Book) -> None:
+        book.securities.set_exchange_rate("GBP", d(1), Decimal("1.1"))
+        updated = book.settings.update(
+            currency_code=" eur ", cost_method="fifo", price_provider="yahoo"
+        )
+        assert updated.currency_code == "EUR"
+        assert updated.cost_method is CostMethod.FIFO
+        # Rates were relative to the old book currency.
+        assert book.securities.exchange_rates("GBP") == []
+        book.securities.set_exchange_rate("GBP", d(1), Decimal("1.2"))
+        book.settings.update(currency_code="EUR")
+        assert len(book.securities.exchange_rates("GBP")) == 1
+        assert book.settings.update(currency_code=None).currency_code is None
 
     @pytest.mark.parametrize(
-        "kwargs", [{"currency": ""}, {"minor_digits": 7}, {"minor_digits": "2"}]
+        "kwargs",
+        [
+            {"currency": ""},
+            {"minor_digits": 7},
+            {"minor_digits": "2"},
+            {"currency_code": "EURO"},
+            {"currency_code": 1},
+            {"cost_method": "lifo"},
+            {"price_provider": "nowhere"},
+        ],
     )
     def test_invalid(self, book: Book, kwargs: dict[str, object]) -> None:
         with pytest.raises(ValidationError):
             book.settings.update(**kwargs)  # type: ignore[arg-type]
-        assert book.settings.get() == Settings("$", 2)
+        assert book.settings.get() == Settings("$", 2, "USD")

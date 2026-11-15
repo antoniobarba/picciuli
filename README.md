@@ -5,9 +5,9 @@ library backed by a single SQLite file, designed to be shared by several user
 interfaces: console, desktop, web and mobile.
 
 > **Status:** version 2 is a complete rewrite. This repository contains the
-> core library, a console user interface built on it, a migration tool for v1
-> databases, and the documentation. The original console application is
-> preserved under the git tag `v1-legacy`.
+> core library, a console user interface built on it, and the documentation.
+> The original console application is preserved under the git tag
+> `v1-legacy`; its databases are not compatible with version 2.
 
 ## Features
 
@@ -23,6 +23,10 @@ interfaces: console, desktop, web and mobile.
 - A two-level category tree.
 - User-defined, possibly overlapping periods, with summaries per period.
 - Budgets per category and period that roll up subcategories.
+- Investments: securities with exact share quantities, purchases and sales with
+  realized gains (weighted average or FIFO cost), market values from stored
+  prices and exchange rates, and modular price providers (Yahoo Finance built
+  in, others as plug-ins).
 - Net worth and account registers with running balances.
 - Typed, documented and fully tested API: frozen dataclasses for results,
   explicit error classes, and all-or-nothing `Book.atomic()` blocks.
@@ -58,14 +62,6 @@ picciuli-tui demo.db             # open it; press ? for the keys
 
 A calendar-centred overview shows each day's net flow, the selected period with
 its budgets, and your balances. See [docs/tui.md](docs/tui.md).
-
-## Migrating a v1 database
-
-```bash
-python tools/migrate_v1.py finance.db finance-v2.db
-```
-
-See [docs/migration.md](docs/migration.md) for the mapping rules.
 
 ## Documentation
 

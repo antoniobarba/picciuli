@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Collection, Iterable
+from dataclasses import dataclass
 from typing import TypeVar
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from picciuli.errors import NotFoundError
+from picciuli._decimal import from_scaled
+from picciuli.errors import NotFoundError, ValidationError
 from picciuli.model import (
     Account,
     AccountSplit,
     AccountType,
     Budget,
     Category,
+    ExchangeRate,
     ExternalSplit,
     Period,
+    Price,
+    Security,
+    SecurityKind,
     Split,
     Transaction,
 )
@@ -27,7 +33,10 @@ from .tables import (
     Base,
     BudgetRow,
     CategoryRow,
+    ExchangeRateRow,
     PeriodRow,
+    PriceRow,
+    SecurityRow,
     SplitRow,
     TransactionRow,
 )
@@ -81,8 +90,41 @@ def to_budget(row: BudgetRow) -> Budget:
 
 def to_split(row: SplitRow) -> Split:
     if row.account_id is not None:
-        return AccountSplit(account_id=row.account_id, amount=row.amount, memo=row.memo)
+        return AccountSplit(
+            account_id=row.account_id,
+            amount=row.amount,
+            memo=row.memo,
+            security_id=row.security_id,
+            quantity=None if row.quantity is None else from_scaled(row.quantity),
+        )
     return ExternalSplit(amount=row.amount, category_id=row.category_id, memo=row.memo)
+
+
+def to_security(row: SecurityRow) -> Security:
+    return Security(
+        id=row.id,
+        name=row.name,
+        symbol=row.symbol,
+        isin=row.isin,
+        currency=row.currency,
+        kind=SecurityKind(row.kind),
+        notes=row.notes,
+    )
+
+
+def to_price(row: PriceRow) -> Price:
+    return Price(
+        security_id=row.security_id,
+        date=row.date,
+        price=from_scaled(row.price),
+        source=row.source,
+    )
+
+
+def to_exchange_rate(row: ExchangeRateRow) -> ExchangeRate:
+    return ExchangeRate(
+        currency=row.currency, date=row.date, rate=from_scaled(row.rate)
+    )
 
 
 def to_transaction(row: TransactionRow) -> Transaction:
@@ -133,6 +175,109 @@ def account_balances(
         )
         result[row.id] = (row.opening_balance if counted else 0) + totals.get(row.id, 0)
     return result
+
+
+@dataclass(frozen=True, slots=True)
+class ShareMove:
+    """One split moving shares, with its quantity still scaled."""
+
+    date: dt.date
+    transaction_id: int
+    account_id: int
+    security_id: int
+    quantity: int
+    amount: int
+
+
+def share_moves(
+    session: Session,
+    *,
+    account_id: int | None = None,
+    security_id: int | None = None,
+    until: dt.date | None = None,
+) -> list[ShareMove]:
+    """Splits moving shares in chronological order, optionally filtered."""
+    statement = (
+        select(
+            TransactionRow.date,
+            TransactionRow.id,
+            SplitRow.account_id,
+            SplitRow.security_id,
+            SplitRow.quantity,
+            SplitRow.amount,
+        )
+        .join(TransactionRow, SplitRow.transaction_id == TransactionRow.id)
+        .where(SplitRow.security_id.is_not(None))
+        .order_by(TransactionRow.date, TransactionRow.id, SplitRow.position)
+    )
+    if account_id is not None:
+        statement = statement.where(SplitRow.account_id == account_id)
+    if security_id is not None:
+        statement = statement.where(SplitRow.security_id == security_id)
+    if until is not None:
+        statement = statement.where(TransactionRow.date <= until)
+    moves = []
+    for day, tx_id, acc, sec, qty, amount in session.execute(statement):
+        # The query only selects account splits that move shares.
+        assert acc is not None and sec is not None and qty is not None
+        moves.append(ShareMove(day, tx_id, acc, sec, qty, amount))
+    return moves
+
+
+def check_holdings(session: Session, pairs: Iterable[tuple[int, int]]) -> None:
+    """Reject share quantities that would become negative at the end of a day.
+
+    Args:
+        session: Session with the pending changes flushed.
+        pairs: `(account_id, security_id)` pairs whose history changed.
+    """
+    session.flush()
+    for account_id, security_id in set(pairs):
+        held = 0
+        moves = share_moves(session, account_id=account_id, security_id=security_id)
+        for index, move in enumerate(moves):
+            held += move.quantity
+            last_of_day = index + 1 == len(moves) or moves[index + 1].date != move.date
+            if last_of_day and held < 0:
+                security = get_row(session, SecurityRow, security_id, "security")
+                account = get_row(session, AccountRow, account_id, "account")
+                raise ValidationError(
+                    f"account {account.name!r} would hold "
+                    f"{from_scaled(held)} shares of {security.name!r} on "
+                    f"{move.date.isoformat()}; quantities cannot be negative"
+                )
+
+
+def latest_prices(
+    session: Session, *, as_of: dt.date | None = None
+) -> dict[int, PriceRow]:
+    """Most recent price row of each security on or before `as_of`."""
+    newest = select(PriceRow.security_id, func.max(PriceRow.date).label("day"))
+    if as_of is not None:
+        newest = newest.where(PriceRow.date <= as_of)
+    sub = newest.group_by(PriceRow.security_id).subquery()
+    statement = select(PriceRow).join(
+        sub, (PriceRow.security_id == sub.c.security_id) & (PriceRow.date == sub.c.day)
+    )
+    return {row.security_id: row for row in session.scalars(statement)}
+
+
+def latest_rates(
+    session: Session, *, as_of: dt.date | None = None
+) -> dict[str, ExchangeRateRow]:
+    """Most recent exchange rate row of each currency on or before `as_of`."""
+    newest = select(
+        ExchangeRateRow.currency, func.max(ExchangeRateRow.date).label("day")
+    )
+    if as_of is not None:
+        newest = newest.where(ExchangeRateRow.date <= as_of)
+    sub = newest.group_by(ExchangeRateRow.currency).subquery()
+    statement = select(ExchangeRateRow).join(
+        sub,
+        (ExchangeRateRow.currency == sub.c.currency)
+        & (ExchangeRateRow.date == sub.c.day),
+    )
+    return {row.currency: row for row in session.scalars(statement)}
 
 
 def ordered_categories(session: Session) -> list[CategoryRow]:

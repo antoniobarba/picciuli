@@ -9,7 +9,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from picciuli import _validation as v
-from picciuli._db.queries import account_balances, get_row, to_account, to_transaction
+from picciuli._db.queries import (
+    account_balances,
+    get_row,
+    share_moves,
+    to_account,
+    to_transaction,
+)
 from picciuli._db.session import UnitOfWork
 from picciuli._db.tables import AccountRow, SplitRow, TransactionRow
 from picciuli.errors import ConflictError, ValidationError
@@ -60,6 +66,16 @@ def _last_transaction_date(session: Session, account_id: int) -> dt.date | None:
         select(func.max(TransactionRow.date))
         .join(SplitRow, SplitRow.transaction_id == TransactionRow.id)
         .where(SplitRow.account_id == account_id)
+    )
+
+
+def _holds_securities(session: Session, account_id: int) -> bool:
+    return bool(
+        session.scalar(
+            select(func.count())
+            .select_from(SplitRow)
+            .where(SplitRow.account_id == account_id, SplitRow.security_id.is_not(None))
+        )
     )
 
 
@@ -169,8 +185,9 @@ class AccountService:
             NotFoundError: If the account does not exist.
             ValidationError: If an argument is invalid, or the new opening date
                 is later than an existing transaction of the account.
-            ConflictError: If the name is already used, or the opening values of
-                a closed account would change.
+            ConflictError: If the name is already used, the opening values of
+                a closed account would change, or an account with security
+                transactions would stop being an investment account.
         """
         with self._uow.session() as session:
             row = get_row(session, AccountRow, account_id, "account")
@@ -179,7 +196,15 @@ class AccountService:
                 _ensure_unique_name(session, new_name, exclude=row.id)
                 row.name = new_name
             if not isinstance(type, Unset):
-                row.type = _account_type(type).value
+                new_type = _account_type(type)
+                if new_type is not AccountType.INVESTMENT and _holds_securities(
+                    session, row.id
+                ):
+                    raise ConflictError(
+                        f"account {row.name!r} has security transactions and must "
+                        "stay an investment account"
+                    )
+                row.type = new_type.value
             if not isinstance(goal, Unset):
                 row.goal = v.optional_integer(goal, "goal")
             if not isinstance(notes, Unset):
@@ -241,7 +266,8 @@ class AccountService:
             NotFoundError: If the account does not exist.
             ValidationError: If the day is before the opening date.
             ConflictError: If the account is already closed, has transactions
-                after the closing day, or has a non-zero balance.
+                after the closing day, has a non-zero balance or still holds
+                shares.
         """
         day = v.optional_date(on, "closing date") or dt.date.today()
         with self._uow.session() as session:
@@ -260,6 +286,11 @@ class AccountService:
                 raise ConflictError(
                     f"the account balance must be zero to close it (it is {balance})"
                 )
+            held: dict[int, int] = {}
+            for move in share_moves(session, account_id=row.id):
+                held[move.security_id] = held.get(move.security_id, 0) + move.quantity
+            if any(held.values()):
+                raise ConflictError("sell or move every share before closing")
             row.closed_on = day
             session.flush()
             return to_account(row)
@@ -312,6 +343,11 @@ class AccountService:
 
     def balance(self, account_id: int, *, as_of: dt.date | None = None) -> int:
         """Return the balance of an account at the end of a day.
+
+        For an investment account this is the ledger balance (cash plus the
+        cost of the shares); see
+        [`InvestmentService.valuation`][picciuli.services.InvestmentService.valuation]
+        for the market value.
 
         Args:
             account_id: The account.

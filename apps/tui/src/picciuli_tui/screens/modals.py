@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Markdown, Select, Static
+from textual.widgets import Button, Input, Label, Markdown, OptionList, Select, Static
 
 from picciuli import Account, Book, Category, PicciuliError, Transaction
 from picciuli_tui.formatting import MoneyFormat, category_label
@@ -211,7 +211,9 @@ HELP = """\
 | Key | Action |
 |-----|--------|
 | `1` … `5` or click a tab | Overview · Accounts · Categories · Periods · Budgets |
-| `s` | Settings (currency) |
+| `6` | Investments |
+| `s` | Settings (currency, price provider, cost method) |
+| `l` | Live prices on/off (refreshes market values periodically) |
 | `?` | This help |
 | `ctrl+p` | Command palette |
 | `q` | Quit |
@@ -249,6 +251,18 @@ HELP = """\
 | `[` `]` | Previous / next period (budgets) |
 | `y` | Copy budgets from another period |
 
+## Investments
+
+| Key | Action |
+|-----|--------|
+| `tab` | Switch between holdings and securities |
+| `n` / `e` / `d` | New / edit / delete security |
+| `f` | Find a security by name, symbol or ISIN |
+| `b` / `x` | Buy / sell shares |
+| `p` | Enter a price by hand |
+| `r` | Refresh prices now |
+| `h` | Download price history since the first purchase |
+
 ## Forms
 
 `tab` / `shift+tab` move between fields, `enter` or `ctrl+s` saves and `esc`
@@ -270,6 +284,32 @@ class HelpScreen(ModalScreen[None]):
 
     def action_close(self) -> None:
         """Close the help."""
+        self.dismiss(None)
+
+
+class PickScreen(ModalScreen[T], Generic[T]):
+    """Choose one item of a list; `enter` picks, `escape` returns `None`."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, title: str, items: Sequence[tuple[str, T]]) -> None:
+        super().__init__()
+        self.pick_title = title
+        self.items = items
+
+    def compose(self) -> ComposeResult:
+        """Show the items."""
+        with Vertical(classes="dialog wide"):
+            yield Label(self.pick_title, classes="dialog-title")
+            yield OptionList(*(label for label, _ in self.items), id="pick")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Return the chosen item."""
+        event.stop()
+        self.dismiss(self.items[event.option_index][1])
+
+    def action_cancel(self) -> None:
+        """Close without choosing."""
         self.dismiss(None)
 
 
@@ -299,16 +339,22 @@ class SplitLineRow(Horizontal):
             classes="line-target",
         )
         yield FormInput(self.line.amount, placeholder="±amount", classes="line-amount")
+        if self.line.security_id is not None:
+            yield Static(
+                f"{self.line.quantity} sh", classes="line-shares", markup=False
+            )
         yield FormInput(self.line.memo, placeholder="memo", classes="line-memo")
         yield Button("✕", compact=True, classes="line-remove")
 
     def draft(self) -> LineDraft:
-        """Return the line as typed."""
+        """Return the line as typed (shares moved by the line are kept as is)."""
         target = self.query_one(".line-target", Select).value
         return LineDraft(
             target if isinstance(target, str) else "",
             self.query_one(".line-amount", Input).value,
             self.query_one(".line-memo", Input).value,
+            self.line.security_id,
+            self.line.quantity,
         )
 
 

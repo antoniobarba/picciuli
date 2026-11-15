@@ -12,21 +12,24 @@ pip install -e packages/picciuli -e apps/tui    # or: uv sync
 picciuli-tui finance.db          # open a book (the file is created if missing)
 picciuli-tui --demo demo.db      # create a demonstration book, then:
 picciuli-tui demo.db
+picciuli-tui --live --refresh 30 finance.db   # live prices every 30 seconds
 ```
 
 `python -m picciuli_tui finance.db` works too. The demonstration book contains
-five accounts, a category tree, four salary-to-salary pay cycles with budgets,
+six accounts, a category tree, four salary-to-salary pay cycles with budgets,
 transfers, a mortgage instalment split into principal and interest, a split
-receipt and an overlapping "Holiday" period.
+receipt and an overlapping "Holiday" period. It also has an investment account
+with a monthly ETF savings plan, a US stock bought and partly sold, and
+offline prices and exchange rates.
 
 The mouse works everywhere, and `ctrl+p` opens a command palette with every
 action. Press `?` at any time for the list of keys.
 
 ## Screens
 
-The tabs at the top of the window switch between the five screens: Overview,
-Accounts, Categories, Periods and Budgets. Click a tab or press its number,
-`1` to `5`. The footer only lists the keys of the current screen.
+The tabs at the top of the window switch between the six screens: Overview,
+Accounts, Categories, Periods, Budgets and Investments. Click a tab or press its
+number, `1` to `6`. The footer only lists the keys of the current screen.
 
 ## Overview
 
@@ -49,8 +52,9 @@ cells grow with the window.
 
 The right side lists the selected day's transactions. Below them come the
 period's categories with their actual flow, budget and what is left (top-level
-categories include their subcategories), then the balance of every account at
-the end of the selected day and the net worth.
+categories include their subcategories). Last come the balance of every account
+at the end of the selected day and the net worth. Investment accounts are shown
+at market value.
 
 | Key | Action |
 |-----|--------|
@@ -81,19 +85,53 @@ The transaction form has four kinds:
   three lines (one source account and two destinations is the common case).
 
 Editing a transaction opens the simple form when it is a plain expense, income
-or transfer, and the split editor otherwise. Transactions of closed accounts
-cannot be changed until the account is reopened.
+or transfer, and the split editor otherwise. Purchases and sales of shares
+always open in the split editor. Their share lines show the quantity, which is
+kept as is. Transactions of closed accounts cannot be changed until the account
+is reopened.
+
+## Investments
+
+The Investments screen (`6`) shows the **holdings** of every investment
+account at market value: quantity, latest price, cost, value and unrealized
+gain, plus the uninvested cash. The totals line adds up the cost, the market
+value and the gain. Below it, the **securities** list shows each symbol, ISIN,
+currency and latest price. `tab` moves between the two lists, and `enter` opens
+the account register (holdings) or edits a security.
+
+| Key | Action |
+|-----|--------|
+| `n` / `e` / `d` | New / edit / delete security (a security in use cannot be deleted) |
+| `f` | Find a security online by name, symbol or ISIN, then pick a listing |
+| `b` | Buy shares: quantity, total cost, paying account, fee |
+| `x` | Sell shares: quantity, proceeds, receiving account, fee, tax, gain category |
+| `p` | Enter a price by hand |
+| `r` | Refresh prices now |
+| `h` | Download daily prices since the first purchase |
+| `l` | Live prices on/off (works on every screen) |
+
+With **live prices** on, prices and exchange rates are refreshed in the
+background every 60 seconds (or every `--refresh` seconds). Every screen then
+shows market values that follow the market. Prices from Yahoo Finance are
+usually delayed by about 15 minutes. Errors, such as an unknown symbol, are shown as
+notifications and never stop the other securities.
+
+When creating a security, the symbol is the one of the price provider. For
+Yahoo Finance a suffix selects the exchange: `VWCE.DE` (XETRA), `SWDA.MI`
+(Milan), `VUSA.L` (London), `AAPL` (Nasdaq). ETFs bought on **gettex** can use
+their XETRA listing (see [Concepts](concepts.md#price-providers)).
 
 ## Other screens
 
 | Key | Screen | What you can do |
 |-----|--------|-----------------|
 | `1` | Overview | See above |
-| `2` | Accounts | Create and edit accounts, reorder them (`shift+↑↓`), close or reopen them (`c`), delete unused ones. `enter` opens the **register**: every transaction of the account with its running balance. |
+| `2` | Accounts | Create and edit accounts, reorder them (`shift+↑↓`), close or reopen them (`c`), delete unused ones. Investment accounts also show their market value; the net worth counts them at market value. `enter` opens the **register**: every transaction of the account with its running balance. |
 | `3` | Categories | Edit the two-level tree, reorder it within each group, delete categories. Deleting a category that is in use asks where its transactions should go. |
 | `4` | Periods | Create, edit and delete periods. A period without an end is open-ended, and creating one ends the earlier open-ended periods. |
 | `5` | Budgets | Budgets of a period (`[` `]` change period) with their progress; `y` copies budgets from another period. |
-| `s` | Settings | Currency symbol and number of decimal digits. |
+| `6` | Investments | See above |
+| `s` | Settings | Currency symbol, decimal digits, ISO currency code, cost method for sales (weighted average or FIFO) and price provider. The list shows every installed provider. |
 
 Lists share the same keys: `↑` `↓` (or `j` `k`) to move, `n` to create,
 `enter` or `e` to edit and `d` to delete; deleting always asks first.
