@@ -134,3 +134,25 @@ jobs:
       - run: mkdocs build --strict
         env:
           NO_MKDOCS_2_WARNING: "1"
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          path: site
+
+  deploy-docs:
+    needs: [lint, test, web, docs]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy documentation
+        id: deployment
+        uses: actions/deploy-pages@v4

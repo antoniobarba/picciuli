@@ -47,6 +47,18 @@ The console interface keeps its logic in widget-free modules
 `Book.in_memory()`. The screens are tested headless with Textual's `Pilot`
 (see `apps/tui/tests/conftest.py`).
 
+## Publishing documentation
+
+The CI workflow publishes the documentation to
+[GitHub Pages](https://antoniobarba.github.io/picciuli/) on pushes to `master`,
+after the lint, test, web and documentation jobs pass. Pull requests build the
+documentation for validation but do not publish it.
+
+One-time repository setup: under **Settings > Pages > Build and deployment**,
+set **Source** to **GitHub Actions** before pushing the workflow changes.
+CI uploads the generated `site/` directory and deploys it using the built-in
+`GITHUB_TOKEN`; no VM or additional deployment secrets are needed.
+
 ## Design rules
 
 - **Public API.** Whatever `picciuli/__init__.py` exports, plus the service

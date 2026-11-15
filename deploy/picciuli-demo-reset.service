@@ -1,0 +1,14 @@
+[Unit]
+Description=Restore the Picciuli demo password and sample data
+Requires=docker.service
+Wants=network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/picciuli
+ExecStart=/usr/bin/docker compose run --rm --no-deps -T --name picciuli-demo-reset-job -v /opt/picciuli/demo:/demo:ro -e PYTHONPATH=/demo --entrypoint python api /demo/reset_demo.py
+ExecStopPost=-/usr/bin/docker rm --force picciuli-demo-reset-job
+TimeoutStartSec=180
+StandardOutput=journal
+StandardError=journal

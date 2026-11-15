@@ -1,4 +1,5 @@
 site_name: Picciuli
+site_url: https://antoniobarba.github.io/picciuli/
 site_description: Personal budgeting and money tracking engine
 repo_url: https://github.com/antoniobarba/picciuli
 strict: true

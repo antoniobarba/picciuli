@@ -191,6 +191,47 @@ and apply them with `./deploy.sh <current tag>` (or just re-run the workflow).
 
 ## Everyday operations
 
+**Demo account:** the opt-in `deploy/reset_demo.py` operator script keeps a
+provisioned `demo` identity and resets its password and book. Store its numeric
+Zitadel ID and approved password in `/opt/picciuli/secrets/demo.json` as
+`{"user_id": "<id>", "password": "<password>"}` (mode `600`, owner UID `10001`).
+Never commit this file. The script refuses identities outside the configured
+organization or with a username other than `demo`.
+
+Install the script as `/opt/picciuli/demo/reset_demo.py`, together with the
+existing TUI `demo.py` and `calendar_model.py` modules in
+`/opt/picciuli/demo/picciuli_tui/`. Run it using the deployed API image:
+
+```bash
+cd /opt/picciuli
+sudo docker compose run --rm --no-deps -T \
+  -v /opt/picciuli/demo:/demo:ro -e PYTHONPATH=/demo \
+  --entrypoint python api /demo/reset_demo.py
+```
+
+This uses the current UTC date for the demo periods and SQLite's online backup
+API to replace only the pinned user's data atomically. It does not unlink an
+open database or restart the production API. Password changes and database
+replacement are separate operations; failures exit nonzero and must be checked
+by the operator or scheduler. Installing the script alone does not schedule it.
+
+To enable resets every ten minutes (`:00`, `:10`, ..., `:50` UTC), install
+`deploy/picciuli-demo-reset.service` and `deploy/picciuli-demo-reset.timer` in
+`/etc/systemd/system/` with mode `644`, then run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now picciuli-demo-reset.timer
+systemctl list-timers picciuli-demo-reset.timer
+sudo journalctl -u picciuli-demo-reset.service --no-pager -n 30
+```
+
+The timer survives reboot and catches up a missed run. Systemd prevents
+overlapping scheduled runs; a reset is limited to three minutes and its named
+one-off container is cleaned up afterward. Failures remain visible in the
+service status and journal. Stop automatic resets with
+`sudo systemctl disable --now picciuli-demo-reset.timer`.
+
 **Deploy:** push to `master`. CI retains lint, type checks, coverage, frontend
 tests/build and strict documentation validation. Python tests run on the
 production runtime (Linux 3.13), the library minimum (Linux 3.10), and Windows

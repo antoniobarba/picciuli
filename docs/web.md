@@ -157,6 +157,30 @@ the instance-wide login URL.
    authorization code, PKCE, refresh tokens and the existing `/callback` URI.
    The equivalent configuration is
    `loginVersion: { loginV2: { baseUri: "https://app.example.com/" } }`.
+
+   The supplied stack initially **requires Login V2 instance-wide**. In Zitadel
+   4.16 this also overrides application-specific base URIs, so the web app will
+   still redirect to hosted login until that override is disabled. First
+   explicitly configure the other OIDC applications (including the management
+   console, Swagger and development clients) to use Login V2 with the existing
+   hosted base URI, `https://auth.example.com/ui/v2/login/`, preserving their
+   other settings. Then, authenticated as an administrator, update
+   `PUT /v2/features/instance` with:
+
+   ```json
+   {
+     "loginV2": {
+       "required": false,
+       "baseUri": "https://auth.example.com/ui/v2/login/"
+     }
+   }
+   ```
+
+   Keep the instance base URI unchanged; do not reset all instance features.
+   This setting is persisted in Zitadel, separately from the server's `.env`.
+   Configure future OIDC applications explicitly for Login V2 too. Verify that
+   authorization for the web client redirects to `app.example.com/login`, while
+   the console and other clients still redirect to hosted Login V2.
 5. Keep registration and local password login enabled in the organization.
    Configure and test SMTP with a Picciuli sender name. New verification/reset
    messages use Picciuli links; already-sent messages keep their old links.
