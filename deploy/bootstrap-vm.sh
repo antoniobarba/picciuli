@@ -12,11 +12,18 @@ set -euo pipefail
 deploy_user=${DEPLOY_USER:-deploy}
 app_dir=${APP_DIR:-/opt/picciuli}
 deploy_key=${1:?usage: bootstrap-vm.sh "<public SSH key of the deploy workflow>"}
+script_dir=$(cd "$(dirname "$0")" && pwd)
 
 if [[ $EUID -ne 0 ]]; then
     echo "run as root" >&2
     exit 1
 fi
+for unit in picciuli-backup.service picciuli-backup.timer; do
+    if [[ ! -f $script_dir/$unit ]]; then
+        echo "missing $script_dir/$unit: copy it next to bootstrap-vm.sh" >&2
+        exit 1
+    fi
+done
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -83,10 +90,16 @@ chmod 600 "$home/.ssh/authorized_keys"
 install -d -m 755 -o "$deploy_user" -g "$deploy_user" "$app_dir"
 install -d -m 750 -o 10001 -g 10001 "$app_dir/data/picciuli"
 
-cat >/etc/cron.d/picciuli-backup <<CRON
-# Nightly backup of the Picciuli user databases and of Zitadel.
-30 3 * * * root $app_dir/backup.sh >>/var/log/picciuli-backup.log 2>&1
-CRON
+# Nightly backup of the user databases and of Zitadel with a systemd timer
+# (cron is not installed on minimal images). backup.sh itself arrives with the
+# first deployment.
+for unit in picciuli-backup.service picciuli-backup.timer; do
+    sed "s#/opt/picciuli#$app_dir#g" "$script_dir/$unit" >"/etc/systemd/system/$unit"
+    chmod 644 "/etc/systemd/system/$unit"
+done
+rm -f /etc/cron.d/picciuli-backup
+systemctl daemon-reload
+systemctl enable --now picciuli-backup.timer
 
 if [[ ${HARDEN_SSH:-0} == 1 ]]; then
     cat >/etc/ssh/sshd_config.d/99-picciuli.conf <<'SSH'

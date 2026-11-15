@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up Picciuli every night
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=0
+Persistent=true
+Unit=picciuli-backup.service
+
+[Install]
+WantedBy=timers.target

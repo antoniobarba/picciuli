@@ -1,0 +1,21 @@
+[Unit]
+Description=Back up the Picciuli user databases and Zitadel
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/picciuli
+# Optional restic settings (RESTIC_REPOSITORY, RESTIC_PASSWORD, storage
+# credentials): root-owned, mode 600. See docs/deployment.md.
+EnvironmentFile=-/etc/picciuli/backup.env
+# Warn in the journal if a previous night was missed, then confirm afterwards
+# that a fresh archive exists.
+ExecStartPre=-/opt/picciuli/backup.sh --check
+ExecStart=/opt/picciuli/backup.sh
+ExecStartPost=/opt/picciuli/backup.sh --check
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=1h
+StandardOutput=journal
+StandardError=journal
