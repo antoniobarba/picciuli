@@ -71,6 +71,30 @@ class TestSecurities:
         )
         assert response.status_code == 422
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            '{"price": 1E+30}',
+            '{"price": 1e308}',
+            '{"price": 1e999999999}',
+            '{"price": 1e-999999999}',
+            '{"price": "1e999999999"}',
+            '{"price": "0.123456789"}',
+            '{"price": "10000000000"}',
+        ],
+    )
+    def test_extreme_prices_are_invalid_requests(
+        self, alice: TestClient, body: str
+    ) -> None:
+        security = create_security(alice)
+        response = alice.put(
+            f"{API}/securities/{security['id']}/prices/2025-01-10",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422
+        assert response.json()["errors"][0]["loc"][:2] == ["body", "price"]
+
     def test_latest_price_unknown(self, alice: TestClient) -> None:
         security = create_security(alice)
         latest = alice.get(f"{API}/securities/{security['id']}/latest-price").json()
@@ -101,7 +125,8 @@ class TestExchangeRates:
     def test_decimals_never_use_exponent_notation(self, alice: TestClient) -> None:
         security = create_security(alice)
         url = f"{API}/securities/{security['id']}/prices/2025-01-10"
-        assert alice.put(url, json={"price": "1E+3"}).json()["price"] == "1000"
+        # Stored values are normalized to Decimal("1E+3") before serializing.
+        assert alice.put(url, json={"price": "1000"}).json()["price"] == "1000"
 
 
 @pytest.fixture
@@ -213,6 +238,35 @@ class TestInvestments:
             },
         )
         assert response.status_code in (409, 422)
+
+    @pytest.mark.parametrize(
+        ("token", "text"),
+        [("1e999999999", "1e999999999"), ("-1", "-1"), ('"1.5e3"', "1.5e3")],
+    )
+    def test_extreme_quantities_are_invalid_requests(
+        self, alice: TestClient, portfolio: dict[str, int], token: str, text: str
+    ) -> None:
+        response = alice.post(
+            f"{API}/investments/buy",
+            content=(
+                f'{{"date": "2025-02-01", "account_id": {portfolio["broker"]}, '
+                f'"security_id": {portfolio["etf"]}, "quantity": {token}, '
+                '"cost": 1}'
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422
+        assert response.json()["errors"][0]["loc"][:2] == ["body", "quantity"]
+        cost = alice.get(
+            f"{API}/investments/{portfolio['broker']}/sale-cost",
+            params={
+                "security_id": portfolio["etf"],
+                "quantity": text,
+                "date": "2025-02-01",
+            },
+        )
+        assert cost.status_code == 422
+        assert cost.json()["errors"][0]["loc"] == ["query", "quantity"]
 
 
 class TestRefresh:

@@ -5,13 +5,14 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Final, TypeVar
 
-from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, case, func, select
+from sqlalchemy.orm import QueryableAttribute, Session
 
 from picciuli._decimal import from_scaled
 from picciuli.errors import NotFoundError, ValidationError
+from picciuli.limits import MAX_ID
 from picciuli.model import (
     Account,
     AccountSplit,
@@ -43,9 +44,14 @@ from .tables import (
 
 RowT = TypeVar("RowT", bound=Base)
 
+_HALF_BITS: Final = 32
+_LOW_MASK: Final = (1 << _HALF_BITS) - 1
+
 
 def get_row(session: Session, model: type[RowT], row_id: int, label: str) -> RowT:
-    row = session.get(model, row_id)
+    # Larger integers cannot be stored, and would overflow the SQLite binding.
+    in_range = not isinstance(row_id, int) or -MAX_ID - 1 <= row_id <= MAX_ID
+    row = session.get(model, row_id) if in_range else None
     if row is None:
         raise NotFoundError(f"{label} {row_id} does not exist")
     return row
@@ -137,6 +143,25 @@ def to_transaction(row: TransactionRow) -> Transaction:
     )
 
 
+def _exact_sum(
+    value: ColumnElement[int] | QueryableAttribute[int],
+) -> tuple[ColumnElement[int], ColumnElement[int]]:
+    """Aggregate a SUM that cannot overflow, in two parts for `_combine`.
+
+    SQLite raises "integer overflow" when a SUM leaves the 64-bit range, which
+    would make a whole book unreadable. Summing the high and low 32 bits
+    separately is exact for any stored integer and cannot overflow.
+    """
+    return (
+        func.sum(value.op(">>")(_HALF_BITS)),
+        func.sum(value.op("&")(_LOW_MASK)),
+    )
+
+
+def _combine(high: int | None, low: int | None) -> int:
+    return (int(high or 0) << _HALF_BITS) + int(low or 0)
+
+
 def account_balances(
     session: Session,
     *,
@@ -149,7 +174,7 @@ def account_balances(
     With `inclusive=False` the day `until` itself is excluded, which gives the
     balance at the start of that day.
     """
-    sums = select(SplitRow.account_id, func.sum(SplitRow.amount)).where(
+    sums = select(SplitRow.account_id, *_exact_sum(SplitRow.amount)).where(
         SplitRow.account_id.is_not(None)
     )
     if until is not None:
@@ -162,8 +187,8 @@ def account_balances(
         sums = sums.where(SplitRow.account_id.in_(account_ids))
         accounts = accounts.where(AccountRow.id.in_(account_ids))
     totals: dict[int, int] = {
-        account_id: int(total)
-        for account_id, total in session.execute(sums.group_by(SplitRow.account_id))
+        account_id: _combine(high, low)
+        for account_id, high, low in session.execute(sums.group_by(SplitRow.account_id))
         if account_id is not None
     }
     result: dict[int, int] = {}
@@ -219,7 +244,8 @@ def share_moves(
     moves = []
     for day, tx_id, acc, sec, qty, amount in session.execute(statement):
         # The query only selects account splits that move shares.
-        assert acc is not None and sec is not None and qty is not None
+        if acc is None or sec is None or qty is None:
+            raise RuntimeError(f"transaction {tx_id} has an incomplete share move")
         moves.append(ShareMove(day, tx_id, acc, sec, qty, amount))
     return moves
 
@@ -301,10 +327,15 @@ def external_flows(
     session: Session, start: dt.date, end: dt.date | None
 ) -> tuple[dict[int | None, int], int, int]:
     """Net external flow by category (None = uncategorized), income and expenses."""
-    positive = func.sum(case((SplitRow.amount > 0, SplitRow.amount), else_=0))
-    negative = func.sum(case((SplitRow.amount < 0, SplitRow.amount), else_=0))
+    positive = case((SplitRow.amount > 0, SplitRow.amount), else_=0)
+    negative = case((SplitRow.amount < 0, SplitRow.amount), else_=0)
     statement = (
-        select(SplitRow.category_id, func.sum(SplitRow.amount), positive, negative)
+        select(
+            SplitRow.category_id,
+            *_exact_sum(SplitRow.amount),
+            *_exact_sum(positive),
+            *_exact_sum(negative),
+        )
         .join(TransactionRow, SplitRow.transaction_id == TransactionRow.id)
         .where(SplitRow.account_id.is_(None), TransactionRow.date >= start)
         .group_by(SplitRow.category_id)
@@ -313,10 +344,10 @@ def external_flows(
         statement = statement.where(TransactionRow.date <= end)
     by_category: dict[int | None, int] = {}
     income = expenses = 0
-    for category_id, net, plus, minus in session.execute(statement):
-        by_category[category_id] = int(net)
-        income += int(plus)
-        expenses += int(minus)
+    for category_id, *parts in session.execute(statement):
+        by_category[category_id] = _combine(parts[0], parts[1])
+        income += _combine(parts[2], parts[3])
+        expenses += _combine(parts[4], parts[5])
     return by_category, income, expenses
 
 

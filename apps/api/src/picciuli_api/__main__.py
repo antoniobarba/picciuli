@@ -44,6 +44,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         port=settings.port,
         proxy_headers=True,
         forwarded_allow_ips=settings.forwarded_allow_ips,
+        server_header=False,
     )
 
 

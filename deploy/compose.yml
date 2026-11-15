@@ -1,13 +1,29 @@
 # Production stack: Caddy (HTTPS) -> Picciuli API + web front-end + Zitadel
 # (identity) -> Postgres.
 # Lives in /opt/picciuli on the server next to Caddyfile, deploy.sh, backup.sh
-# and .env (copied from .env.example). Start or update with ./deploy.sh.
+# and .env (copied from .env.example), all owned by root. Deployments install
+# them through /usr/local/sbin/picciuli-deploy; by hand: sudo ./deploy.sh.
+#
+# Hardening: every service drops all Linux capabilities except the ones it
+# needs, cannot gain privileges (setuid binaries), and has memory, CPU and
+# process limits sized well above its normal use, so that one runaway service
+# cannot starve the others. Images are pinned by the digest of their
+# multi-platform index; Dependabot proposes updates.
 name: picciuli
+
+x-hardening: &hardening
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
 
 services:
   caddy:
-    image: ${CADDY_IMAGE:-caddy:2-alpine}
-    restart: unless-stopped
+    <<: *hardening
+    image: caddy:2-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    cap_add: [NET_BIND_SERVICE]
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 256
     ports:
       - "80:80"
       - "443:443"
@@ -22,11 +38,20 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks: [web]
+    networks:
+      web:
+        # Fixed address: the API trusts X-Forwarded-For only from Caddy.
+        ipv4_address: 172.30.0.10
 
   api:
+    <<: *hardening
     image: ghcr.io/antoniobarba/picciuli-api:${API_TAG:-latest}
-    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.5
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
     environment:
       PICCIULI_OIDC_ISSUER: https://${AUTH_DOMAIN}
       # Until the Zitadel project exists every token is rejected.
@@ -40,16 +65,27 @@ services:
       PICCIULI_LOGIN_ORG_ID: ${LOGIN_ORG_ID:-}
       PICCIULI_LOGIN_TOKEN_FILE: /run/secrets/login-client.pat
       PICCIULI_LOGIN_COOKIE_SECRET: ${PICCIULI_LOGIN_COOKIE_SECRET:-}
-      # The API port is not published: only Caddy can reach it.
-      PICCIULI_FORWARDED_ALLOW_IPS: "*"
+      # Swagger UI, ReDoc and /openapi.json stay off in production unless
+      # DOCS_ENABLED=true is set in .env.
+      PICCIULI_DOCS_ENABLED: ${DOCS_ENABLED:-false}
+      # The API port is not published: only Caddy (at its fixed address) may
+      # set X-Forwarded-For, which the login rate limiter keys on.
+      PICCIULI_FORWARDED_ALLOW_IPS: 172.30.0.10
     volumes:
       - ./data/picciuli:/data
       - ./secrets:/run/secrets:ro
     networks: [web]
 
   web:
+    <<: *hardening
     image: ghcr.io/antoniobarba/picciuli-web:${WEB_TAG:-latest}
-    restart: unless-stopped
+    # The Caddy binary carries the file capability cap_net_bind_service: it
+    # must stay in the bounding set for the binary to start (the non-root
+    # user never actually gets it, because of no-new-privileges).
+    cap_add: [NET_BIND_SERVICE]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
     environment:
       # Read by the browser from /config.json.
       PICCIULI_API_URL: https://${API_DOMAIN}
@@ -62,25 +98,34 @@ services:
     networks: [web]
 
   zitadel-api:
-    image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:?set ZITADEL_VERSION in .env}
-    restart: unless-stopped
-    user: "0"
-    command: start-from-init --masterkey "${ZITADEL_MASTERKEY:?set ZITADEL_MASTERKEY in .env}"
+    <<: *hardening
+    image: ghcr.io/zitadel/zitadel:v4.16.0@sha256:15543f7a80c3e37905fe8c7db56af7ed2a9ece256704322c1449d7e8453afdab
+    # The image's "zitadel" user; it owns the zitadel-bootstrap volume.
+    user: "1000:1000"
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    # The master key comes from the environment, not from the command line
+    # (which every local user could read with ps).
+    command: start-from-init --masterkeyFromEnv
     environment:
+      ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY:?set ZITADEL_MASTERKEY in .env}
       ZITADEL_PORT: 8080
       ZITADEL_EXTERNALDOMAIN: ${AUTH_DOMAIN}
       ZITADEL_EXTERNALPORT: 443
       ZITADEL_EXTERNALSECURE: "true"
       ZITADEL_TLS_ENABLED: "false"
       ZITADEL_DATABASE_POSTGRES_DSN: postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/zitadel?sslmode=disable
+      # The FIRSTINSTANCE settings only apply to the very first start.
       ZITADEL_FIRSTINSTANCE_ORG_NAME: ${ZITADEL_ORG_NAME:-Picciuli}
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME:-admin}
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:?set ZITADEL_ADMIN_PASSWORD in .env}
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "true"
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: Automatically Initialized IAM_LOGIN_CLIENT
-      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      # Rotate the PAT before it expires: see docs/deployment.md.
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: ${LOGIN_CLIENT_PAT_EXPIRATION:?set LOGIN_CLIENT_PAT_EXPIRATION in .env}
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://${AUTH_DOMAIN}/ui/v2/login/
       ZITADEL_OIDC_DEFAULTLOGINURLV2: https://${AUTH_DOMAIN}/ui/v2/login/login?authRequest=
@@ -100,9 +145,12 @@ services:
         condition: service_healthy
 
   zitadel-login:
-    image: ghcr.io/zitadel/zitadel-login:${ZITADEL_VERSION}
-    restart: unless-stopped
-    user: "0"
+    <<: *hardening
+    # Runs as the image's own non-root user (nextjs).
+    image: ghcr.io/zitadel/zitadel-login:v4.16.0@sha256:adeba50a8090d1484a312ac81e67cae5f839ba376e3325c00ec75fc79939a842
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 256
     environment:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
@@ -123,8 +171,14 @@ services:
         condition: service_healthy
 
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
-    restart: unless-stopped
+    <<: *hardening
+    image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+    # The entrypoint starts as root, fixes the data directory's owner and
+    # switches to the postgres user.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    mem_limit: 1g
+    cpus: 1.5
+    pids_limit: 256
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -141,6 +195,12 @@ services:
 
 networks:
   web:
+    ipam:
+      config:
+        # Containers get addresses from ip_range; Caddy's fixed one is outside it.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25
+          gateway: 172.30.0.1
   db:
     internal: true
 

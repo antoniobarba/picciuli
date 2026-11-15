@@ -1,0 +1,2 @@
+# Build backend of the local packages, installed with hashes in the API image.
+hatchling>=1.27

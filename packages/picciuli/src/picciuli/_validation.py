@@ -10,6 +10,7 @@ import datetime as dt
 from typing import TypeVar
 
 from picciuli.errors import ValidationError
+from picciuli.limits import MAX_AMOUNT, MAX_ID, MAX_NAME_LENGTH, MAX_TEXT_LENGTH
 from picciuli.model import Unset
 
 T = TypeVar("T")
@@ -29,15 +30,47 @@ def optional_integer(value: object, field: str) -> int | None:
     return None if value is None else integer(value, field)
 
 
-def positive_integer(value: object, field: str) -> int:
+def amount(value: object, field: str) -> int:
+    """Validate an amount in minor units, at most `MAX_AMOUNT` in absolute value."""
     result = integer(value, field)
+    if abs(result) > MAX_AMOUNT:
+        raise ValidationError(f"{field} cannot exceed {MAX_AMOUNT} in absolute value")
+    return result
+
+
+def optional_amount(value: object, field: str) -> int | None:
+    return None if value is None else amount(value, field)
+
+
+def positive_amount(value: object, field: str) -> int:
+    result = amount(value, field)
     if result <= 0:
         raise ValidationError(f"{field} must be greater than zero")
     return result
 
 
+def non_negative_amount(value: object, field: str) -> int:
+    result = amount(value, field)
+    if result < 0:
+        raise ValidationError(f"{field} cannot be negative")
+    return result
+
+
 def identifier(value: object, field: str) -> int:
-    return integer(value, field)
+    result = integer(value, field)
+    if not 1 <= result <= MAX_ID:
+        raise ValidationError(f"{field} must be between 1 and {MAX_ID}")
+    return result
+
+
+def count(value: object, field: str) -> int:
+    """Validate a number of items, such as a limit or an offset."""
+    result = integer(value, field)
+    if result < 0:
+        raise ValidationError(f"{field} cannot be negative")
+    if result > MAX_ID:
+        raise ValidationError(f"{field} cannot exceed {MAX_ID}")
+    return result
 
 
 def date(value: object, field: str) -> dt.date:
@@ -50,7 +83,13 @@ def optional_date(value: object, field: str) -> dt.date | None:
     return None if value is None else date(value, field)
 
 
-def name(value: object, field: str) -> str:
+def _max_length(text: str, field: str, max_length: int) -> str:
+    if len(text) > max_length:
+        raise ValidationError(f"{field} cannot exceed {max_length} characters")
+    return text
+
+
+def name(value: object, field: str, max_length: int = MAX_NAME_LENGTH) -> str:
     if not isinstance(value, str):
         raise ValidationError(f"{field} must be a string")
     result = value.strip()
@@ -58,16 +97,19 @@ def name(value: object, field: str) -> str:
         raise ValidationError(f"{field} cannot be empty")
     if not result.isprintable():
         raise ValidationError(f"{field} must contain only printable characters")
-    return result
+    return _max_length(result, field, max_length)
 
 
-def optional_text(value: object, field: str) -> str | None:
+def optional_text(
+    value: object, field: str, max_length: int = MAX_TEXT_LENGTH
+) -> str | None:
     """Strip text; empty or whitespace-only text becomes `None`."""
     if value is None:
         return None
     if not isinstance(value, str):
         raise ValidationError(f"{field} must be a string or None")
-    return value.strip() or None
+    result = value.strip()
+    return _max_length(result, field, max_length) if result else None
 
 
 def date_range(start: dt.date | None, end: dt.date | None) -> None:

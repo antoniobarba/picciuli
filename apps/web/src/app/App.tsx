@@ -60,7 +60,8 @@ function Gate({ config }: { config: AppConfig }) {
       </Welcome>
     );
   }
-  return <Authenticated config={config} />;
+  // Keyed by user: another tab may sign in as someone else, which must drop the cache.
+  return <Authenticated key={auth.user?.profile.sub} config={config} />;
 }
 
 function Splash() {

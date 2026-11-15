@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
 from picciuli_api.deps import BookDep
+from picciuli_api.schemas.base import Date, PathId, QueryId
 from picciuli_api.schemas.periods import (
     BudgetCopy,
     BudgetCreate,
@@ -28,7 +28,7 @@ budgets = APIRouter(prefix="/budgets", tags=["budgets"])
 def list_periods(
     book: BookDep,
     on: Annotated[
-        dt.date | None, Query(description="Only the periods containing this day.")
+        Date | None, Query(description="Only the periods containing this day.")
     ] = None,
 ) -> list[PeriodOut]:
     """List the periods."""
@@ -47,39 +47,39 @@ def create_period(book: BookDep, body: PeriodCreate) -> PeriodOut:
     return PeriodOut.model_validate(period)
 
 
-@periods.get("/{period_id}")
-def get_period(book: BookDep, period_id: int) -> PeriodOut:
+@periods.get("/{period_id:int}")
+def get_period(book: BookDep, period_id: PathId) -> PeriodOut:
     """Get one period."""
     return PeriodOut.model_validate(book.periods.get(period_id))
 
 
-@periods.patch("/{period_id}")
-def update_period(book: BookDep, period_id: int, body: PeriodUpdate) -> PeriodOut:
+@periods.patch("/{period_id:int}")
+def update_period(book: BookDep, period_id: PathId, body: PeriodUpdate) -> PeriodOut:
     """Change the name or the days of a period."""
     return PeriodOut.model_validate(book.periods.update(period_id, **body.changes()))
 
 
-@periods.delete("/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_period(book: BookDep, period_id: int) -> None:
+@periods.delete("/{period_id:int}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_period(book: BookDep, period_id: PathId) -> None:
     """Delete a period and its budgets."""
     book.periods.delete(period_id)
 
 
-@periods.get("/{period_id}/summary")
-def period_summary(book: BookDep, period_id: int) -> PeriodSummaryOut:
+@periods.get("/{period_id:int}/summary")
+def period_summary(book: BookDep, period_id: PathId) -> PeriodSummaryOut:
     """Flows by category and balance changes by account during a period."""
     return PeriodSummaryOut.model_validate(book.periods.summary(period_id))
 
 
-@periods.get("/{period_id}/budget-report")
-def budget_report(book: BookDep, period_id: int) -> BudgetReportOut:
+@periods.get("/{period_id:int}/budget-report")
+def budget_report(book: BookDep, period_id: PathId) -> BudgetReportOut:
     """Budgets of a period compared with the actual flows."""
     return BudgetReportOut.model_validate(book.budgets.report(period_id))
 
 
 @budgets.get("")
 def list_budgets(
-    book: BookDep, period_id: int | None = None, category_id: int | None = None
+    book: BookDep, period_id: QueryId = None, category_id: QueryId = None
 ) -> list[BudgetOut]:
     """List the budgets, optionally of one period or category."""
     found = book.budgets.list(period_id=period_id, category_id=category_id)
@@ -102,19 +102,19 @@ def copy_budgets(book: BookDep, body: BudgetCopy) -> list[BudgetOut]:
     return [BudgetOut.model_validate(b) for b in copied]
 
 
-@budgets.get("/{budget_id}")
-def get_budget(book: BookDep, budget_id: int) -> BudgetOut:
+@budgets.get("/{budget_id:int}")
+def get_budget(book: BookDep, budget_id: PathId) -> BudgetOut:
     """Get one budget."""
     return BudgetOut.model_validate(book.budgets.get(budget_id))
 
 
-@budgets.patch("/{budget_id}")
-def update_budget(book: BookDep, budget_id: int, body: BudgetUpdate) -> BudgetOut:
+@budgets.patch("/{budget_id:int}")
+def update_budget(book: BookDep, budget_id: PathId, body: BudgetUpdate) -> BudgetOut:
     """Change a budget."""
     return BudgetOut.model_validate(book.budgets.update(budget_id, **body.changes()))
 
 
-@budgets.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_budget(book: BookDep, budget_id: int) -> None:
+@budgets.delete("/{budget_id:int}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_budget(book: BookDep, budget_id: PathId) -> None:
     """Delete a budget."""
     book.budgets.delete(budget_id)

@@ -47,7 +47,8 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'es2022',
-      sourcemap: true,
+      // Source maps are not published; set PICCIULI_SOURCEMAP=true to debug a local build.
+      sourcemap: env.PICCIULI_SOURCEMAP === 'true',
     },
     test: {
       environment: 'jsdom',

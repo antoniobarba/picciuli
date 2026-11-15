@@ -124,6 +124,21 @@ class TestCachingProvider:
         assert cached.exchange_rate_symbol("USD", "EUR") is None
         assert cached.search("A") == []
 
+    def test_cache_keeps_the_most_recently_used_symbols(self) -> None:
+        calls: list[str] = []
+
+        class Counting(Static):
+            def latest(self, symbol: str) -> Quote:
+                calls.append(symbol)
+                return super().latest(symbol)
+
+        cached = CachingProvider(Counting(), ttl=60, clock=lambda: 0.0, max_size=2)
+        for symbol in ("A", "B", "A", "C", "A", "B"):
+            cached.latest(symbol)
+        # C evicted B (the least recently used); B then evicted C.
+        assert calls == ["A", "B", "C", "B"]
+        assert len(cached._quotes) == 2
+
 
 def chart(meta: dict[str, Any], **extra: Any) -> bytes:
     return json.dumps(

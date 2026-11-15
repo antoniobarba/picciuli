@@ -1,0 +1,44 @@
+# Weekly update PRs for the pinned dependencies: GitHub Actions (commit SHAs),
+# base and service images (digests), Python and npm packages.
+# The API image installs only apps/api/requirements*.lock (hashed): after a
+# Python update, regenerate them as described in docs/development.md.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directories:
+      - /apps/api
+      - /packages/picciuli
+      - /apps/tui
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/web
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: weekly

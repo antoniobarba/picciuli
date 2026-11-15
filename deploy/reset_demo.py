@@ -53,10 +53,14 @@ def main() -> None:
     if (
         identity.get("username") != "demo"
         or identity["details"]["resourceOwner"] != settings.login_org_id
-        or identity.get("state") != "USER_STATE_ACTIVE"
+        or identity.get("state") not in {"USER_STATE_ACTIVE", "USER_STATE_LOCKED"}
         or "human" not in identity
     ):
         raise RuntimeError("Refusing to reset an unexpected demo identity")
+    if identity["state"] == "USER_STATE_LOCKED":
+        # Anyone can trip the lockout policy with wrong demo passwords.
+        zitadel.call("POST", f"/v2/users/{user_id}/unlock", {})
+        print("Demo identity was locked out; unlocked it", flush=True)
     zitadel.call(
         "POST",
         f"/v2/users/{user_id}/password",

@@ -18,7 +18,8 @@ from picciuli._db.schema import (
     prepare_schema,
 )
 from picciuli._db.session import UnitOfWork
-from picciuli.errors import ValidationError
+from picciuli._db.upload import Deadline, RawBook, read_file, read_session
+from picciuli.errors import PicciuliError, ValidationError
 from picciuli.model import ImportSummary
 from picciuli.services import (
     AccountService,
@@ -150,6 +151,9 @@ class Book:
         """Copy every account, category, transaction, budget... of another book.
 
         The whole import runs in a single transaction: on error nothing changes.
+        Every entity is created again through the services, so the source
+        must respect the same rules as data entered by hand (balanced splits,
+        non-negative holdings, valid settings, ...).
 
         When *merging* (the default), entities already present are reused
         instead of duplicated: accounts, categories and periods are matched by
@@ -157,9 +161,10 @@ class Book:
         budgets, prices and exchange rates by category, security or currency
         and day, and transactions by content (day, description, notes and
         splits), so importing the same book twice adds nothing the second
-        time. Existing entities and settings are never changed. A book without
-        accounts, categories, transactions, securities or periods takes the
-        settings of `source`.
+        time. Existing entities and settings are never changed, and new
+        transactions on accounts closed in this book are refused. A book
+        without accounts, categories, transactions, securities or periods
+        takes the settings of `source`.
 
         When *replacing*, everything stored in this book is deleted first and
         the settings of `source` are adopted.
@@ -173,14 +178,69 @@ class Book:
 
         Raises:
             ConflictError: When merging books with a different currency or
-                number of decimal digits (replace instead), or if the source
-                data violates a database constraint.
-            ValidationError: If `source` is this book.
+                number of decimal digits (replace instead), or new
+                transactions on an account closed in this book.
+            ValidationError: If `source` is this book or its data breaks a
+                domain rule.
         """
         if source is self:
             raise ValidationError("a book cannot be imported into itself")
-        with source._uow.session() as reading, self._uow.session() as writing:
-            return import_book(writing, reading, replace=replace)
+        deadline = Deadline(None)
+        with source._uow.session() as reading:
+            raw = read_session(reading, deadline)
+        return self._import(raw, replace=replace, deadline=deadline)
+
+    def import_file(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        replace: bool = False,
+        timeout: float | None = 60.0,
+    ) -> ImportSummary:
+        """Import a database file that may come from an untrusted source.
+
+        It works like [`import_from`][picciuli.Book.import_from], but the file
+        is never opened as a `Book`: it is read once, read-only, and its
+        schema must be exactly the one of the current
+        [`SCHEMA_VERSION`][picciuli.Book.SCHEMA_VERSION], without views or
+        triggers. Files with an older schema are refused: open them with
+        `Book.open` (which upgrades them) and import them again.
+
+        Args:
+            path: Path of the SQLite file.
+            replace: Whether to erase this book before importing.
+            timeout: Time budget in seconds for the whole import, or `None`
+                for no limit.
+
+        Returns:
+            How many entities were added.
+
+        Raises:
+            ValidationError: If the file is not a Picciuli database of the
+                current schema version, its data breaks a domain rule, or the
+                import takes longer than `timeout`.
+            ConflictError: As for `import_from`.
+        """
+        deadline = Deadline(timeout)
+        raw = read_file(path, deadline)
+        return self._import(raw, replace=replace, deadline=deadline)
+
+    def _import(
+        self, raw: RawBook, *, replace: bool, deadline: Deadline
+    ) -> ImportSummary:
+        try:
+            with self._uow.session() as writing:
+                return import_book(
+                    self, writing, raw, replace=replace, deadline=deadline
+                )
+        except PicciuliError:
+            raise
+        except Exception as exc:
+            # Rows are validated one by one; anything unexpected is still a
+            # problem of the imported data, never a reason to fail with a 500.
+            raise ValidationError(
+                f"the data cannot be imported ({type(exc).__name__})"
+            ) from exc
 
     def close(self) -> None:
         """Release the database connections. The book cannot be used afterwards."""

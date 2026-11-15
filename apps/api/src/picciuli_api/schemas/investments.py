@@ -3,14 +3,28 @@
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
 
 from pydantic import Field
 
 from picciuli import SecurityKind
 
 from .accounts import AccountOut
-from .base import DecimalStr, InputModel, OutputModel, PatchModel
+from .base import (
+    MAX_LIST_LENGTH,
+    CurrencyCode,
+    Date,
+    DecimalStr,
+    Id,
+    InputModel,
+    Name,
+    NonNegativeAmount,
+    OutputModel,
+    PatchModel,
+    PositiveAmount,
+    PositiveDecimal,
+    Symbol,
+    Text,
+)
 
 __all__ = [
     "AccountValuationOut",
@@ -50,23 +64,25 @@ class SecurityOut(OutputModel):
 class SecurityCreate(InputModel):
     """A new security."""
 
-    name: str = Field(examples=["Vanguard FTSE All-World"])
-    currency: str = Field(examples=["EUR"])
+    name: Name = Field(examples=["Vanguard FTSE All-World"])
+    currency: CurrencyCode
     kind: SecurityKind = SecurityKind.STOCK
-    symbol: str | None = Field(default=None, examples=["VWCE.DE"])
-    isin: str | None = Field(default=None, examples=["IE00BK5BQT80"])
-    notes: str | None = None
+    symbol: Symbol | None = Field(default=None, examples=["VWCE.DE"])
+    isin: Symbol | None = Field(default=None, examples=["IE00BK5BQT80"])
+    notes: Text | None = None
 
 
 class SecurityUpdate(PatchModel):
     """Changes to a security."""
 
-    name: str | None = None
-    currency: str | None = None
+    _not_null = frozenset({"name", "currency", "kind"})
+
+    name: Name | None = None
+    currency: CurrencyCode | None = None
     kind: SecurityKind | None = None
-    symbol: str | None = None
-    isin: str | None = None
-    notes: str | None = None
+    symbol: Symbol | None = None
+    isin: Symbol | None = None
+    notes: Text | None = None
 
 
 class PriceOut(OutputModel):
@@ -81,8 +97,8 @@ class PriceOut(OutputModel):
 class PriceIn(InputModel):
     """A price entered by hand."""
 
-    price: Decimal = Field(gt=0, examples=["112.34"])
-    source: str | None = None
+    price: PositiveDecimal = Field(examples=["112.34"])
+    source: Name | None = None
 
 
 class LatestPriceOut(OutputModel):
@@ -103,7 +119,7 @@ class ExchangeRateOut(OutputModel):
 class ExchangeRateIn(InputModel):
     """An exchange rate entered by hand."""
 
-    rate: Decimal = Field(gt=0, examples=["0.92"])
+    rate: PositiveDecimal = Field(examples=["0.92"])
 
 
 class LatestExchangeRateOut(OutputModel):
@@ -149,49 +165,53 @@ class SaleCostOut(OutputModel):
 class BuyCreate(InputModel):
     """A purchase of shares."""
 
-    date: dt.date
-    account_id: int
-    security_id: int
-    quantity: Decimal = Field(examples=["1.5"])
-    cost: int = Field(description="Price paid for the shares, in minor units.")
-    from_account_id: int | None = None
-    fee: int = 0
-    fee_category_id: int | None = None
-    description: str | None = None
-    notes: str | None = None
+    date: Date
+    account_id: Id
+    security_id: Id
+    quantity: PositiveDecimal = Field(examples=["1.5"])
+    cost: PositiveAmount = Field(
+        description="Price paid for the shares, in minor units."
+    )
+    from_account_id: Id | None = None
+    fee: NonNegativeAmount = 0
+    fee_category_id: Id | None = None
+    description: Text | None = None
+    notes: Text | None = None
 
 
 class SellCreate(InputModel):
     """A sale of shares."""
 
-    date: dt.date
-    account_id: int
-    security_id: int
-    quantity: Decimal = Field(examples=["1.5"])
-    proceeds: int = Field(description="Gross sale proceeds, in minor units.")
-    to_account_id: int | None = None
-    fee: int = 0
-    fee_category_id: int | None = None
-    tax: int = 0
-    tax_category_id: int | None = None
-    gain_category_id: int | None = None
-    description: str | None = None
-    notes: str | None = None
+    date: Date
+    account_id: Id
+    security_id: Id
+    quantity: PositiveDecimal = Field(examples=["1.5"])
+    proceeds: PositiveAmount = Field(description="Gross sale proceeds, in minor units.")
+    to_account_id: Id | None = None
+    fee: NonNegativeAmount = 0
+    fee_category_id: Id | None = None
+    tax: NonNegativeAmount = 0
+    tax_category_id: Id | None = None
+    gain_category_id: Id | None = None
+    description: Text | None = None
+    notes: Text | None = None
 
 
 class RefreshPrices(InputModel):
     """Which prices to download. Every security with a symbol by default."""
 
-    security_ids: list[int] | None = None
-    history_start: dt.date | None = None
+    security_ids: list[Id] | None = Field(default=None, max_length=MAX_LIST_LENGTH)
+    history_start: Date | None = None
     """Also download the daily closing prices since this day."""
 
 
 class RefreshExchangeRates(InputModel):
     """Which exchange rates to download. Every needed currency by default."""
 
-    currencies: list[str] | None = None
-    history_start: dt.date | None = None
+    currencies: list[CurrencyCode] | None = Field(
+        default=None, max_length=MAX_LIST_LENGTH
+    )
+    history_start: Date | None = None
 
 
 class PriceUpdateOut(OutputModel):

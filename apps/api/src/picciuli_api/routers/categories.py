@@ -7,7 +7,9 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from picciuli import UNSET, Unset, ValidationError
+from picciuli.limits import MAX_ID
 from picciuli_api.deps import BookDep
+from picciuli_api.schemas.base import PathId
 from picciuli_api.schemas.categories import CategoryCreate, CategoryOut, CategoryUpdate
 
 router = APIRouter(prefix="/categories", tags=["categories"])
@@ -34,14 +36,14 @@ def create_category(book: BookDep, body: CategoryCreate) -> CategoryOut:
     return CategoryOut.model_validate(category)
 
 
-@router.get("/{category_id}")
-def get_category(book: BookDep, category_id: int) -> CategoryOut:
+@router.get("/{category_id:int}")
+def get_category(book: BookDep, category_id: PathId) -> CategoryOut:
     """Get one category."""
     return CategoryOut.model_validate(book.categories.get(category_id))
 
 
-@router.get("/{category_id}/children")
-def list_children(book: BookDep, category_id: int) -> list[CategoryOut]:
+@router.get("/{category_id:int}/children")
+def list_children(book: BookDep, category_id: PathId) -> list[CategoryOut]:
     """List the subcategories of a category."""
     book.categories.get(category_id)
     return [
@@ -49,21 +51,24 @@ def list_children(book: BookDep, category_id: int) -> list[CategoryOut]:
     ]
 
 
-@router.patch("/{category_id}")
+@router.patch("/{category_id:int}")
 def update_category(
-    book: BookDep, category_id: int, body: CategoryUpdate
+    book: BookDep, category_id: PathId, body: CategoryUpdate
 ) -> CategoryOut:
     """Rename, move or re-parent a category."""
     category = book.categories.update(category_id, **body.changes())
     return CategoryOut.model_validate(category)
 
 
-@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{category_id:int}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category(
     book: BookDep,
-    category_id: int,
+    category_id: PathId,
     reassign_to: Annotated[
-        int | None, Query(description="Move the category's splits to this category.")
+        int | None,
+        Query(
+            ge=1, le=MAX_ID, description="Move the category's splits to this category."
+        ),
     ] = None,
     uncategorize: Annotated[
         bool, Query(description="Leave the category's splits uncategorized.")

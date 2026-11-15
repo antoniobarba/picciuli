@@ -1,6 +1,6 @@
 import type { User, UserManager } from 'oidc-client-ts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ReturnState } from './oidc';
+import { isUserStorageEvent, type ReturnState } from './oidc';
 import { loginRequest } from './login';
 import { useNotify } from '../components/feedback';
 
@@ -28,9 +28,19 @@ export function useAuth(): AuthState {
 
 const CALLBACK_PATH = '/callback';
 const RENEW_MARGIN_SECONDS = 30;
+const RENEW_LOCK = 'picciuli-token-renewal';
 
 // An authorization code can be redeemed only once, even if the effect runs twice.
 let callbackOnce: Promise<User> | null = null;
+
+/**
+ * Runs `task` while no other tab of the app renews: Zitadel refresh tokens are
+ * single-use, so a tab presenting one already spent by another tab is rejected.
+ */
+async function exclusively<T>(task: () => Promise<T>): Promise<T> {
+  const locks = navigator.locks as LockManager | undefined;
+  return locks ? await locks.request(RENEW_LOCK, task) : await task();
+}
 
 function currentLocation(): string {
   const { pathname, search, hash } = window.location;
@@ -48,9 +58,14 @@ export function AuthProvider({ manager, children, nativeLogin = false }: { manag
   const [error, setError] = useState<string | null>(null);
   const renewing = useRef<Promise<User | null> | null>(null);
 
-  const renew = useCallback(async (): Promise<User | null> => {
-    renewing.current ??= manager
-      .signinSilent()
+  /** Renews the access token; `force` also renews one that is not about to expire. */
+  const renew = useCallback(async (force = false): Promise<User | null> => {
+    renewing.current ??= exclusively(async () => {
+      // Another tab may have renewed while this one waited for the lock.
+      const stored = await manager.getUser();
+      if (!force && stored && (stored.expires_in ?? 0) >= RENEW_MARGIN_SECONDS) return stored;
+      return manager.signinSilent();
+    })
       .catch(() => null)
       .finally(() => {
         renewing.current = null;
@@ -110,8 +125,19 @@ export function AuthProvider({ manager, children, nativeLogin = false }: { manag
     manager.events.addUserLoaded(loaded);
     manager.events.addUserUnloaded(unloaded);
     manager.events.addUserSignedOut(unloaded);
+    // Follows sign-in, renewal and sign-out in other tabs of the app.
+    const synchronise = (event: StorageEvent) => {
+      if (!isUserStorageEvent(event)) return;
+      void manager.getUser().then((next) => {
+        if (!active) return;
+        if (!next) unloaded();
+        else if (!next.expired) loaded(next);
+      });
+    };
+    window.addEventListener('storage', synchronise);
     return () => {
       active = false;
+      window.removeEventListener('storage', synchronise);
       manager.events.removeUserLoaded(loaded);
       manager.events.removeUserUnloaded(unloaded);
       manager.events.removeUserSignedOut(unloaded);
@@ -139,8 +165,10 @@ export function AuthProvider({ manager, children, nativeLogin = false }: { manag
       const current = await manager.getUser();
       if (nativeLogin) {
         await loginRequest('logout');
-        await manager.revokeTokens(['access_token', 'refresh_token']);
+        // The session is gone: clear the local tokens even if revocation fails.
+        await manager.revokeTokens(['access_token', 'refresh_token']).catch(() => undefined);
       } else {
+        // Revokes the tokens (revokeTokensOnSignout) and clears them before leaving.
         await manager.signoutRedirect({ id_token_hint: current?.id_token });
       }
       await manager.removeUser();
@@ -159,7 +187,7 @@ export function AuthProvider({ manager, children, nativeLogin = false }: { manag
   }, [manager, renew]);
 
   const handleUnauthorized = useCallback(() => {
-    void renew();
+    void renew(true);
   }, [renew]);
 
   const value = useMemo<AuthState>(

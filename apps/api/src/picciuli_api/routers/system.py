@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
-import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Annotated, Literal
 
+import fastapi
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
-from picciuli import Book, ImportSummary, SchemaVersionError, ValidationError
+from picciuli import ImportSummary
+from picciuli.limits import MAX_NAME_LENGTH
 from picciuli.prices import available_providers
 from picciuli.rates import available_rate_providers
 from picciuli_api.deps import AppContext, BookDep, ContextDep, UserDep
-from picciuli_api.errors import ErrorResponse
+from picciuli_api.errors import PROVIDER_RESPONSES, ErrorResponse
 from picciuli_api.schemas.investments import ProviderOut, SecurityInfoOut
 from picciuli_api.schemas.misc import ImportOut, MeOut, SettingsOut, SettingsUpdate
 
@@ -51,12 +51,19 @@ def list_rate_providers(user: UserDep) -> list[ProviderOut]:
     return [ProviderOut.model_validate(p) for p in available_rate_providers()]
 
 
-@providers.get("/prices/{provider_id}/search")
+@providers.get("/prices/{provider_id}/search", responses=PROVIDER_RESPONSES)
 def search_securities(
     user: UserDep,
     context: ContextDep,
-    provider_id: str,
-    q: Annotated[str, Query(min_length=1, description="Name, symbol or ISIN.")],
+    provider_id: Annotated[str, fastapi.Path(max_length=MAX_NAME_LENGTH)],
+    q: Annotated[
+        str,
+        Query(
+            min_length=1,
+            max_length=MAX_NAME_LENGTH,
+            description="Name, symbol or ISIN.",
+        ),
+    ],
 ) -> list[SecurityInfoOut]:
     """Find instruments known to a price provider."""
     found = context.providers.prices(provider_id).search(q)
@@ -98,7 +105,6 @@ def delete_me(user: UserDep, context: ContextDep) -> None:
     context.books.delete(user.id)
 
 
-_SQLITE_MAGIC = b"SQLite format 3\x00"
 _CHUNK = 1024 * 1024
 
 
@@ -115,7 +121,10 @@ _CHUNK = 1024 * 1024
             },
         }
     },
-    responses={413: {"model": ErrorResponse, "description": "The file is too big"}},
+    responses={
+        413: {"model": ErrorResponse, "description": "The file is too big"},
+        503: {"model": ErrorResponse, "description": "Too many imports running"},
+    },
 )
 async def import_data(
     request: Request,
@@ -134,27 +143,33 @@ async def import_data(
     Merging requires the same currency and decimal digits. With
     `mode=replace`, all your data is deleted first and the file's settings
     are adopted. Either way the import is all-or-nothing.
+
+    The file must use the current schema version (open older files once with
+    an up-to-date console application) and its data must respect the same
+    rules as data entered by hand, otherwise the request fails with 422.
+    Only one import per user runs at a time (409 otherwise).
     """
     limit = context.settings.max_import_bytes
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > limit:
         raise _too_big(limit)
-    handle, name = tempfile.mkstemp(prefix="picciuli-import-", suffix=".db")
-    path = Path(name)
-    try:
-        size = 0
-        with os.fdopen(handle, "wb") as file:
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > limit:
-                    raise _too_big(limit)
-                file.write(chunk)
-        summary = await run_in_threadpool(
-            _import_file, context, user.id, path, replace=mode == "replace"
-        )
-    finally:
-        for suffix in ("", "-journal", "-wal", "-shm"):
-            path.with_name(path.name + suffix).unlink(missing_ok=True)
+    with context.imports.reserve(user.id):
+        handle, name = tempfile.mkstemp(prefix="picciuli-import-", suffix=".db")
+        path = Path(name)
+        try:
+            size = 0
+            with os.fdopen(handle, "wb") as file:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > limit:
+                        raise _too_big(limit)
+                    file.write(chunk)
+            summary = await run_in_threadpool(
+                _import_file, context, user.id, path, replace=mode == "replace"
+            )
+        finally:
+            for suffix in ("", "-journal", "-wal", "-shm"):
+                path.with_name(path.name + suffix).unlink(missing_ok=True)
     return ImportOut.model_validate(summary)
 
 
@@ -168,30 +183,7 @@ def _too_big(limit: int) -> HTTPException:
 def _import_file(
     context: AppContext, user_id: str, path: Path, *, replace: bool
 ) -> ImportSummary:
-    with _open_upload(path) as source, context.books.lease(user_id) as book:
-        return book.import_from(source, replace=replace)
-
-
-def _open_upload(path: Path) -> Book:
-    invalid = ValidationError("the file is not a Picciuli database")
-    with path.open("rb") as file:
-        if file.read(len(_SQLITE_MAGIC)) != _SQLITE_MAGIC:
-            raise invalid
-    try:
-        with contextlib.closing(sqlite3.connect(path)) as db:
-            check = db.execute("PRAGMA quick_check").fetchall()
-            found = db.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'"
-            ).fetchone()
-    except sqlite3.DatabaseError:
-        raise invalid from None
-    if check != [("ok",)]:
-        raise ValidationError("the database file is damaged")
-    if found is None:
-        raise invalid
-    try:
-        return Book.open(path, create=False)
-    except SchemaVersionError as exc:
-        raise ValidationError(f"cannot read the file: {exc}") from None
-    except Exception:
-        raise invalid from None
+    with context.books.lease(user_id) as book:
+        return book.import_file(
+            path, replace=replace, timeout=context.settings.import_timeout_seconds
+        )

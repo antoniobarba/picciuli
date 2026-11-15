@@ -48,6 +48,10 @@ class TestCrud:
             book.budgets.create(food.id, january.id, 100)
         with pytest.raises(ValidationError, match="negative"):
             book.budgets.create(food.id, january.id, -1)
+        with pytest.raises(ValidationError, match="cannot exceed"):
+            book.budgets.create(food.id, january.id, 2**63)
+        with pytest.raises(ValidationError, match="period id"):
+            book.budgets.list(period_id=2**63)
         with pytest.raises(ValidationError, match="integer"):
             book.budgets.create(food.id, january.id, 1.0)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError, match="category"):

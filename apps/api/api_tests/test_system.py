@@ -7,6 +7,7 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
@@ -158,6 +159,50 @@ class TestImport:
 
     def test_needs_authentication(self, client: TestClient) -> None:
         assert _upload(client, b"").status_code == 401
+
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            "CREATE VIEW evil AS WITH RECURSIVE r(n) AS "
+            "(SELECT 1 UNION ALL SELECT n + 1 FROM r) SELECT n FROM r",
+            "CREATE TRIGGER evil AFTER UPDATE ON meta BEGIN SELECT 1; END",
+            "UPDATE accounts SET opening_balance = 'abc'",
+            "UPDATE meta SET value = 'evil' WHERE key = 'cost_method'",
+            "UPDATE splits SET amount = 999999 WHERE account_id IS NOT NULL",
+            "UPDATE meta SET value = '1' WHERE key = 'schema_version'",
+        ],
+    )
+    def test_rejects_unsafe_or_invalid_data(
+        self, alice: TestClient, tmp_path: Path, statement: str
+    ) -> None:
+        create_account(alice, "Wallet")
+        path = tmp_path / "local.db"
+        _database(path, "Checking")
+        with closing(sqlite3.connect(path)) as db:
+            db.execute(statement)
+            db.commit()
+        for mode in ("merge", "replace"):
+            response = _upload(alice, path.read_bytes(), mode)
+            assert response.status_code == 422, response.json()
+            assert response.json()["error"] == "validation_error"
+        assert [a["name"] for a in alice.get(f"{API}/accounts").json()] == ["Wallet"]
+        assert alice.get(f"{API}/settings").json()["cost_method"] == "average"
+
+    def test_one_import_at_a_time(
+        self, alice: TestClient, app: FastAPI, tmp_path: Path
+    ) -> None:
+        content = _database(tmp_path / "local.db", "Checking")
+        imports = app.state.context.imports
+        with imports.reserve(User(ISSUER, "alice").id):
+            response = _upload(alice, content)
+        assert response.status_code == 409
+        imports.limit = 1
+        with imports.reserve(User(ISSUER, "bob").id):
+            response = _upload(alice, content)
+        assert response.status_code == 503
+        assert response.json()["error"] == "busy"
+        assert response.headers["retry-after"] == "30"
+        assert _upload(alice, content).status_code == 200
 
 
 class TestSettings:

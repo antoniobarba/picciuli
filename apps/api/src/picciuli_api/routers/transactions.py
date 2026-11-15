@@ -7,7 +7,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
+from picciuli.limits import MAX_ID, MAX_NAME_LENGTH
 from picciuli_api.deps import BookDep
+from picciuli_api.schemas.base import Date, PathId, QueryDate, QueryId
 from picciuli_api.schemas.transactions import (
     ExpenseCreate,
     IncomeCreate,
@@ -23,20 +25,24 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 @router.get("")
 def list_transactions(
     book: BookDep,
-    start: dt.date | None = None,
-    end: dt.date | None = None,
-    account_id: int | None = None,
-    category_id: int | None = None,
+    start: QueryDate = None,
+    end: QueryDate = None,
+    account_id: QueryId = None,
+    category_id: QueryId = None,
     include_subcategories: bool = False,
     uncategorized: Annotated[
         bool, Query(description="Only transactions with uncategorized flows.")
     ] = False,
     text: Annotated[
-        str | None, Query(description="Search in descriptions, notes and memos.")
+        str | None,
+        Query(
+            max_length=MAX_NAME_LENGTH,
+            description="Search in descriptions, notes and memos.",
+        ),
     ] = None,
     newest_first: bool = False,
-    limit: Annotated[int | None, Query(ge=1)] = None,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int | None, Query(ge=1, le=MAX_ID)] = None,
+    offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
 ) -> list[TransactionOut]:
     """Search transactions. Every filter is optional; date ranges are inclusive."""
     found = book.transactions.list(
@@ -68,7 +74,7 @@ def create_transaction(book: BookDep, body: TransactionCreate) -> TransactionOut
 
 @router.get("/dates")
 def dates_with_transactions(
-    book: BookDep, start: dt.date, end: dt.date, account_id: int | None = None
+    book: BookDep, start: Date, end: Date, account_id: QueryId = None
 ) -> list[dt.date]:
     """Days between `start` and `end` with at least one transaction."""
     return book.transactions.dates_with_transactions(start, end, account_id=account_id)
@@ -116,22 +122,22 @@ def record_transfer(book: BookDep, body: TransferCreate) -> TransactionOut:
     return TransactionOut.model_validate(transaction)
 
 
-@router.get("/{transaction_id}")
-def get_transaction(book: BookDep, transaction_id: int) -> TransactionOut:
+@router.get("/{transaction_id:int}")
+def get_transaction(book: BookDep, transaction_id: PathId) -> TransactionOut:
     """Get one transaction."""
     return TransactionOut.model_validate(book.transactions.get(transaction_id))
 
 
-@router.patch("/{transaction_id}")
+@router.patch("/{transaction_id:int}")
 def update_transaction(
-    book: BookDep, transaction_id: int, body: TransactionUpdate
+    book: BookDep, transaction_id: PathId, body: TransactionUpdate
 ) -> TransactionOut:
     """Change a transaction. A `splits` list replaces every split."""
     transaction = book.transactions.update(transaction_id, **body.changes())
     return TransactionOut.model_validate(transaction)
 
 
-@router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_transaction(book: BookDep, transaction_id: int) -> None:
+@router.delete("/{transaction_id:int}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_transaction(book: BookDep, transaction_id: PathId) -> None:
     """Delete a transaction."""
     book.transactions.delete(transaction_id)

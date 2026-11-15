@@ -136,6 +136,47 @@ class TestErrors:
         response = alice.put(f"{API}/accounts")
         assert response.status_code == 405
         assert response.json()["error"] == "method_not_allowed"
+        assert response.headers["allow"] == "GET, POST"
+
+    @pytest.mark.parametrize(
+        ("method", "path", "allow"),
+        [
+            ("OPTIONS", "/accounts/1", "DELETE, GET, PATCH"),
+            ("PATCH", "/transactions/dates", "GET"),
+            ("PATCH", "/accounts/net-worth", "GET"),
+            ("PUT", "/exchange-rates/USD/latest", "GET"),
+        ],
+    )
+    def test_fixed_paths_never_match_identifier_routes(
+        self, alice: TestClient, method: str, path: str, allow: str
+    ) -> None:
+        response = alice.request(method, f"{API}{path}")
+        assert response.status_code == 405
+        assert response.headers["allow"] == allow
+
+    @pytest.mark.parametrize(
+        ("path", "loc"),
+        [
+            ("/accounts/9223372036854775808", ["path", "account_id"]),
+            ("/accounts/0/balance", ["path", "account_id"]),
+            ("/transactions?account_id=9223372036854775808", ["query", "account_id"]),
+            ("/transactions?limit=9223372036854775808", ["query", "limit"]),
+            ("/accounts/balances?as_of=0", ["query", "as_of"]),
+            ("/periods?on=0", ["query", "on"]),
+            ("/transactions/dates?start=0&end=2025-01-01", ["query", "start"]),
+        ],
+    )
+    def test_out_of_range_parameters_are_rejected(
+        self, alice: TestClient, path: str, loc: list[str]
+    ) -> None:
+        response = alice.get(f"{API}{path}")
+        assert response.status_code == 422
+        assert response.json()["errors"][0]["loc"] == loc
+
+    def test_malformed_path_parameters_match_no_route(self, alice: TestClient) -> None:
+        assert alice.get(f"{API}/accounts/abc").status_code == 404
+        response = alice.put(f"{API}/securities/1/prices/2025-1-1", json={"price": 1})
+        assert response.status_code == 404
 
     def test_invalid_request(self, alice: TestClient) -> None:
         response = alice.post(f"{API}/accounts", json={"name": "X", "type": "boat"})

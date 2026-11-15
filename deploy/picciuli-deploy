@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Privileged deployment entry point, installed by bootstrap-vm.sh as the
+# root-owned /usr/local/sbin/picciuli-deploy. The "deploy" user may run only
+# this script through sudo, and its SSH key may only ask for it (forced command
+# picciuli-deploy-ssh):
+#
+#   sudo picciuli-deploy <full commit sha>
+#
+# It only accepts commits of the repository's master branch. It downloads the
+# stack definition of that commit from GitHub, installs it root-owned in
+# /opt/picciuli and runs deploy.sh, which deploys the images built from the
+# same commit. A stolen deploy key can therefore only (re)deploy a commit that
+# is already on master, not run arbitrary commands as root.
+set -euo pipefail
+umask 022
+
+repo=${PICCIULI_REPO:-antoniobarba/picciuli}
+branch=${PICCIULI_BRANCH:-master}
+app_dir=${APP_DIR:-/opt/picciuli}
+files=(compose.yml Caddyfile deploy.sh backup.sh .env.example)
+sha=${1:-}
+
+if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+    echo "usage: picciuli-deploy <full commit sha>" >&2
+    exit 2
+fi
+
+# GitHub serves the commits of every fork under the parent repository's name
+# too, so check that the commit is an ancestor of (or equal to) master.
+status=$(curl -fsS --retry 3 -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/$repo/compare/$sha...$branch?per_page=1" |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])')
+if [[ $status != ahead && $status != identical ]]; then
+    echo "commit $sha is not on $branch ($status)" >&2
+    exit 1
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+for name in "${files[@]}"; do
+    curl -fsS --retry 3 -o "$tmp/$name" \
+        "https://raw.githubusercontent.com/$repo/$sha/deploy/$name"
+done
+# Overwrite the files in place rather than replacing them (as install or mv
+# would): Caddy's single-file bind mount keeps the old inode otherwise, and
+# "caddy reload" would read the previous Caddyfile.
+for name in "${files[@]}"; do
+    cp "$tmp/$name" "$app_dir/$name"
+done
+cd "$app_dir"
+chown root:root "${files[@]}"
+chmod 644 compose.yml Caddyfile .env.example
+chmod 755 deploy.sh backup.sh
+
+exec "$app_dir/deploy.sh" "$sha"

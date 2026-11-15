@@ -8,13 +8,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
+from starlette.routing import compile_path
 
 import picciuli
 from picciuli_api.auth import TokenVerifier
-from picciuli_api.books import BookRegistry
+from picciuli_api.books import BookRegistry, ImportLimiter
 from picciuli_api.config import Settings
 from picciuli_api.deps import AppContext, get_current_user
-from picciuli_api.errors import ERROR_RESPONSES, install_error_handlers
+from picciuli_api.errors import BODY_RESPONSES, ERROR_RESPONSES, install_error_handlers
 from picciuli_api.login import create_login_router
 from picciuli_api.providers import SharedProviders
 from picciuli_api.routers import (
@@ -91,10 +93,12 @@ def create_app(
             settings.jwks_url,
             issuer=settings.oidc_issuer,
             audience=settings.oidc_audience,
+            max_lifetime=settings.oidc_max_token_lifetime,
         ),
         books=books
         or BookRegistry(settings.users_dir, max_open=settings.max_open_books),
         providers=providers or SharedProviders(ttl=settings.price_cache_seconds),
+        imports=ImportLimiter(settings.max_concurrent_imports),
     )
 
     @asynccontextmanager
@@ -159,7 +163,7 @@ def create_app(
         dependencies=[Depends(get_current_user)],
         responses=ERROR_RESPONSES,
     )
-    for router in (
+    routers = (
         system.me,
         system.settings,
         accounts.router,
@@ -171,13 +175,47 @@ def create_app(
         securities.rates,
         investments.router,
         system.providers,
-    ):
+    )
+    for router in routers:
         api.include_router(router)
     app.include_router(api)
+    app.state.route_methods = [
+        (compile_path(API_PREFIX + route.path)[0], set(route.methods or ()))
+        for router in routers
+        for route in router.routes
+        if isinstance(route, APIRoute)
+    ]
 
+    _document_body_errors(app)
     if settings.oidc_swagger_client_id:
         _add_oidc_scheme(app, settings.oidc_issuer)
     return app
+
+
+def _document_body_errors(app: FastAPI) -> None:
+    """Document `BODY_RESPONSES` on every operation that reads a request body."""
+    generate = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            schema = generate()
+            error = {"$ref": "#/components/schemas/ErrorResponse"}
+            for path_item in schema.get("paths", {}).values():
+                for operation in path_item.values():
+                    if "requestBody" not in operation:
+                        continue
+                    responses = operation.setdefault("responses", {})
+                    for status, description in BODY_RESPONSES.items():
+                        responses.setdefault(
+                            str(status),
+                            {
+                                "description": description,
+                                "content": {"application/json": {"schema": error}},
+                            },
+                        )
+        return app.openapi_schema or generate()
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 def _add_oidc_scheme(app: FastAPI, issuer: str) -> None:
@@ -201,7 +239,8 @@ def _add_oidc_scheme(app: FastAPI, issuer: str) -> None:
                     security = operation.get("security")
                     if security and {"bearer": []} in security:
                         security.append({"oidc": []})
-        assert app.openapi_schema is not None
+        if app.openapi_schema is None:
+            raise RuntimeError("the OpenAPI schema was not generated")
         return app.openapi_schema
 
     app.openapi = openapi  # type: ignore[method-assign]

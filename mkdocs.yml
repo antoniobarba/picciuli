@@ -26,6 +26,7 @@ nav:
       - Price providers: api/prices.md
       - Exchange-rate providers: api/rates.md
       - Money helpers: api/money.md
+      - Limits: api/limits.md
       - Errors: api/errors.md
 
 plugins:

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from picciuli import Book, ConflictError, NotFoundError
 
-__all__ = ["BookRegistry"]
+__all__ = ["BookRegistry", "ImportLimiter", "ImportsBusyError"]
 
 _USER_ID = re.compile(r"[0-9a-f]{64}")
 _SIDE_FILES = ("-journal", "-wal", "-shm")
@@ -151,3 +151,42 @@ class BookRegistry:
                 del self._entries[user_id]
                 entry.book.close()
                 excess -= 1
+
+
+class ImportLimiter:
+    """Allow one import per user and at most `limit` imports at the same time.
+
+    Imports are the most expensive requests (a file upload, then a long write
+    transaction), so they are capped independently of the thread pool.
+    """
+
+    def __init__(self, limit: int) -> None:
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        self.limit = limit
+        self._lock = threading.Lock()
+        self._running: set[str] = set()
+
+    @contextlib.contextmanager
+    def reserve(self, user_id: str) -> Iterator[None]:
+        """Hold an import slot for `user_id`.
+
+        Raises:
+            ConflictError: If the user already has an import running.
+            ImportsBusyError: If `limit` imports are already running.
+        """
+        with self._lock:
+            if user_id in self._running:
+                raise ConflictError("an import of your data is already running")
+            if len(self._running) >= self.limit:
+                raise ImportsBusyError("too many imports are running, try again later")
+            self._running.add(user_id)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._running.discard(user_id)
+
+
+class ImportsBusyError(Exception):
+    """Every import slot of the server is taken."""

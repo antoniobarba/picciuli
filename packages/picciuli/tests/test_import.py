@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import sqlite3
+import time
 from collections.abc import Iterator
+from contextlib import closing
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from picciuli import AccountType, Book, ConflictError, ImportSummary, ValidationError
 
 from .conftest import d
+from .schema_v1 import SCHEMA_V1
 
 
 @pytest.fixture
@@ -134,3 +139,225 @@ def test_replace_erases_the_book_first(book: Book, source: Book) -> None:
 def test_cannot_import_itself(book: Book) -> None:
     with pytest.raises(ValidationError):
         book.import_from(book)
+
+
+def test_closed_accounts_stay_closed(book: Book, source: Book) -> None:
+    old = source.accounts.create("Old", AccountType.CASH)
+    source.transactions.record_income(d(1), 700, account_id=old.id)
+    source.transactions.record_expense(d(2), 700, account_id=old.id)
+    source.accounts.close(old.id, on=d(3))
+    book.import_from(source)
+    imported = next(a for a in book.accounts.list() if a.name == "Old")
+    assert imported.closed_on == d(3)
+    assert book.accounts.balance(imported.id) == 0
+
+
+def test_merge_refuses_new_transactions_on_closed_accounts(
+    book: Book, source: Book
+) -> None:
+    book.settings.update(currency="EUR", currency_code="EUR")
+    mine = book.accounts.create("Checking", AccountType.CHECKING)
+    book.accounts.close(mine.id, on=d(1, 12, 2024))
+    with pytest.raises(ConflictError, match="closed"):
+        book.import_from(source)
+    assert [a.name for a in book.accounts.list()] == ["Checking"]
+
+
+# --- Untrusted files (SEC-01, SEC-04) ----------------------------------------
+
+
+def _write(source: Book, path: Path) -> Path:
+    with Book.open(path) as copy:
+        copy.import_from(source)
+    return path
+
+
+def _tamper(path: Path, *statements: str) -> Path:
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("PRAGMA ignore_check_constraints=ON")
+        for statement in statements:
+            db.execute(statement)
+        db.commit()
+    return path
+
+
+def test_file_round_trip(book: Book, source: Book, tmp_path: Path) -> None:
+    path = _write(source, tmp_path / "export.db")
+    content = path.read_bytes()
+    summary = book.import_file(path)
+    assert (summary.accounts, summary.transactions, summary.prices) == (2, 4, 1)
+    assert _snapshot(book) == _snapshot(source)
+    assert book.settings.get() == source.settings.get()
+    assert book.import_file(path).duplicates == 4
+    assert path.read_bytes() == content
+
+
+_INFINITE = (
+    "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r) "
+    "SELECT n AS id, 'x' AS name, '2025-01-01' AS start_date, NULL AS end_date "
+    "FROM r"
+)
+_SPLITS_WITH = (
+    "CREATE TABLE splits (id INTEGER NOT NULL, transaction_id INTEGER NOT NULL, "
+    "position INTEGER NOT NULL, account_id INTEGER, category_id INTEGER, "
+    "amount INTEGER NOT NULL, memo VARCHAR {}, security_id INTEGER, "
+    "quantity INTEGER, PRIMARY KEY (id))"
+)
+_SPLIT_INDEXES = (
+    "CREATE INDEX ix_splits_transaction_id ON splits (transaction_id)",
+    "CREATE INDEX ix_splits_account ON splits (account_id)",
+    "CREATE INDEX ix_splits_category ON splits (category_id)",
+    "CREATE INDEX ix_splits_security ON splits (security_id)",
+)
+
+
+@pytest.mark.parametrize(
+    ("statements", "message"),
+    [
+        pytest.param(
+            (
+                "DROP TABLE budgets",
+                "DROP TABLE periods",
+                f"CREATE VIEW periods AS {_INFINITE}",
+            ),
+            "view",
+            id="infinite view",
+        ),
+        pytest.param(
+            ("CREATE TRIGGER t AFTER UPDATE ON meta BEGIN SELECT 1; END",),
+            "trigger",
+            id="trigger",
+        ),
+        pytest.param(
+            (
+                "DROP TABLE splits",
+                _SPLITS_WITH.format("AS (printf('%.*c', 999999999, 'x'))"),
+                *_SPLIT_INDEXES,
+            ),
+            "structure",
+            id="generated column",
+        ),
+        pytest.param(
+            (
+                "DROP TABLE splits",
+                _SPLITS_WITH.format("DEFAULT (printf('%.*c', 999999999, 'x'))"),
+                *_SPLIT_INDEXES,
+            ),
+            "structure",
+            id="default expression",
+        ),
+        pytest.param(
+            (
+                "DROP INDEX ix_splits_account",
+                "CREATE INDEX ix_splits_account ON splits (abs(account_id))",
+            ),
+            "structure",
+            id="expression index",
+        ),
+        pytest.param(("CREATE TABLE evil (x)",), "unexpected", id="extra table"),
+    ],
+)
+def test_file_with_a_malicious_schema_is_refused(
+    book: Book,
+    source: Book,
+    tmp_path: Path,
+    statements: tuple[str, ...],
+    message: str,
+) -> None:
+    path = _tamper(_write(source, tmp_path / "evil.db"), *statements)
+    start = time.perf_counter()
+    with pytest.raises(ValidationError, match=message):
+        book.import_file(path, replace=True)
+    assert time.perf_counter() - start < 5
+    assert book.accounts.list() == []
+
+
+def test_old_schema_versions_are_refused_without_migrating_the_file(
+    book: Book, tmp_path: Path
+) -> None:
+    path = tmp_path / "v1.db"
+    with closing(sqlite3.connect(path)) as db:
+        db.executescript(SCHEMA_V1)
+        db.execute("INSERT INTO meta VALUES ('schema_version', '1')")
+        db.commit()
+    content = path.read_bytes()
+    with pytest.raises(ValidationError, match="old schema version 1"):
+        book.import_file(path)
+    assert path.read_bytes() == content
+
+
+def test_file_that_is_not_a_book(book: Book, tmp_path: Path) -> None:
+    path = tmp_path / "text.db"
+    path.write_bytes(b"hello")
+    with pytest.raises(ValidationError, match="not a Picciuli database"):
+        book.import_file(path)
+
+
+def test_import_has_a_time_budget(book: Book, source: Book, tmp_path: Path) -> None:
+    path = _write(source, tmp_path / "export.db")
+    with pytest.raises(ValidationError, match="in time"):
+        book.import_file(path, timeout=0)
+    assert book.accounts.list() == []
+
+
+_FIRST_EXPENSES = (
+    "transaction_id IN (SELECT id FROM transactions WHERE date = '2025-01-03')"
+)
+
+
+@pytest.mark.parametrize(
+    ("statement", "message"),
+    [
+        (
+            "UPDATE accounts SET opening_balance = 'abc'",
+            "opening balance must be an integer",
+        ),
+        ("UPDATE accounts SET opening_balance = 1.5", "must be an integer"),
+        ("UPDATE meta SET value = 'abc' WHERE key = 'minor_digits'", "minor digits"),
+        ("UPDATE meta SET value = '9' WHERE key = 'minor_digits'", "minor digits"),
+        ("UPDATE meta SET value = 'evil' WHERE key = 'cost_method'", "cost method"),
+        (
+            "UPDATE meta SET value = 'nope' WHERE key = 'price_provider'",
+            "price provider",
+        ),
+        ("INSERT INTO meta VALUES ('evil', 'x')", "unknown setting"),
+        (
+            "UPDATE splits SET amount = 999999 WHERE id = (SELECT min(id) FROM splits)",
+            "unbalanced",
+        ),
+        ("UPDATE splits SET quantity = -quantity", "cannot be negative"),
+        (
+            "UPDATE accounts SET type = 'checking' WHERE name = 'Broker'",
+            "not an investment account",
+        ),
+        (
+            "UPDATE accounts SET opening_date = '2030-01-01' WHERE name = 'Checking'",
+            "opens on",
+        ),
+        (
+            "UPDATE accounts SET closed_on = '2025-01-02' WHERE name = 'Checking'",
+            "cannot be closed",
+        ),
+        ("UPDATE transactions SET date = '2025-13-45'", "not a valid date"),
+        ("UPDATE transactions SET description = x'00ff'", "must be a string"),
+        (
+            "UPDATE splits SET category_id = 99 WHERE category_id IS NOT NULL",
+            "does not exist",
+        ),
+        ("UPDATE securities SET isin = 'XX0000000000'", "invalid ISIN"),
+        ("UPDATE prices SET price = -1", "greater than zero"),
+        (
+            f"UPDATE splits SET amount = -4611686018427387904 WHERE {_FIRST_EXPENSES}",
+            "amount cannot exceed",
+        ),
+    ],
+)
+def test_file_breaking_a_domain_rule_is_refused(
+    book: Book, source: Book, tmp_path: Path, statement: str, message: str
+) -> None:
+    path = _tamper(_write(source, tmp_path / "bad.db"), statement)
+    with pytest.raises(ValidationError, match=message):
+        book.import_file(path, replace=True)
+    assert book.accounts.list() == []
+    assert book.transactions.list() == []
+    assert book.settings.get().cost_method == "average"

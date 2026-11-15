@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     """
     oidc_swagger_scopes: str = "openid profile email"
     """Space-separated scopes requested by Swagger UI."""
+    oidc_max_token_lifetime: int = Field(default=24 * 60 * 60, ge=60)
+    """Longest accepted access-token validity (`exp` - `iat`), in seconds."""
 
     login_origin: str = ""
     """Exact web origin for native login; empty disables the login endpoints."""
@@ -49,6 +51,11 @@ class Settings(BaseSettings):
     """Server-only PAT of an IAM_LOGIN_CLIENT service account."""
     login_cookie_secret: SecretStr = SecretStr("")
     """At least 32 random characters used to encrypt login cookies."""
+    login_require_lockout: bool = True
+    """Refuse native sign-in while the organization has no Zitadel lockout policy.
+
+    When false, a missing policy is only logged as an error.
+    """
 
     cors_origins: Annotated[list[str], NoDecode] = []
     """Origins allowed to call the API from a browser (comma-separated)."""
@@ -57,6 +64,10 @@ class Settings(BaseSettings):
     """How many user databases are kept open at the same time."""
     max_import_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
     """Largest database file accepted by `POST /me/import`, in bytes."""
+    max_concurrent_imports: int = Field(default=2, ge=1)
+    """How many imports may run at the same time (each user runs one at most)."""
+    import_timeout_seconds: float = Field(default=60.0, gt=0)
+    """Time budget of one import; slower imports are refused and rolled back."""
     price_cache_seconds: float = Field(default=900.0, ge=0)
     """How long downloaded quotes and exchange rates are reused, in seconds."""
 

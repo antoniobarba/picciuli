@@ -28,9 +28,10 @@ To install it:
   bar, or the account menu (top right) → *Install the app*.
 
 The installed app opens in its own window, stays signed in (the login is
-renewed silently) and updates itself: when a new version is deployed, a banner
-offers to reload. It starts without a network, but data is only read and
-written online; a banner says when you are offline.
+renewed silently, for up to 30 days, or 14 days without use) and updates
+itself: when a new version is deployed, a banner offers to reload. It starts
+without a network, but data is only read and written online; a banner says
+when you are offline.
 
 ## Screens
 
@@ -54,7 +55,10 @@ transactions identical to ones you already have, so importing the same file
 twice adds nothing; your settings are kept and the file must use the same
 currency and decimal digits (unless your book is still empty). *Replace*
 deletes all your data first and adopts the file's settings. Either way the
-import is all-or-nothing.
+import is all-or-nothing, and the file must follow the same rules as data
+entered by hand (for example balanced transactions), otherwise nothing is
+imported. Files from an older Picciuli version must be opened once with an
+up-to-date console interface before they can be imported.
 
 The transaction form has the four kinds of the console interface: **Expense**,
 **Income**, **Transfer** and **Split**. In the split editor a live line shows
@@ -88,9 +92,16 @@ npm ci
 npm run dev          # http://localhost:5173, against the production API and login
 npm test             # unit and component tests (Vitest)
 npm run lint && npm run typecheck
-npm run build        # production files in dist/
+npm run build        # production files in dist/, without source maps
 npm run api-types    # regenerate src/api/schema.d.ts after changing the API
 ```
+
+Production builds do not publish source maps. To debug a local production
+build, run `PICCIULI_SOURCEMAP=true npm run build`; never deploy that output.
+`deepmerge`, a build-time dependency of the service-worker generator, has no
+upstream fix for GHSA-gcqx-w48m-w2h4, so `vendor/deepmerge` holds a patched
+copy that `package.json` substitutes through `overrides`. Drop it when
+`workbox-build` no longer needs a vulnerable version.
 
 `npm run dev` reads `.env.development`: it signs in through the Zitadel
 application *Picciuli front-end (development)* (redirect URI
@@ -115,6 +126,44 @@ src/app/         shell, routes, keyboard help, command palette, live prices
 
 Amounts stay integers in minor units and quantities and prices stay decimal
 strings, exactly as in the API, so no floating-point rounding ever happens.
+
+### Token storage
+
+The app is an OpenID Connect public client (Authorization Code with PKCE). It
+keeps the access, ID and refresh tokens in `localStorage`, so an installed app
+stays signed in between launches. Any script running in the page, through an
+XSS bug or a malicious browser extension, could read them; a strict
+Content-Security-Policy (`script-src 'self'`) and React's escaping are the
+first line of defence, and the following limits bound what a stolen token is
+worth:
+
+- Access tokens (JWT) live one hour.
+- Refresh tokens rotate on every use: a used one is rejected. They expire after
+  14 days without use and 30 days after sign-in, whatever happens.
+- Renewal happens on demand, one tab at a time (Web Locks), so tabs never
+  present the same single-use refresh token twice.
+- Sign-out revokes the access and refresh tokens at Zitadel and deletes them
+  locally (native sign-out deletes them even when revocation fails). Tabs follow
+  sign-in and sign-out in other tabs through `storage` events.
+
+If a refresh token is stolen and used first, the attacker can keep renewing it
+until the absolute expiry, and the legitimate app is signed out at its next
+renewal. Sign-out on that device does not revoke the attacker's rotated token:
+an administrator removes the user's sessions and tokens in the Zitadel console.
+
+Alternatives considered:
+
+- **Access token in memory, refresh token in `sessionStorage`.** An installed
+  PWA loses `sessionStorage` when its window closes, so every launch would
+  need a silent authorization through the identity provider. With native
+  login that would need an iframe flow through `/login`, and every page would
+  still be able to read the refresh token while the app is open, so the gain
+  is small and the cost to users is a sign-in on most launches.
+- **Backend-for-frontend with an HttpOnly cookie** (the native login already
+  sets `__Host-picciuli-session` on the API). This keeps every token away from
+  JavaScript and is the strongest option, but the API would have to hold the
+  OIDC tokens server-side, proxy or authenticate every request by cookie,
+  and add CSRF protection. It is the next step if the threat model changes.
 
 ## Deployment
 
@@ -199,12 +248,16 @@ the instance-wide login URL.
 
 Login cookies are encrypted, HttpOnly, host-only, SameSite=Lax, and Secure on
 HTTPS. Login flows expire after ten minutes; Zitadel sessions have a 30-day
-lifetime. Session tokens never reach JavaScript. The existing OIDC access and
-refresh token storage is unchanged. Native sign-out terminates the current
-Zitadel session and revokes the app's tokens; it does not sign out other devices.
-Anonymous endpoints are limited to 30 requests per minute per client IP per
-API process. Keep the supplied single-process deployment or add a shared
-edge rate limiter when scaling it.
+lifetime. Session tokens never reach JavaScript. The OIDC access and refresh
+tokens are kept as described in [Token storage](#token-storage). Native
+sign-out terminates the current Zitadel session and revokes the app's tokens;
+it does not sign out other devices.
+Anonymous endpoints are limited to 30 requests per minute per client address
+(IPv6: per /64), and guesses to 10 per 15 minutes per username, user ID and
+Zitadel session, per API process. Native sign-in also requires a Zitadel lockout
+policy (see [Account lockout and MFA](deployment.md#account-lockout-and-mfa)).
+Keep the supplied single-process deployment or add a shared edge rate limiter
+when scaling it.
 
 For local native-login development, run the API with `PICCIULI_LOGIN_ORIGIN` set
 to `http://localhost:5173`, the development client ID and the same server-only

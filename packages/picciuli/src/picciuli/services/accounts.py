@@ -123,9 +123,9 @@ class AccountService:
         """
         name = v.name(name, "account name")
         account_type = _account_type(type)
-        opening_balance = v.integer(opening_balance, "opening balance")
+        opening_balance = v.amount(opening_balance, "opening balance")
         opening_date = v.optional_date(opening_date, "opening date")
-        goal = v.optional_integer(goal, "goal")
+        goal = v.optional_amount(goal, "goal")
         notes = v.optional_text(notes, "notes")
         with self._uow.session() as session:
             _ensure_unique_name(session, name)
@@ -206,7 +206,7 @@ class AccountService:
                     )
                 row.type = new_type.value
             if not isinstance(goal, Unset):
-                row.goal = v.optional_integer(goal, "goal")
+                row.goal = v.optional_amount(goal, "goal")
             if not isinstance(notes, Unset):
                 row.notes = v.optional_text(notes, "notes")
             changes_opening = not isinstance(opening_balance, Unset) or not isinstance(
@@ -215,7 +215,7 @@ class AccountService:
             if changes_opening and row.closed_on is not None:
                 raise ConflictError("reopen the account to change its opening values")
             if not isinstance(opening_balance, Unset):
-                row.opening_balance = v.integer(opening_balance, "opening balance")
+                row.opening_balance = v.amount(opening_balance, "opening balance")
             if not isinstance(opening_date, Unset):
                 new_date = v.optional_date(opening_date, "opening date")
                 first = _first_transaction_date(session, row.id)

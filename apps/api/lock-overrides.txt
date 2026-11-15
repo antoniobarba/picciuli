@@ -1,0 +1,2 @@
+# The local picciuli package is installed from source, not from PyPI.
+picciuli; python_version < '0'
