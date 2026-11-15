@@ -7,16 +7,18 @@ import tempfile
 from pathlib import Path
 from typing import Annotated, Literal
 
+import fastapi
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from picciuli import ImportSummary
+from picciuli.limits import MAX_NAME_LENGTH
 from picciuli.prices import available_providers
 from picciuli.rates import available_rate_providers
 from picciuli_api.deps import AppContext, BookDep, ContextDep, UserDep
-from picciuli_api.errors import ErrorResponse
+from picciuli_api.errors import PROVIDER_RESPONSES, ErrorResponse
 from picciuli_api.schemas.investments import ProviderOut, SecurityInfoOut
 from picciuli_api.schemas.misc import ImportOut, MeOut, SettingsOut, SettingsUpdate
 
@@ -49,12 +51,19 @@ def list_rate_providers(user: UserDep) -> list[ProviderOut]:
     return [ProviderOut.model_validate(p) for p in available_rate_providers()]
 
 
-@providers.get("/prices/{provider_id}/search")
+@providers.get("/prices/{provider_id}/search", responses=PROVIDER_RESPONSES)
 def search_securities(
     user: UserDep,
     context: ContextDep,
-    provider_id: str,
-    q: Annotated[str, Query(min_length=1, description="Name, symbol or ISIN.")],
+    provider_id: Annotated[str, fastapi.Path(max_length=MAX_NAME_LENGTH)],
+    q: Annotated[
+        str,
+        Query(
+            min_length=1,
+            max_length=MAX_NAME_LENGTH,
+            description="Name, symbol or ISIN.",
+        ),
+    ],
 ) -> list[SecurityInfoOut]:
     """Find instruments known to a price provider."""
     found = context.providers.prices(provider_id).search(q)

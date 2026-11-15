@@ -138,6 +138,68 @@ def test_split_type_is_required(alice: TestClient, setup: dict[str, int]) -> Non
     assert response.json()["error"] == "invalid_request"
 
 
+@pytest.mark.parametrize(
+    ("change", "loc"),
+    [
+        ({"splits": []}, ["body", "splits"]),
+        ({"splits": [{"type": "external", "amount": -1}] * 101}, ["body", "splits"]),
+        ({"amount": 10**15 + 1}, ["body", "splits", 0, "account", "amount"]),
+        ({"amount": 2**63}, ["body", "splits", 0, "account", "amount"]),
+        ({"date": 0}, ["body", "date"]),
+        ({"notes": "n" * 2001}, ["body", "notes"]),
+        ({"description": "d" * 2001}, ["body", "description"]),
+        ({"memo": "m" * 501}, ["body", "splits", 0, "account", "memo"]),
+    ],
+)
+def test_limits_are_part_of_the_schema(
+    alice: TestClient, setup: dict[str, int], change: dict[str, Any], loc: list[Any]
+) -> None:
+    amount = change.pop("amount", -100)
+    memo = change.pop("memo", None)
+    body = {
+        "date": "2025-02-01",
+        "splits": [
+            {
+                "type": "account",
+                "account_id": setup["checking"],
+                "amount": amount,
+                "memo": memo,
+            },
+            {"type": "external", "amount": amount},
+        ],
+        **change,
+    }
+    response = alice.post(f"{API}/transactions", json=body)
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_request"
+    assert response.json()["errors"][0]["loc"][: len(loc)] == loc
+
+
+def test_largest_amount_is_accepted(alice: TestClient, setup: dict[str, int]) -> None:
+    income = post(
+        alice,
+        "/income",
+        {"date": "2025-01-01", "amount": 10**15, "account_id": setup["checking"]},
+    )
+    assert income["net_amount"] == 10**15
+
+
+def test_fields_that_cannot_be_cleared_reject_null(
+    alice: TestClient, setup: dict[str, int]
+) -> None:
+    created = post(
+        alice,
+        "/expense",
+        {"date": "2025-01-03", "amount": 1000, "account_id": setup["checking"]},
+    )
+    url = f"{API}/transactions/{created['id']}"
+    for field in ("date", "splits"):
+        response = alice.patch(url, json={field: None})
+        assert response.status_code == 422
+        assert response.json()["errors"][0]["loc"] == ["body", field]
+    assert alice.patch(url, json={"notes": None}).status_code == 200
+
+
 def test_get_update_delete(alice: TestClient, setup: dict[str, int]) -> None:
     created = post(
         alice,

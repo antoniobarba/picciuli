@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import Field
-
 from .accounts import AccountOut
-from .base import InputModel, OutputModel, PatchModel
+from .base import (
+    Date,
+    Id,
+    InputModel,
+    Name,
+    NonNegativeAmount,
+    OutputModel,
+    PatchModel,
+)
 from .categories import CategoryOut
 
 __all__ = [
@@ -38,17 +44,19 @@ class PeriodOut(OutputModel):
 class PeriodCreate(InputModel):
     """A new period. Its name defaults to one derived from the dates."""
 
-    start: dt.date
-    end: dt.date | None = None
-    name: str | None = None
+    start: Date
+    end: Date | None = None
+    name: Name | None = None
 
 
 class PeriodUpdate(PatchModel):
     """Changes to a period."""
 
-    name: str | None = None
-    start: dt.date | None = None
-    end: dt.date | None = None
+    _not_null = frozenset({"name", "start"})
+
+    name: Name | None = None
+    start: Date | None = None
+    end: Date | None = None
 
 
 class CategoryTotalOut(OutputModel):
@@ -92,24 +100,26 @@ class BudgetOut(OutputModel):
 class BudgetCreate(InputModel):
     """A new budget."""
 
-    category_id: int
-    period_id: int
-    amount: int = Field(ge=0)
+    category_id: Id
+    period_id: Id
+    amount: NonNegativeAmount
 
 
 class BudgetUpdate(PatchModel):
     """Changes to a budget."""
 
-    amount: int | None = Field(default=None, ge=0)
-    category_id: int | None = None
-    period_id: int | None = None
+    _not_null = frozenset({"amount", "category_id", "period_id"})
+
+    amount: NonNegativeAmount | None = None
+    category_id: Id | None = None
+    period_id: Id | None = None
 
 
 class BudgetCopy(InputModel):
     """Copy every budget of a period into another one."""
 
-    source_period_id: int
-    target_period_id: int
+    source_period_id: Id
+    target_period_id: Id
     overwrite: bool = False
 
 

@@ -27,6 +27,7 @@ Caddy (HTTPS) ──▶ picciuli-api ──▶ data/users/<user id>.db   (one Bo
 - **Prices and exchange rates** are only downloaded when a user asks for a
   refresh. Quotes are public, so one cache serves everybody: a symbol is
   downloaded at most once every `PICCIULI_PRICE_CACHE_SECONDS` (15 minutes).
+  The cache keeps the 1024 most recently used symbols and currency pairs.
 
 ## Interactive documentation
 
@@ -51,10 +52,16 @@ picciuli-api openapi --output apps/api/openapi.json
 
 - All endpoints are under `/api/v1` and need a bearer token; `/healthz` does not.
 - Amounts are integers in minor units (cents), signed from the user's point of
-  view, exactly as in the [library](concepts.md).
-- Quantities, prices and exchange rates are decimal **strings** (`"1.25"`), so
-  no precision is lost in JavaScript. Requests also accept JSON numbers.
+  view, exactly as in the [library](concepts.md). A single amount is at most
+  10^15 in absolute value; every [limit](concepts.md#limits) of the library
+  (identifiers, text lengths, at most 100 splits) is part of the OpenAPI
+  schema, so invalid values get `422 invalid_request` before reaching it.
+- Quantities, prices and exchange rates are decimal **strings** (`"1.25"`,
+  at most 8 decimal places, below 10^10, no exponent), so no precision is
+  lost in JavaScript. Requests also accept JSON numbers.
+- Dates are `YYYY-MM-DD` strings; numbers such as `0` are rejected.
 - `PATCH` changes only the fields present in the body; `null` clears a field.
+  Fields that cannot be cleared (for example a name) reject `null`.
 - Transaction splits carry a `type`: `{"type": "account", "account_id": 1,
   "amount": -500}` or `{"type": "external", "amount": -500, "category_id": 3}`.
 - `POST` returns `201` with the created entity, `DELETE` returns `204`.
@@ -62,10 +69,12 @@ picciuli-api openapi --output apps/api/openapi.json
 
 | Status | `error`                | Cause                                         |
 |--------|------------------------|-----------------------------------------------|
+| 400    | `bad_request`          | a body that cannot be read                    |
 | 401    | `unauthorized`         | missing, expired or invalid token             |
 | 404    | `not_found`            | unknown entity or URL                         |
+| 405    | `method_not_allowed`   | `Allow` lists every method of the path        |
 | 409    | `conflict`             | duplicate name, entity in use, closed account, import already running |
-| 413    | `too_large`            | uploaded file above `MAX_IMPORT_BYTES`        |
+| 413    | `too_large`            | uploaded file above `MAX_IMPORT_BYTES`, or a body above the proxy limit |
 | 422    | `invalid_request`      | malformed request (with an `errors` list)     |
 | 422    | `validation_error`     | a domain rule, e.g. unbalanced splits         |
 | 502    | `price_provider_error` | the price provider failed                     |

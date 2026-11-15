@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pydantic import Field
+
 from picciuli import CostMethod
 
 from .accounts import AccountOut
-from .base import OutputModel, PatchModel
+from .base import CurrencyCode, Name, OutputModel, PatchModel
 from .transactions import TransactionOut
 
 __all__ = [
@@ -49,12 +51,16 @@ class SettingsOut(OutputModel):
 class SettingsUpdate(PatchModel):
     """Changes to the settings."""
 
-    currency: str | None = None
-    minor_digits: int | None = None
-    currency_code: str | None = None
+    _not_null = frozenset(
+        {"currency", "minor_digits", "cost_method", "price_provider", "rate_provider"}
+    )
+
+    currency: Name | None = None
+    minor_digits: int | None = Field(default=None, ge=0, le=6)
+    currency_code: CurrencyCode | None = None
     cost_method: CostMethod | None = None
-    price_provider: str | None = None
-    rate_provider: str | None = None
+    price_provider: Name | None = None
+    rate_provider: Name | None = None
 
 
 class MeOut(OutputModel):

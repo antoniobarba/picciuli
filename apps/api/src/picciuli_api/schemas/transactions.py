@@ -4,14 +4,26 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
-from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
 
 from picciuli import AccountSplit, ExternalSplit, TransactionKind
+from picciuli.limits import MAX_SPLITS
 
-from .base import DecimalStr, InputModel, OutputModel, PatchModel
+from .base import (
+    Amount,
+    Date,
+    DecimalStr,
+    Id,
+    InputModel,
+    Memo,
+    OutputModel,
+    PatchModel,
+    PositiveAmount,
+    SignedDecimal,
+    Text,
+)
 
 __all__ = [
     "AccountSplitIn",
@@ -83,11 +95,11 @@ class AccountSplitIn(InputModel):
     """A split changing the balance of one of your accounts."""
 
     type: Literal["account"]
-    account_id: int
-    amount: int
-    memo: str | None = None
-    security_id: int | None = None
-    quantity: Decimal | None = None
+    account_id: Id
+    amount: Amount
+    memo: Memo | None = None
+    security_id: Id | None = None
+    quantity: SignedDecimal | None = None
 
     def to_model(self) -> AccountSplit:
         """Convert to the library type."""
@@ -104,9 +116,9 @@ class ExternalSplitIn(InputModel):
     """A split crossing the boundary of your accounts (income or expense)."""
 
     type: Literal["external"]
-    amount: int
-    category_id: int | None = None
-    memo: str | None = None
+    amount: Amount
+    category_id: Id | None = None
+    memo: Memo | None = None
 
     def to_model(self) -> ExternalSplit:
         """Convert to the library type."""
@@ -116,24 +128,27 @@ class ExternalSplitIn(InputModel):
 
 
 SplitIn = Annotated[AccountSplitIn | ExternalSplitIn, Field(discriminator="type")]
+SplitList = Annotated[list[SplitIn], Field(min_length=1, max_length=MAX_SPLITS)]
 
 
 class TransactionCreate(InputModel):
     """A new transaction. Account splits must add up to the external splits."""
 
-    date: dt.date
-    splits: list[SplitIn]
-    description: str | None = None
-    notes: str | None = None
+    date: Date
+    splits: SplitList
+    description: Text | None = None
+    notes: Text | None = None
 
 
 class TransactionUpdate(PatchModel):
     """Changes to a transaction. `splits` replaces every split."""
 
-    date: dt.date | None = None
-    splits: list[SplitIn] | None = None
-    description: str | None = None
-    notes: str | None = None
+    _not_null = frozenset({"date", "splits"})
+
+    date: Date | None = None
+    splits: SplitList | None = None
+    description: Text | None = None
+    notes: Text | None = None
 
     def changes(self) -> dict[str, Any]:
         """Return the explicitly set fields, with splits converted."""
@@ -146,31 +161,31 @@ class TransactionUpdate(PatchModel):
 class ExpenseCreate(InputModel):
     """Money spent from one account."""
 
-    date: dt.date
-    amount: int = Field(gt=0, description="Positive amount spent, in minor units.")
-    account_id: int
-    category_id: int | None = None
-    description: str | None = None
-    notes: str | None = None
+    date: Date
+    amount: PositiveAmount = Field(description="Positive amount spent, in minor units.")
+    account_id: Id
+    category_id: Id | None = None
+    description: Text | None = None
+    notes: Text | None = None
 
 
 class IncomeCreate(InputModel):
     """Money received into one account."""
 
-    date: dt.date
-    amount: int = Field(gt=0, description="Positive amount received.")
-    account_id: int
-    category_id: int | None = None
-    description: str | None = None
-    notes: str | None = None
+    date: Date
+    amount: PositiveAmount = Field(description="Positive amount received.")
+    account_id: Id
+    category_id: Id | None = None
+    description: Text | None = None
+    notes: Text | None = None
 
 
 class TransferCreate(InputModel):
     """Money moved between two of your accounts."""
 
-    date: dt.date
-    amount: int = Field(gt=0, description="Positive amount moved.")
-    from_account_id: int
-    to_account_id: int
-    description: str | None = None
-    notes: str | None = None
+    date: Date
+    amount: PositiveAmount = Field(description="Positive amount moved.")
+    from_account_id: Id
+    to_account_id: Id
+    description: Text | None = None
+    notes: Text | None = None

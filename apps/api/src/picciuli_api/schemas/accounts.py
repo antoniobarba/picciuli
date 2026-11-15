@@ -8,7 +8,16 @@ from pydantic import Field
 
 from picciuli import AccountClass, AccountType
 
-from .base import InputModel, OutputModel, PatchModel
+from .base import (
+    Amount,
+    Date,
+    InputModel,
+    Name,
+    OutputModel,
+    PatchModel,
+    Position,
+    Text,
+)
 
 __all__ = [
     "AccountBalanceOut",
@@ -41,35 +50,37 @@ class AccountOut(OutputModel):
 class AccountCreate(InputModel):
     """A new account."""
 
-    name: str = Field(examples=["Checking"])
+    name: Name = Field(examples=["Checking"])
     type: AccountType
-    opening_balance: int = 0
-    opening_date: dt.date | None = None
-    goal: int | None = None
-    notes: str | None = None
+    opening_balance: Amount = 0
+    opening_date: Date | None = None
+    goal: Amount | None = None
+    notes: Text | None = None
 
 
 class AccountUpdate(PatchModel):
     """Changes to an account."""
 
-    name: str | None = None
+    _not_null = frozenset({"name", "type", "opening_balance"})
+
+    name: Name | None = None
     type: AccountType | None = None
-    opening_balance: int | None = None
-    opening_date: dt.date | None = None
-    goal: int | None = None
-    notes: str | None = None
+    opening_balance: Amount | None = None
+    opening_date: Date | None = None
+    goal: Amount | None = None
+    notes: Text | None = None
 
 
 class AccountMove(InputModel):
     """A new display position."""
 
-    position: int = Field(ge=1)
+    position: Position
 
 
 class CloseAccount(InputModel):
     """When to close an account."""
 
-    on: dt.date | None = None
+    on: Date | None = None
     """Closing day; today if omitted."""
 
 

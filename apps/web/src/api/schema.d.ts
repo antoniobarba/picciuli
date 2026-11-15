@@ -1154,6 +1154,7 @@ export interface components {
             type: components["schemas"]["AccountType"];
             /**
              * Opening Balance
+             * @description Amount in minor units, at most 10^15 in absolute value.
              * @default 0
              */
             opening_balance: number;
@@ -1210,14 +1211,17 @@ export interface components {
             type: "account";
             /** Account Id */
             account_id: number;
-            /** Amount */
+            /**
+             * Amount
+             * @description Amount in minor units, at most 10^15 in absolute value.
+             */
             amount: number;
             /** Memo */
             memo?: string | null;
             /** Security Id */
             security_id?: number | null;
             /** Quantity */
-            quantity?: number | string | null;
+            quantity?: string | number | null;
         };
         /**
          * AccountSplitOut
@@ -1255,10 +1259,13 @@ export interface components {
          */
         AccountUpdate: {
             /** Name */
-            name?: string | null;
-            type?: components["schemas"]["AccountType"] | null;
-            /** Opening Balance */
-            opening_balance?: number | null;
+            name?: string;
+            type?: components["schemas"]["AccountType"];
+            /**
+             * Opening Balance
+             * @description Amount in minor units, at most 10^15 in absolute value.
+             */
+            opening_balance?: number;
             /** Opening Date */
             opening_date?: string | null;
             /** Goal */
@@ -1375,11 +1382,11 @@ export interface components {
          */
         BudgetUpdate: {
             /** Amount */
-            amount?: number | null;
+            amount?: number;
             /** Category Id */
-            category_id?: number | null;
+            category_id?: number;
             /** Period Id */
-            period_id?: number | null;
+            period_id?: number;
         };
         /**
          * BuyCreate
@@ -1399,7 +1406,7 @@ export interface components {
              * Quantity
              * @example 1.5
              */
-            quantity: number | string;
+            quantity: string | number;
             /**
              * Cost
              * @description Price paid for the shares, in minor units.
@@ -1467,13 +1474,13 @@ export interface components {
          */
         CategoryUpdate: {
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Symbol */
             symbol?: string | null;
             /** Parent Id */
             parent_id?: number | null;
             /** Position */
-            position?: number | null;
+            position?: number;
         };
         /**
          * CloseAccount
@@ -1521,7 +1528,7 @@ export interface components {
              * Rate
              * @example 0.92
              */
-            rate: number | string;
+            rate: string | number;
         };
         /**
          * ExchangeRateOut
@@ -1572,7 +1579,10 @@ export interface components {
              * @enum {string}
              */
             type: "external";
-            /** Amount */
+            /**
+             * Amount
+             * @description Amount in minor units, at most 10^15 in absolute value.
+             */
             amount: number;
             /** Category Id */
             category_id?: number | null;
@@ -1768,9 +1778,12 @@ export interface components {
          */
         PeriodUpdate: {
             /** Name */
-            name?: string | null;
-            /** Start */
-            start?: string | null;
+            name?: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start?: string;
             /** End */
             end?: string | null;
         };
@@ -1783,7 +1796,7 @@ export interface components {
              * Price
              * @example 112.34
              */
-            price: number | string;
+            price: string | number;
             /** Source */
             source?: string | null;
         };
@@ -1957,10 +1970,13 @@ export interface components {
          */
         SecurityUpdate: {
             /** Name */
-            name?: string | null;
-            /** Currency */
-            currency?: string | null;
-            kind?: components["schemas"]["SecurityKind"] | null;
+            name?: string;
+            /**
+             * Currency
+             * @example EUR
+             */
+            currency?: string;
+            kind?: components["schemas"]["SecurityKind"];
             /** Symbol */
             symbol?: string | null;
             /** Isin */
@@ -1986,7 +2002,7 @@ export interface components {
              * Quantity
              * @example 1.5
              */
-            quantity: number | string;
+            quantity: string | number;
             /**
              * Proceeds
              * @description Gross sale proceeds, in minor units.
@@ -2038,16 +2054,16 @@ export interface components {
          */
         SettingsUpdate: {
             /** Currency */
-            currency?: string | null;
+            currency?: string;
             /** Minor Digits */
-            minor_digits?: number | null;
+            minor_digits?: number;
             /** Currency Code */
             currency_code?: string | null;
-            cost_method?: components["schemas"]["CostMethod"] | null;
+            cost_method?: components["schemas"]["CostMethod"];
             /** Price Provider */
-            price_provider?: string | null;
+            price_provider?: string;
             /** Rate Provider */
-            rate_provider?: string | null;
+            rate_provider?: string;
         };
         /**
          * TransactionCreate
@@ -2099,10 +2115,13 @@ export interface components {
          * @description Changes to a transaction. `splits` replaces every split.
          */
         TransactionUpdate: {
-            /** Date */
-            date?: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date?: string;
             /** Splits */
-            splits?: (components["schemas"]["AccountSplitIn"] | components["schemas"]["ExternalSplitIn"])[] | null;
+            splits?: (components["schemas"]["AccountSplitIn"] | components["schemas"]["ExternalSplitIn"])[];
             /** Description */
             description?: string | null;
             /** Notes */
@@ -2217,6 +2236,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_me_api_v1_me_delete: {
@@ -2264,6 +2292,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2327,6 +2364,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     import_data_api_v1_me_import_post: {
@@ -2353,6 +2399,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -2465,6 +2520,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_settings_api_v1_settings_patch: {
@@ -2487,6 +2551,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -2516,8 +2589,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2583,6 +2674,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_account_api_v1_accounts_post: {
@@ -2605,6 +2705,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -2634,8 +2743,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2702,6 +2829,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     net_worth_api_v1_accounts_net_worth_get: {
@@ -2753,6 +2889,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2818,6 +2963,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_account_api_v1_accounts__account_id__delete: {
@@ -2874,6 +3028,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_account_api_v1_accounts__account_id__patch: {
@@ -2898,6 +3061,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -2927,8 +3099,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2962,6 +3152,15 @@ export interface operations {
                     "application/json": components["schemas"]["AccountOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -2989,8 +3188,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3024,6 +3241,15 @@ export interface operations {
                     "application/json": components["schemas"]["AccountOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -3051,8 +3277,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3118,6 +3362,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     account_balance_api_v1_accounts__account_id__balance_get: {
@@ -3171,6 +3424,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3239,6 +3501,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_categories_api_v1_categories_get: {
@@ -3298,6 +3569,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_category_api_v1_categories_post: {
@@ -3320,6 +3600,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CategoryOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -3349,8 +3638,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3409,6 +3716,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3477,6 +3793,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_category_api_v1_categories__category_id__patch: {
@@ -3501,6 +3826,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CategoryOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -3530,8 +3864,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3590,6 +3942,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3666,6 +4027,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_transaction_api_v1_transactions_post: {
@@ -3688,6 +4058,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -3717,8 +4096,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3786,6 +4183,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     record_expense_api_v1_transactions_expense_post: {
@@ -3808,6 +4214,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -3837,8 +4252,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3870,6 +4303,15 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -3897,8 +4339,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3930,6 +4390,15 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -3957,8 +4426,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4024,6 +4511,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_transaction_api_v1_transactions__transaction_id__delete: {
@@ -4080,6 +4576,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_transaction_api_v1_transactions__transaction_id__patch: {
@@ -4104,6 +4609,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -4133,8 +4647,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4201,6 +4733,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_period_api_v1_periods_post: {
@@ -4223,6 +4764,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeriodOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -4252,8 +4802,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4319,6 +4887,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_period_api_v1_periods__period_id__delete: {
@@ -4375,6 +4952,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_period_api_v1_periods__period_id__patch: {
@@ -4399,6 +4985,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeriodOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -4428,8 +5023,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4495,6 +5108,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     budget_report_api_v1_periods__period_id__budget_report_get: {
@@ -4546,6 +5168,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4612,6 +5243,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_budget_api_v1_budgets_post: {
@@ -4634,6 +5274,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -4663,8 +5312,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4696,6 +5363,15 @@ export interface operations {
                     "application/json": components["schemas"]["BudgetOut"][];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -4723,8 +5399,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4790,6 +5484,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_budget_api_v1_budgets__budget_id__delete: {
@@ -4846,6 +5549,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_budget_api_v1_budgets__budget_id__patch: {
@@ -4870,6 +5582,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -4899,8 +5620,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4964,6 +5703,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_security_api_v1_securities_post: {
@@ -4986,6 +5734,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecurityOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -5015,8 +5772,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5082,6 +5857,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_security_api_v1_securities__security_id__delete: {
@@ -5138,6 +5922,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_security_api_v1_securities__security_id__patch: {
@@ -5162,6 +5955,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecurityOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -5191,8 +5993,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5261,6 +6081,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     latest_price_api_v1_securities__security_id__latest_price_get: {
@@ -5321,6 +6150,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     set_price_api_v1_securities__security_id__prices__date__put: {
@@ -5346,6 +6184,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PriceOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -5375,8 +6222,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5434,6 +6299,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5502,6 +6376,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     latest_exchange_rate_api_v1_exchange_rates__currency__latest_get: {
@@ -5562,6 +6445,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     set_exchange_rate_api_v1_exchange_rates__currency___date__put: {
@@ -5587,6 +6479,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExchangeRateOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -5616,8 +6517,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5684,6 +6603,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     market_net_worth_api_v1_investments_net_worth_get: {
@@ -5742,6 +6670,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     buy_api_v1_investments_buy_post: {
@@ -5764,6 +6701,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Missing or invalid access token */
@@ -5793,8 +6739,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5826,6 +6790,15 @@ export interface operations {
                     "application/json": components["schemas"]["TransactionOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -5853,8 +6826,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5886,6 +6877,15 @@ export interface operations {
                     "application/json": components["schemas"]["PriceUpdateOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -5913,8 +6913,35 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The price provider failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5946,6 +6973,15 @@ export interface operations {
                     "application/json": components["schemas"]["PriceUpdateOut"];
                 };
             };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Missing or invalid access token */
             401: {
                 headers: {
@@ -5973,8 +7009,35 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The price provider failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6042,6 +7105,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     account_holdings_api_v1_investments__account_id__holdings_get: {
@@ -6102,13 +7174,22 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     sale_cost_api_v1_investments__account_id__sale_cost_get: {
         parameters: {
             query: {
                 security_id: number;
-                quantity: number | string;
+                quantity: string;
                 date: string;
             };
             header?: never;
@@ -6157,6 +7238,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6220,6 +7310,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_rate_providers_api_v1_providers_rates_get: {
@@ -6269,6 +7368,15 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6330,6 +7438,24 @@ export interface operations {
             };
             /** @description Invalid request or domain rule */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The price provider failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

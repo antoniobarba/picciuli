@@ -40,6 +40,24 @@ def test_every_api_operation_requires_a_token(schema: dict[str, Any]) -> None:
         if path.startswith(API_PREFIX):
             assert operation.get("security") == [{"bearer": []}], (method, path)
             assert "401" in operation["responses"], (method, path)
+            assert "503" in operation["responses"], (method, path)
+
+
+def test_bodies_document_parse_and_size_errors(schema: dict[str, Any]) -> None:
+    for path, method, operation in operations(schema):
+        if "requestBody" in operation:
+            assert {"400", "413"} <= set(operation["responses"]), (method, path)
+
+
+def test_identifiers_and_amounts_are_bounded(schema: dict[str, Any]) -> None:
+    for path, method, operation in operations(schema):
+        for parameter in operation.get("parameters", []):
+            if parameter["name"].endswith("_id") and parameter["name"] != "provider_id":
+                options = parameter["schema"].get("anyOf", [parameter["schema"]])
+                bounded = [o for o in options if o.get("type") == "integer"]
+                assert bounded[0]["maximum"] == 2**63 - 1, (method, path)
+    amount = schema["components"]["schemas"]["ExpenseCreate"]["properties"]["amount"]
+    assert amount["maximum"] == 10**15
 
 
 def test_every_operation_is_documented(schema: dict[str, Any]) -> None:

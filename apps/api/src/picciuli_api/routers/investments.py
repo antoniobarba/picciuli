@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import datetime as dt
-from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
+from picciuli.limits import MAX_ID
 from picciuli_api.deps import BookDep, ContextDep
+from picciuli_api.errors import PROVIDER_RESPONSES
 from picciuli_api.schemas.accounts import NetWorthOut
+from picciuli_api.schemas.base import Date, PathId, QueryDate, QueryPositiveDecimal
 from picciuli_api.schemas.investments import (
     AccountValuationOut,
     BuyCreate,
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/investments", tags=["investments"])
 
 @router.get("/valuations")
 def list_valuations(
-    book: BookDep, as_of: dt.date | None = None, include_closed: bool = False
+    book: BookDep, as_of: QueryDate = None, include_closed: bool = False
 ) -> list[AccountValuationOut]:
     """Market value of every account."""
     found = book.investments.valuations(as_of=as_of, include_closed=include_closed)
@@ -35,7 +36,7 @@ def list_valuations(
 
 
 @router.get("/net-worth")
-def market_net_worth(book: BookDep, as_of: dt.date | None = None) -> NetWorthOut:
+def market_net_worth(book: BookDep, as_of: QueryDate = None) -> NetWorthOut:
     """Net worth with holdings at market value."""
     return NetWorthOut.model_validate(book.investments.net_worth(as_of=as_of))
 
@@ -79,7 +80,7 @@ def sell(book: BookDep, body: SellCreate) -> TransactionOut:
     return TransactionOut.model_validate(transaction)
 
 
-@router.post("/refresh-prices")
+@router.post("/refresh-prices", responses=PROVIDER_RESPONSES)
 def refresh_prices(
     book: BookDep, context: ContextDep, body: RefreshPrices | None = None
 ) -> PriceUpdateOut:
@@ -99,7 +100,7 @@ def refresh_prices(
     return PriceUpdateOut.model_validate(update)
 
 
-@router.post("/refresh-exchange-rates")
+@router.post("/refresh-exchange-rates", responses=PROVIDER_RESPONSES)
 def refresh_exchange_rates(
     book: BookDep, context: ContextDep, body: RefreshExchangeRates | None = None
 ) -> PriceUpdateOut:
@@ -114,31 +115,31 @@ def refresh_exchange_rates(
     return PriceUpdateOut.model_validate(update)
 
 
-@router.get("/{account_id}/valuation")
+@router.get("/{account_id:int}/valuation")
 def account_valuation(
-    book: BookDep, account_id: int, as_of: dt.date | None = None
+    book: BookDep, account_id: PathId, as_of: QueryDate = None
 ) -> AccountValuationOut:
     """Market value of one account."""
     valuation = book.investments.valuation(account_id, as_of=as_of)
     return AccountValuationOut.model_validate(valuation)
 
 
-@router.get("/{account_id}/holdings")
+@router.get("/{account_id:int}/holdings")
 def account_holdings(
-    book: BookDep, account_id: int, as_of: dt.date | None = None
+    book: BookDep, account_id: PathId, as_of: QueryDate = None
 ) -> list[HoldingOut]:
     """Securities held in one account."""
     found = book.investments.holdings(account_id, as_of=as_of)
     return [HoldingOut.model_validate(h) for h in found]
 
 
-@router.get("/{account_id}/sale-cost")
+@router.get("/{account_id:int}/sale-cost")
 def sale_cost(
     book: BookDep,
-    account_id: int,
-    security_id: int,
-    quantity: Annotated[Decimal, Query(examples=["1.5"])],
-    date: dt.date,
+    account_id: PathId,
+    security_id: Annotated[int, Query(ge=1, le=MAX_ID)],
+    quantity: Annotated[QueryPositiveDecimal, Query(examples=["1.5"])],
+    date: Date,
 ) -> SaleCostOut:
     """Cost basis that selling `quantity` shares on `date` would remove."""
     cost = book.investments.sale_cost(account_id, security_id, quantity, date=date)

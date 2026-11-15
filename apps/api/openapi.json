@@ -91,6 +91,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -142,6 +152,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -205,6 +225,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -303,6 +333,16 @@
               }
             }
           },
+          "503": {
+            "description": "Too many imports running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "413": {
             "description": "The file is too big",
             "content": {
@@ -313,8 +353,8 @@
               }
             }
           },
-          "503": {
-            "description": "Too many imports running",
+          "400": {
+            "description": "The body is not valid JSON",
             "content": {
               "application/json": {
                 "schema": {
@@ -396,6 +436,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -464,6 +514,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -559,6 +639,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -627,6 +717,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -734,6 +854,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -820,6 +950,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -844,6 +984,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           }
@@ -898,6 +1040,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -920,6 +1072,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           }
@@ -984,6 +1138,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -1006,6 +1190,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           }
@@ -1053,6 +1239,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1077,6 +1273,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           }
@@ -1141,6 +1339,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1165,6 +1393,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           }
@@ -1236,6 +1466,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1260,6 +1520,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           }
@@ -1314,6 +1576,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1338,6 +1610,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           },
@@ -1409,6 +1683,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1433,6 +1717,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           },
@@ -1514,6 +1800,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -1606,6 +1902,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -1681,6 +1987,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1705,6 +2041,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Category Id"
             }
           }
@@ -1759,6 +2097,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -1781,6 +2129,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Category Id"
             }
           }
@@ -1845,6 +2195,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -1867,6 +2247,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Category Id"
             }
           },
@@ -1877,7 +2259,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
@@ -1944,6 +2328,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1968,6 +2362,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Category Id"
             }
           }
@@ -2019,6 +2415,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -2085,7 +2491,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
@@ -2101,7 +2509,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
@@ -2139,7 +2549,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 200
                 },
                 {
                   "type": "null"
@@ -2168,6 +2579,7 @@
               "anyOf": [
                 {
                   "type": "integer",
+                  "maximum": 9223372036854775807,
                   "minimum": 1
                 },
                 {
@@ -2183,6 +2595,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
               "minimum": 0,
               "default": 0,
               "title": "Offset"
@@ -2236,6 +2649,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -2318,6 +2741,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2363,7 +2816,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
@@ -2421,6 +2876,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -2493,6 +2958,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -2577,6 +3072,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2654,6 +3179,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2683,6 +3238,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Transaction Id"
             }
           }
@@ -2737,6 +3294,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -2759,6 +3326,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Transaction Id"
             }
           }
@@ -2823,6 +3392,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -2845,6 +3444,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Transaction Id"
             }
           }
@@ -2885,6 +3486,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -2984,6 +3595,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -3059,6 +3680,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3083,6 +3734,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Period Id"
             }
           }
@@ -3137,6 +3790,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -3159,6 +3822,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Period Id"
             }
           }
@@ -3223,6 +3888,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -3245,6 +3940,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Period Id"
             }
           }
@@ -3292,6 +3989,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3316,6 +4023,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Period Id"
             }
           }
@@ -3370,6 +4079,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3394,6 +4113,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Period Id"
             }
           }
@@ -3448,6 +4169,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3473,7 +4204,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
@@ -3489,7 +4222,9 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
                 },
                 {
                   "type": "null"
@@ -3546,6 +4281,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -3621,6 +4366,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -3704,6 +4479,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3733,6 +4538,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Budget Id"
             }
           }
@@ -3787,6 +4594,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -3809,6 +4626,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Budget Id"
             }
           }
@@ -3873,6 +4692,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -3895,6 +4744,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Budget Id"
             }
           }
@@ -3935,6 +4786,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4001,6 +4862,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4083,6 +4954,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4112,6 +5013,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           }
@@ -4166,6 +5069,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -4188,6 +5101,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           }
@@ -4252,6 +5167,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -4274,6 +5219,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           }
@@ -4321,6 +5268,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4345,6 +5302,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           },
@@ -4437,6 +5396,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4461,6 +5430,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           },
@@ -4532,6 +5503,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4556,6 +5537,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           },
@@ -4630,6 +5613,36 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -4652,6 +5665,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           },
@@ -4709,6 +5724,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4733,6 +5758,10 @@
             "required": true,
             "schema": {
               "type": "string",
+              "pattern": "^[A-Za-z]{3}$",
+              "examples": [
+                "USD"
+              ],
               "title": "Currency"
             }
           },
@@ -4825,6 +5854,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4849,6 +5888,10 @@
             "required": true,
             "schema": {
               "type": "string",
+              "pattern": "^[A-Za-z]{3}$",
+              "examples": [
+                "USD"
+              ],
               "title": "Currency"
             }
           },
@@ -4920,6 +5963,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -4944,6 +5997,10 @@
             "required": true,
             "schema": {
               "type": "string",
+              "pattern": "^[A-Za-z]{3}$",
+              "examples": [
+                "USD"
+              ],
               "title": "Currency"
             }
           },
@@ -5011,6 +6068,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -5118,6 +6205,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -5204,6 +6301,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -5269,6 +6376,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -5346,6 +6483,36 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -5437,6 +6604,46 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The price provider failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5521,6 +6728,46 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The price provider failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5550,6 +6797,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           },
@@ -5621,6 +6870,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -5645,6 +6904,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           },
@@ -5720,6 +6981,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -5744,6 +7015,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Account Id"
             }
           },
@@ -5753,6 +7026,8 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
               "title": "Security Id"
             }
           },
@@ -5761,17 +7036,8 @@
             "in": "query",
             "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string"
-                }
-              ],
-              "examples": [
-                "1.5"
-              ],
+              "type": "string",
+              "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,10}(\\.[0-9]{1,8})?$",
               "title": "Quantity"
             }
           },
@@ -5829,6 +7095,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -5895,6 +7171,16 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -5973,6 +7259,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6002,6 +7298,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "maxLength": 200,
               "title": "Provider Id"
             }
           },
@@ -6012,6 +7309,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
+              "maxLength": 200,
               "description": "Name, symbol or ISIN.",
               "title": "Q"
             },
@@ -6065,6 +7363,26 @@
           },
           "422": {
             "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The price provider failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -6138,6 +7456,8 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name",
             "examples": [
               "Checking"
@@ -6148,7 +7468,10 @@
           },
           "opening_balance": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": -1000000000000000.0,
             "title": "Opening Balance",
+            "description": "Amount in minor units, at most 10^15 in absolute value.",
             "default": 0
           },
           "opening_date": {
@@ -6166,7 +7489,10 @@
           "goal": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "description": "Amount in minor units, at most 10^15 in absolute value."
               },
               {
                 "type": "null"
@@ -6177,7 +7503,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -6199,6 +7526,7 @@
         "properties": {
           "position": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
             "minimum": 1.0,
             "title": "Position"
           }
@@ -6312,16 +7640,22 @@
           },
           "account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Account Id"
           },
           "amount": {
             "type": "integer",
-            "title": "Amount"
+            "maximum": 1000000000000000.0,
+            "minimum": -1000000000000000.0,
+            "title": "Amount",
+            "description": "Amount in minor units, at most 10^15 in absolute value."
           },
           "memo": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -6332,7 +7666,9 @@
           "security_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -6343,10 +7679,14 @@
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string",
+                "pattern": "^-?[0-9]{1,10}(\\.[0-9]{1,8})?$"
               },
               {
-                "type": "string"
+                "type": "number",
+                "multipleOf": 1e-08,
+                "exclusiveMaximum": 10000000000.0,
+                "exclusiveMinimum": -10000000000.0
               },
               {
                 "type": "null"
@@ -6442,36 +7782,20 @@
       "AccountUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name"
           },
           "type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AccountType"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/AccountType"
           },
           "opening_balance": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Opening Balance"
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": -1000000000000000.0,
+            "title": "Opening Balance",
+            "description": "Amount in minor units, at most 10^15 in absolute value."
           },
           "opening_date": {
             "anyOf": [
@@ -6488,7 +7812,10 @@
           "goal": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "minimum": -1000000000000000.0,
+                "description": "Amount in minor units, at most 10^15 in absolute value."
               },
               {
                 "type": "null"
@@ -6499,7 +7826,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -6613,10 +7941,14 @@
         "properties": {
           "source_period_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Source Period Id"
           },
           "target_period_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Target Period Id"
           },
           "overwrite": {
@@ -6638,14 +7970,19 @@
         "properties": {
           "category_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Category Id"
           },
           "period_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Period Id"
           },
           "amount": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
             "minimum": 0.0,
             "title": "Amount"
           }
@@ -6755,37 +8092,21 @@
       "BudgetUpdate": {
         "properties": {
           "amount": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
             "title": "Amount"
           },
           "category_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Category Id"
           },
           "period_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Period Id"
           }
         },
@@ -6803,19 +8124,27 @@
           },
           "account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Account Id"
           },
           "security_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Security Id"
           },
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string",
+                "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,10}(\\.[0-9]{1,8})?$"
               },
               {
-                "type": "string"
+                "type": "number",
+                "multipleOf": 1e-08,
+                "exclusiveMaximum": 10000000000.0,
+                "exclusiveMinimum": 0.0
               }
             ],
             "title": "Quantity",
@@ -6825,13 +8154,17 @@
           },
           "cost": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
             "title": "Cost",
             "description": "Price paid for the shares, in minor units."
           },
           "from_account_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -6841,13 +8174,17 @@
           },
           "fee": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
             "title": "Fee",
             "default": 0
           },
           "fee_category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -6858,7 +8195,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -6869,7 +8207,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -6894,6 +8233,8 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name",
             "examples": [
               "Groceries"
@@ -6902,7 +8243,9 @@
           "parent_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -6913,7 +8256,9 @@
           "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 12,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -6997,20 +8342,17 @@
       "CategoryUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name"
           },
           "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 12,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -7021,7 +8363,9 @@
           "parent_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -7030,15 +8374,9 @@
             "title": "Parent Id"
           },
           "position": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Position"
           }
         },
@@ -7121,11 +8459,14 @@
           "rate": {
             "anyOf": [
               {
-                "type": "number",
-                "exclusiveMinimum": 0.0
+                "type": "string",
+                "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,10}(\\.[0-9]{1,8})?$"
               },
               {
-                "type": "string"
+                "type": "number",
+                "multipleOf": 1e-08,
+                "exclusiveMaximum": 10000000000.0,
+                "exclusiveMinimum": 0.0
               }
             ],
             "title": "Rate",
@@ -7176,18 +8517,23 @@
           },
           "amount": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Amount",
             "description": "Positive amount spent, in minor units."
           },
           "account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Account Id"
           },
           "category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -7198,7 +8544,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -7209,7 +8556,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -7237,12 +8585,17 @@
           },
           "amount": {
             "type": "integer",
-            "title": "Amount"
+            "maximum": 1000000000000000.0,
+            "minimum": -1000000000000000.0,
+            "title": "Amount",
+            "description": "Amount in minor units, at most 10^15 in absolute value."
           },
           "category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -7253,7 +8606,8 @@
           "memo": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -7477,18 +8831,23 @@
           },
           "amount": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Amount",
             "description": "Positive amount received."
           },
           "account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Account Id"
           },
           "category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -7499,7 +8858,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -7510,7 +8870,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -7664,7 +9025,9 @@
           "name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -7771,26 +9134,14 @@
       "PeriodUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name"
           },
           "start": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date",
             "title": "Start"
           },
           "end": {
@@ -7816,11 +9167,14 @@
           "price": {
             "anyOf": [
               {
-                "type": "number",
-                "exclusiveMinimum": 0.0
+                "type": "string",
+                "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,10}(\\.[0-9]{1,8})?$"
               },
               {
-                "type": "string"
+                "type": "number",
+                "multipleOf": 1e-08,
+                "exclusiveMaximum": 10000000000.0,
+                "exclusiveMinimum": 0.0
               }
             ],
             "title": "Price",
@@ -7831,7 +9185,9 @@
           "source": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -7948,9 +9304,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^[A-Za-z]{3}$",
+                  "examples": [
+                    "EUR"
+                  ]
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 1000
               },
               {
                 "type": "null"
@@ -7982,9 +9343,12 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "integer"
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 1000
               },
               {
                 "type": "null"
@@ -8082,6 +9446,8 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name",
             "examples": [
               "Vanguard FTSE All-World"
@@ -8089,6 +9455,7 @@
           },
           "currency": {
             "type": "string",
+            "pattern": "^[A-Za-z]{3}$",
             "title": "Currency",
             "examples": [
               "EUR"
@@ -8101,7 +9468,8 @@
           "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 32
               },
               {
                 "type": "null"
@@ -8115,7 +9483,8 @@
           "isin": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 32
               },
               {
                 "type": "null"
@@ -8129,7 +9498,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8282,41 +9652,27 @@
       "SecurityUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name"
           },
           "currency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Currency"
+            "type": "string",
+            "pattern": "^[A-Za-z]{3}$",
+            "title": "Currency",
+            "examples": [
+              "EUR"
+            ]
           },
           "kind": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SecurityKind"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/SecurityKind"
           },
           "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 32
               },
               {
                 "type": "null"
@@ -8327,7 +9683,8 @@
           "isin": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 32
               },
               {
                 "type": "null"
@@ -8338,7 +9695,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8361,19 +9719,27 @@
           },
           "account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Account Id"
           },
           "security_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "Security Id"
           },
           "quantity": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string",
+                "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,10}(\\.[0-9]{1,8})?$"
               },
               {
-                "type": "string"
+                "type": "number",
+                "multipleOf": 1e-08,
+                "exclusiveMaximum": 10000000000.0,
+                "exclusiveMinimum": 0.0
               }
             ],
             "title": "Quantity",
@@ -8383,13 +9749,17 @@
           },
           "proceeds": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
             "title": "Proceeds",
             "description": "Gross sale proceeds, in minor units."
           },
           "to_account_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -8399,13 +9769,17 @@
           },
           "fee": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
             "title": "Fee",
             "default": 0
           },
           "fee_category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -8415,13 +9789,17 @@
           },
           "tax": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
             "title": "Tax",
             "default": 0
           },
           "tax_category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -8432,7 +9810,9 @@
           "gain_category_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -8443,7 +9823,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8454,7 +9835,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8523,31 +9905,25 @@
       "SettingsUpdate": {
         "properties": {
           "currency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Currency"
           },
           "minor_digits": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 0.0,
             "title": "Minor Digits"
           },
           "currency_code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[A-Za-z]{3}$",
+                "examples": [
+                  "EUR"
+                ]
               },
               {
                 "type": "null"
@@ -8556,35 +9932,18 @@
             "title": "Currency Code"
           },
           "cost_method": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CostMethod"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/CostMethod"
           },
           "price_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Price Provider"
           },
           "rate_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Rate Provider"
           }
         },
@@ -8619,12 +9978,15 @@
               }
             },
             "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
             "title": "Splits"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8635,7 +9997,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8742,49 +10105,38 @@
       "TransactionUpdate": {
         "properties": {
           "date": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date",
             "title": "Date"
           },
           "splits": {
-            "anyOf": [
-              {
-                "items": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/AccountSplitIn"
-                    },
-                    {
-                      "$ref": "#/components/schemas/ExternalSplitIn"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "account": "#/components/schemas/AccountSplitIn",
-                      "external": "#/components/schemas/ExternalSplitIn"
-                    }
-                  }
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AccountSplitIn"
                 },
-                "type": "array"
-              },
-              {
-                "type": "null"
+                {
+                  "$ref": "#/components/schemas/ExternalSplitIn"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "account": "#/components/schemas/AccountSplitIn",
+                  "external": "#/components/schemas/ExternalSplitIn"
+                }
               }
-            ],
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
             "title": "Splits"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8795,7 +10147,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8818,22 +10171,28 @@
           },
           "amount": {
             "type": "integer",
+            "maximum": 1000000000000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Amount",
             "description": "Positive amount moved."
           },
           "from_account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "From Account Id"
           },
           "to_account_id": {
             "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
             "title": "To Account Id"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -8844,7 +10203,8 @@
           "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"

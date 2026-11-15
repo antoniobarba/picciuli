@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from .base import InputModel, OutputModel, PatchModel
+from .base import (
+    CategorySymbol,
+    Id,
+    InputModel,
+    Name,
+    OutputModel,
+    PatchModel,
+    Position,
+)
 
 __all__ = ["CategoryCreate", "CategoryOut", "CategoryUpdate"]
 
@@ -22,15 +30,17 @@ class CategoryOut(OutputModel):
 class CategoryCreate(InputModel):
     """A new category."""
 
-    name: str = Field(examples=["Groceries"])
-    parent_id: int | None = None
-    symbol: str | None = None
+    name: Name = Field(examples=["Groceries"])
+    parent_id: Id | None = None
+    symbol: CategorySymbol | None = None
 
 
 class CategoryUpdate(PatchModel):
     """Changes to a category. `parent_id: null` makes it a top-level category."""
 
-    name: str | None = None
-    symbol: str | None = None
-    parent_id: int | None = None
-    position: int | None = Field(default=None, ge=1)
+    _not_null = frozenset({"name", "position"})
+
+    name: Name | None = None
+    symbol: CategorySymbol | None = None
+    parent_id: Id | None = None
+    position: Position | None = None

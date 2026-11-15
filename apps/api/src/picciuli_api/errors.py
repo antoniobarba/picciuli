@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any, Final
 
@@ -23,7 +24,13 @@ from picciuli import (
 from picciuli_api.auth import AuthenticationError, AuthUnavailableError
 from picciuli_api.books import ImportsBusyError
 
-__all__ = ["ERROR_RESPONSES", "ErrorResponse", "install_error_handlers"]
+__all__ = [
+    "BODY_RESPONSES",
+    "ERROR_RESPONSES",
+    "PROVIDER_RESPONSES",
+    "ErrorResponse",
+    "install_error_handlers",
+]
 
 
 class ErrorResponse(BaseModel):
@@ -48,6 +55,7 @@ _LIBRARY_ERRORS: Final[tuple[tuple[type[PicciuliError], int, str], ...]] = (
 )
 
 _HTTP_CODES: Final = {
+    400: "bad_request",
     401: "unauthorized",
     403: "forbidden",
     404: "not_found",
@@ -60,8 +68,23 @@ ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
     404: {"model": ErrorResponse, "description": "Entity not found"},
     409: {"model": ErrorResponse, "description": "Conflict with the stored data"},
     422: {"model": ErrorResponse, "description": "Invalid request or domain rule"},
+    503: {
+        "model": ErrorResponse,
+        "description": "The identity provider's keys are unreachable",
+    },
 }
 """Error responses documented on every authenticated endpoint."""
+
+BODY_RESPONSES: Final[dict[int, str]] = {
+    400: "The body is not valid JSON",
+    413: "The body is too large",
+}
+"""Error responses documented on every endpoint that reads a request body."""
+
+PROVIDER_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
+    502: {"model": ErrorResponse, "description": "The price provider failed"},
+}
+"""Error responses of the endpoints that call a price or rate provider."""
 
 
 def _error(
@@ -115,6 +138,28 @@ async def _http_error(request: Request, exc: Exception) -> JSONResponse:
     return _error(exc.status_code, code, str(exc.detail), headers=exc.headers)
 
 
+async def _method_not_allowed(request: Request, exc: Exception) -> JSONResponse:
+    """List every method of the path in `Allow`, not only those of one route.
+
+    FastAPI registers one route per method, so Starlette would only name the
+    methods of the first route matching the path.
+    """
+    index: list[tuple[re.Pattern[str], set[str]]] = getattr(
+        request.app.state, "route_methods", []
+    )
+    path = request.url.path
+    allowed = {m for regex, methods in index if regex.match(path) for m in methods}
+    if not allowed:
+        return await _http_error(request, exc)
+    detail = getattr(exc, "detail", "Method Not Allowed")
+    return _error(
+        405,
+        "method_not_allowed",
+        str(detail),
+        headers={"Allow": ", ".join(sorted(allowed))},
+    )
+
+
 async def _unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     return _error(500, "internal_error", "internal error")
 
@@ -127,5 +172,6 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ImportsBusyError, _imports_busy)
     app.add_exception_handler(RequestValidationError, _request_validation)
     app.add_exception_handler(StarletteHTTPException, _http_error)
+    app.add_exception_handler(405, _method_not_allowed)
     # Bugs still reach the server log: Starlette re-raises after responding.
     app.add_exception_handler(Exception, _unexpected_error)
