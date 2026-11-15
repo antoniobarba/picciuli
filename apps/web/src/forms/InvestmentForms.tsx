@@ -251,10 +251,15 @@ export function tradeOf(transaction: Transaction): Trade | null {
   const external = transaction.splits.filter((s) => s.type === 'external');
   const [share] = shares;
   if (shares.length !== 1 || share?.type !== 'account' || share.security_id == null || !share.quantity) return null;
-  const memos = new Map(external.map((s) => [s.memo ?? '', s]));
+  let memos = new Map(external.map((s) => [s.memo ?? '', s]));
   if (memos.size !== external.length || cash.length > 1) return null;
   const selling = share.quantity.startsWith('-');
   const allowed = selling ? ['Realized gain', 'Fee', 'Tax'] : ['Fee'];
+  // A sale's lone line with another memo (e.g. from an import) is its realized gain or loss.
+  const [lone] = external;
+  if (selling && external.length === 1 && lone && !allowed.includes(lone.memo ?? '')) {
+    memos = new Map([['Realized gain', lone]]);
+  }
   if ([...memos.keys()].some((memo) => !allowed.includes(memo))) return null;
   const fee = 0 - (memos.get('Fee')?.amount ?? 0);
   const tax = 0 - (memos.get('Tax')?.amount ?? 0);

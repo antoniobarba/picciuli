@@ -21,6 +21,7 @@ from picciuli import (
 )
 from picciuli_tui.formatting import MoneyFormat
 from picciuli_tui.forms import (
+    NONE_ID,
     AccountDraft,
     EntryKind,
     InputError,
@@ -615,6 +616,37 @@ def test_read_and_update_recorded_trades(
         "Fee": food.id,
         "Tax": taxes.id,
     }
+
+
+def test_read_imported_sale_with_other_gain_memo(
+    book: Book, money: MoneyFormat, broker: Account, etf: Security, food: Category
+) -> None:
+    book.investments.record_buy(
+        TODAY, account_id=broker.id, security_id=etf.id, quantity=1, cost=14361
+    )
+    sold = book.transactions.create(
+        TODAY,
+        [
+            AccountSplit(
+                broker.id, -14361, "1 quote al costo medio", etf.id, Decimal(-1)
+            ),
+            AccountSplit(broker.id, 14151, "incasso vendita"),
+            ExternalSplit(-210, food.id, "minusvalenza"),
+        ],
+        description="Vendita ETF",
+    )
+    parsed = trade_from_transaction(sold, money)
+    assert parsed is not None
+    selling, draft = parsed
+    assert (selling, draft.amount, draft.other_account_id, draft.fee) == (
+        True,
+        "141.51",
+        NONE_ID,
+        "",
+    )
+    assert draft.category_id == food.id
+    extra = replace(sold, splits=(*sold.splits, ExternalSplit(-10, None, "bollo")))
+    assert trade_from_transaction(extra, money) is None
 
 
 def test_share_transaction_draft_preserves_share_quantity(

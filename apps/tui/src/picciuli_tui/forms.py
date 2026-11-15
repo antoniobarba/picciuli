@@ -674,6 +674,10 @@ def trade_from_transaction(
         return None
     selling = share.quantity < 0
     allowed = {"Realized gain", "Fee", "Tax"} if selling else {"Fee"}
+    # A sale's lone line with another memo (e.g. from an import) is its
+    # realized gain or loss.
+    if selling and len(external) == 1 and (external[0].memo or "") not in allowed:
+        memos = {"Realized gain": external[0]}
     if memos.keys() - allowed:
         return None
 

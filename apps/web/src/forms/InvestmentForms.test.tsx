@@ -40,6 +40,16 @@ describe('tradeOf', () => {
     });
   });
 
+  it('reads an imported sale whose gain line has another memo', () => {
+    const imported = transaction(1930, [
+      { type: 'account', account_id: 19, amount: -14361, memo: '1 quote al costo medio', security_id: 2, quantity: '-1' },
+      { type: 'account', account_id: 19, amount: 14151, memo: 'incasso vendita', security_id: null, quantity: null },
+      { type: 'external', amount: -210, category_id: 51, memo: 'minusvalenza' },
+    ]);
+    expect(tradeOf(imported)).toMatchObject({ selling: true, quantity: '1', amount: 14151, otherId: null, fee: 0, gainCategoryId: 51 });
+    expect(tradeOf(transaction(1930, [...imported.splits, { type: 'external', amount: -10, memo: 'bollo' }]))).toBeNull();
+  });
+
   it('leaves other transactions to the split editor', () => {
     const [share, cash] = buy.splits;
     expect(tradeOf(transaction(1, [cash!, { type: 'external', amount: 3599, category_id: 3 }]))).toBeNull();
