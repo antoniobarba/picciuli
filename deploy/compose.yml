@@ -99,7 +99,7 @@ services:
 
   zitadel-api:
     <<: *hardening
-    image: ghcr.io/zitadel/zitadel:v4.16.0@sha256:15543f7a80c3e37905fe8c7db56af7ed2a9ece256704322c1449d7e8453afdab
+    image: ghcr.io/zitadel/zitadel:v4.20.3@sha256:1b30fea7ed88826dc0a98dacee4e2f2c8b05201fd26f5e4cb5386615b29f7638
     # The image's "zitadel" user; it owns the zitadel-bootstrap volume.
     user: "1000:1000"
     mem_limit: 1g
