@@ -141,6 +141,26 @@ password from `.env`.
    `http://localhost:5173/`.
 4. In the **Token Settings** of each application, set **Auth Token Type** to
    **JWT**. The API validates JWT access tokens; opaque tokens are rejected.
+
+   Then limit the token lifetimes, which Zitadel sets for the whole instance:
+   *Default settings → OIDC Token lifetimes and expiration*:
+
+   | Setting                          | Value     | Zitadel default |
+   |----------------------------------|-----------|-----------------|
+   | Access Token Lifetime            | 1 hour    | 12 hours        |
+   | ID Token Lifetime                | 12 hours  | 12 hours        |
+   | Refresh Token Idle Expiration    | 14 days   | 30 days         |
+   | Refresh Token Expiration         | 30 days   | 90 days         |
+
+   or, with an administrator's access token,
+   `PUT https://auth.example.com/admin/v1/settings/oidc` with
+   `{"accessTokenLifetime": "3600s", "idTokenLifetime": "43200s",
+   "refreshTokenIdleExpiration": "1209600s", "refreshTokenExpiration":
+   "2592000s"}` (all four fields are required), and check the result with
+   `GET` on the same address. Zitadel always rotates refresh tokens and rejects
+   a used one; there is nothing to enable. Users whose refresh token is older
+   than the new limits sign in once more. See
+   [Token storage](web.md#token-storage) for the reasoning.
 5. **Self-registration.** *Default settings → Login behavior and security*:
    enable **Register allowed**. Under *Password complexity* pick your rules;
    enable passkeys or OTP under *Login behavior* if you like.

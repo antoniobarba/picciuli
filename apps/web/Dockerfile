@@ -6,6 +6,7 @@
 FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /src/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
+COPY apps/web/vendor ./vendor
 RUN npm ci --no-audit --no-fund
 COPY apps/api/openapi.json /src/apps/api/openapi.json
 COPY apps/web ./
