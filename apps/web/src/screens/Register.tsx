@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { unwrap } from '../api/client';
 import { useAccounts, useApiMutation, useCategories, useMoney, useRegister, useValuations } from '../api/queries';
@@ -6,6 +6,7 @@ import type { Transaction } from '../api/types';
 import { useEditors } from '../app/editors';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
+import { AccountForm } from '../forms/AccountForm';
 import { Amount, Empty, Loading, PageHeader, RowMenu } from '../components/ui';
 import { TransactionListControls, useTransactionList } from '../components/TransactionListControls';
 import { shortDate, todayDay } from '../lib/dates';
@@ -47,6 +48,7 @@ export function Register() {
   const entries = useMemo(() => [...(register.data?.entries ?? [])].reverse(), [register.data]);
   const list = useTransactionList(entries, `account:${id}`, (entry) => entry.transaction);
   const account = register.data?.account;
+  const [editing, setEditing] = useState(false);
 
   const remove = useApiMutation((api, transactionId: number) =>
     unwrap(
@@ -85,10 +87,14 @@ export function Register() {
           </>
         }
       >
+        <button type="button" className="button" onClick={() => setEditing(true)}>
+          Edit account
+        </button>
         <button type="button" className="button primary" onClick={newTransaction} disabled={account.is_closed}>
           + New transaction
         </button>
       </PageHeader>
+      {editing ? <AccountForm account={account} onClose={() => setEditing(false)} /> : null}
       <div className="totals card">
         <span>
           Starting <Amount value={register.data!.starting_balance} money={money} />
