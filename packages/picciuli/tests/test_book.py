@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from contextlib import closing
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from picciuli import (
     Book,
     ConflictError,
     CostMethod,
+    DebtCharge,
     DebtTerms,
     ExternalSplit,
     SchemaVersionError,
@@ -31,6 +33,7 @@ from .schema_v1 import SCHEMA_V1
 from .schema_v2 import SCHEMA_V2
 from .schema_v3 import SCHEMA_V3
 from .schema_v4 import SCHEMA_V4
+from .schema_v5 import SCHEMA_V5
 
 
 def test_open_creates_and_reopens_a_file(tmp_path: Path) -> None:
@@ -366,14 +369,15 @@ def test_version_3_is_upgraded_to_version_4_without_losing_data(
         "schedules",
         "schedule_splits",
         "debt_terms",
+        "debt_charges",
         "schedule_debts",
     }
     assert after["schedules"] == after["schedule_splits"] == []
-    assert after["debt_terms"] == after["schedule_debts"] == []
+    assert after["debt_terms"] == after["debt_charges"] == after["schedule_debts"] == []
     assert after["transactions"] == [(*row, None) for row in before["transactions"]]
     assert dict(after["meta"]) == {  # type: ignore[arg-type]
         **dict(before["meta"]),  # type: ignore[arg-type]
-        "schema_version": "5",
+        "schema_version": "6",
         "period_start_day": "",
         "period_weekend_shift": "1",
     }
@@ -467,11 +471,11 @@ def test_version_4_is_upgraded_to_version_5_without_losing_data(
     Book.open(path).close()
 
     after = _rows(path)
-    assert set(after) == set(before) | {"debt_terms", "schedule_debts"}
-    assert after["debt_terms"] == after["schedule_debts"] == []
+    assert set(after) == set(before) | {"debt_terms", "debt_charges", "schedule_debts"}
+    assert after["debt_terms"] == after["debt_charges"] == after["schedule_debts"] == []
     assert dict(after["meta"]) == {  # type: ignore[arg-type]
         **dict(before["meta"]),  # type: ignore[arg-type]
-        "schema_version": "5",
+        "schema_version": "6",
     }
     for table in set(before) - {"meta"}:
         assert after[table] == before[table], table
@@ -502,6 +506,59 @@ def test_version_4_is_upgraded_to_version_5_without_losing_data(
         assert copy.accounts.get(3).debt_terms == DebtTerms(
             Decimal(3), payment=80000, interest_category_id=2
         )
+
+
+def test_version_5_is_upgraded_to_version_6_without_losing_data(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "v5.db"
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(SCHEMA_V5)
+        connection.executemany(
+            "INSERT INTO meta VALUES (?, ?)",
+            [("schema_version", "5"), ("currency", "€"), ("minor_digits", "2")],
+        )
+        connection.executescript(
+            """
+            INSERT INTO accounts VALUES (1, 'Checking', 'checking', 300000, NULL,
+                NULL, NULL, 1, NULL);
+            INSERT INTO accounts VALUES (2, 'Loan', 'loan', -1000000, NULL,
+                NULL, NULL, 2, NULL);
+            INSERT INTO categories VALUES (1, 'Interest', 'INT', NULL, 1);
+            INSERT INTO categories VALUES (2, 'Insurance', 'INS', NULL, 2);
+            INSERT INTO debt_terms VALUES (2, 899000000, 13371, NULL, 1, NULL,
+                NULL, 1, 1);
+            """
+        )
+    before = _rows(path)
+
+    Book.open(path).close()
+
+    after = _rows(path)
+    assert set(after) == set(before) | {"debt_charges"}
+    assert after["debt_charges"] == []
+    assert ("schema_version", "6") in after["meta"]
+    for table in set(before) - {"meta"}:
+        assert after[table] == before[table], table
+
+    fresh = file_engine(tmp_path / "fresh.db")
+    prepare_schema(fresh)
+    upgraded = file_engine(path)
+    try:
+        assert _structure(upgraded) == _structure(fresh)
+    finally:
+        fresh.dispose()
+        upgraded.dispose()
+
+    charge = DebtCharge(709, 2, "Insurance")
+    with Book.open(path) as book:
+        terms = book.accounts.get(2).debt_terms
+        assert terms is not None and terms.charges == ()
+        book.debts.set_terms(2, replace(terms, charges=(charge,)))
+    with Book.in_memory() as copy:
+        copy.import_file(path)
+        terms = copy.accounts.get(2).debt_terms
+        assert terms is not None and terms.charges == (charge,)
 
 
 def test_each_call_is_atomic(book: Book) -> None:

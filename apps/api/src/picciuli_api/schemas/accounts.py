@@ -7,7 +7,7 @@ from typing import Annotated
 
 from pydantic import Field, model_validator
 
-from picciuli import AccountClass, AccountType, DebtTerms
+from picciuli import AccountClass, AccountType, DebtCharge, DebtTerms
 
 from .base import (
     Amount,
@@ -15,6 +15,7 @@ from .base import (
     DecimalStr,
     Id,
     InputModel,
+    Memo,
     Name,
     OutputModel,
     PatchModel,
@@ -33,16 +34,42 @@ __all__ = [
     "AccountUpdate",
     "BalanceOut",
     "CloseAccount",
+    "DebtChargeIn",
+    "DebtChargeOut",
     "DebtTermsIn",
     "DebtTermsOut",
     "NetWorthOut",
 ]
+
+MAX_CHARGES = 10
 
 
 Day = Annotated[
     int,
     Field(ge=1, le=31, description="Day of the month; shorter months use their last."),
 ]
+
+
+class DebtChargeOut(OutputModel):
+    """A fixed charge included in every payment of a loan, such as insurance."""
+
+    amount: int
+    category_id: int | None
+    label: str | None
+
+
+class DebtChargeIn(InputModel):
+    """A fixed charge included in every payment of a loan, such as insurance."""
+
+    amount: PositiveAmount
+    category_id: Id | None = Field(default=None, description="Expense category.")
+    label: Memo | None = Field(
+        default=None, description="Memo of the split.", examples=["Insurance"]
+    )
+
+    def to_model(self) -> DebtCharge:
+        """The library charge."""
+        return DebtCharge(self.amount, self.category_id, self.label)
 
 
 class DebtTermsOut(OutputModel):
@@ -70,13 +97,17 @@ class DebtTermsOut(OutputModel):
         description="Credit cards: the minimum payment waits for confirmation "
         "on every due day."
     )
+    charges: list[DebtChargeOut] = Field(
+        description="Loans: fixed charges included in every payment; they are "
+        "paid after the interest and before the principal."
+    )
 
 
 class DebtTermsIn(InputModel):
     """Interest and payment terms of a credit card, loan, mortgage or other debt.
 
     Payment percent, statement day, credit limit and the proposals only apply
-    to credit cards.
+    to credit cards; fixed charges only to the other debts.
     """
 
     annual_rate: Percent = Field(examples=["19.9"])
@@ -95,6 +126,12 @@ class DebtTermsIn(InputModel):
     )
     propose_interest: bool = False
     propose_minimum: bool = False
+    charges: list[DebtChargeIn] = Field(
+        default=[],
+        max_length=MAX_CHARGES,
+        description="Loans: fixed charges included in every payment, such as "
+        "an insurance premium; together less than the payment.",
+    )
 
     @model_validator(mode="after")
     def _one_category(self) -> DebtTermsIn:
@@ -117,6 +154,7 @@ class DebtTermsIn(InputModel):
             interest_category_id=interest_category_id,
             propose_interest=self.propose_interest,
             propose_minimum=self.propose_minimum,
+            charges=tuple(charge.to_model() for charge in self.charges),
         )
 
 

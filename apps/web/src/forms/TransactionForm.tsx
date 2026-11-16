@@ -322,7 +322,7 @@ export function TransactionForm({
   );
 }
 
-/** For a transfer into a loan with terms: offer to split it into principal and interest. */
+/** For a transfer into a loan with terms: offer to split it into principal, interest and fixed charges. */
 function LoanSplitSuggestion({
   draft,
   fromAccountId,
@@ -347,21 +347,32 @@ function LoanSplitSuggestion({
     // Nothing to suggest until the date and the amount are valid.
   }
   const split = useLoanSplit(loan?.id ?? null, date, amount, transactionId).data;
-  if (!loan || !split || !split.interest || fromAccountId === null) return null;
+  if (!loan || !split || !(split.interest || split.charges.length) || fromAccountId === null) return null;
   const apply = () =>
     onApply([
       { ...emptyLine(accountTarget(fromAccountId)), amount: money.plain(-split.amount) },
-      { ...emptyLine(accountTarget(loan.id)), amount: money.plain(split.principal) },
-      {
-        ...emptyLine(categoryTarget(loan.debt_terms?.interest_category_id)),
-        amount: money.plain(-split.interest),
-        memo: 'Interest',
-      },
+      ...(split.principal ? [{ ...emptyLine(accountTarget(loan.id)), amount: money.plain(split.principal) }] : []),
+      ...(split.interest
+        ? [
+            {
+              ...emptyLine(categoryTarget(loan.debt_terms?.interest_category_id)),
+              amount: money.plain(-split.interest),
+              memo: 'Interest',
+            },
+          ]
+        : []),
+      ...split.charges.map((charge) => ({
+        ...emptyLine(categoryTarget(charge.category_id)),
+        amount: money.plain(-charge.amount),
+        memo: charge.label ?? '',
+      })),
     ]);
+  const charged = split.charges.reduce((sum, charge) => sum + charge.amount, 0);
   return (
     <div className="loan-split suggestion" role="note">
       <span>
-        {money.amount(split.interest)} of this payment is interest and {money.amount(split.principal)} reduces the
+        {money.amount(split.interest)} of this payment is interest
+        {charged ? `, ${money.amount(charged)} fixed charges` : ''} and {money.amount(split.principal)} reduces the
         debt.
       </span>
       <button type="button" className="button small" onClick={apply}>

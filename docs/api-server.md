@@ -92,7 +92,7 @@ picciuli-api openapi --output apps/api/openapi.json
 | categories     | CRUD, `?top_level=true`, `/{id}/children`, `DELETE ?reassign_to=` or `?uncategorize=true` |
 | transactions   | CRUD with splits, search filters, `/dates`, `/expense`, `/income`, `/transfer` |
 | schedules      | CRUD (a `debt` link makes a loan payment), `/occurrences?start=&end=` (with the predicted amount of loan and card occurrences), `/{id}/post` (`amount` and `from_account_id` for loans and cards), `/{id}/skip`, `POST /catch-up` (body `{"today": ...}`, the user's current day: records due recurring transactions and creates the missing monthly periods) |
-| debts          | `GET /debts?today=` (payoff forecasts), `POST /debts/plan` (snowball and avalanche), `/{id}/payment-split?date=&amount=`, `POST /{id}/payments` (loan payment split into principal and interest) |
+| debts          | `GET /debts?today=` (payoff forecasts), `POST /debts/plan` (snowball and avalanche), `/{id}/payment-split?date=&amount=`, `POST /{id}/payments` (loan payment split into principal, interest and fixed charges) |
 | periods        | CRUD, `?on=<day>`, `/{id}/summary`, `/{id}/budget-report`, `GET /regenerate?today=` (preview), `POST /regenerate` |
 | budgets        | CRUD, `/copy`                                                             |
 | securities     | CRUD, `/{id}/prices`, `PUT`/`DELETE /{id}/prices/{date}`, `/{id}/latest-price` |

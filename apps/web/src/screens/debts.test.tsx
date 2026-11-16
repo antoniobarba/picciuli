@@ -37,6 +37,7 @@ const terms = {
   interest_category_id: 5,
   propose_interest: false,
   propose_minimum: false,
+  charges: [],
 };
 const checking = account(1, 'Checking', 'checking');
 const visa = account(2, 'Visa', 'credit_card', {
@@ -51,7 +52,10 @@ const visa = account(2, 'Visa', 'credit_card', {
     propose_minimum: true,
   },
 });
-const mortgage = account(3, 'Mortgage', 'mortgage', { debt_terms: { ...terms, annual_rate: '3', payment: 80000 } });
+const insurance = { amount: 709, category_id: 6, label: 'Insurance' };
+const mortgage = account(3, 'Mortgage', 'mortgage', {
+  debt_terms: { ...terms, annual_rate: '3', payment: 80000, charges: [insurance] },
+});
 
 function plan(strategy: DebtPlan['strategy'], interest: number, order: number[]): DebtPlan {
   return {
@@ -67,18 +71,23 @@ function plan(strategy: DebtPlan['strategy'], interest: number, order: number[])
       payoff: `${2027 + index}-06-01`,
       interest: 0,
       paid: 0,
+      charges: 0,
     })),
     months: [{ month: '2026-12-01', payment: 83000, interest: 1000, balance: 50000, balances: [0, 50000] }],
     payoff: '2040-01-01',
     total_interest: interest,
     total_paid: 1000000 + interest,
+    total_charges: 0,
   };
 }
 
 const routes = {
   'GET /api/v1/settings': { currency: '€', minor_digits: 2, currency_code: 'EUR' },
   'GET /api/v1/accounts': [checking, visa, mortgage],
-  'GET /api/v1/categories': [{ id: 5, name: 'Interest', symbol: 'INT', parent_id: null, position: 1 }],
+  'GET /api/v1/categories': [
+    { id: 5, name: 'Interest', symbol: 'INT', parent_id: null, position: 1 },
+    { id: 6, name: 'Insurance', symbol: 'INS', parent_id: null, position: 2 },
+  ],
   'GET /api/v1/securities': [],
   'GET /api/v1/schedules': [],
   'GET /api/v1/schedules/occurrences': [],
@@ -91,6 +100,7 @@ const routes = {
       next_due: '2026-12-15',
       payoff: '2030-04-01',
       interest_to_payoff: 61000,
+      charges_to_payoff: 0,
     },
     {
       account: mortgage,
@@ -100,6 +110,7 @@ const routes = {
       next_due: '2026-12-15',
       payoff: null,
       interest_to_payoff: null,
+      charges_to_payoff: null,
     },
   ],
   'POST /api/v1/debts/plan': { snowball: plan('snowball', 50000, [2, 3]), avalanche: plan('avalanche', 40000, [2, 3]) },
@@ -109,7 +120,8 @@ const routes = {
     amount: 80000,
     owed: 15000000,
     interest: 37500,
-    principal: 42500,
+    principal: 41791,
+    charges: [insurance],
   },
 };
 
@@ -182,7 +194,31 @@ describe('AccountForm', () => {
         new_interest_category: 'Amex interest',
         propose_interest: true,
         propose_minimum: true,
+        charges: [],
       },
+    });
+  });
+
+  it('creates a loan with a fixed charge in every payment', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    const { requests } = renderWithApi(<AccountForm account={null} onClose={onClose} />, routes);
+    await user.type(screen.getByLabelText('Name'), 'Car loan');
+    await user.selectOptions(screen.getByLabelText('Type'), 'Loan');
+    await user.type(screen.getByLabelText('How much do you owe?'), '10000');
+    await user.click(screen.getByLabelText('Track the interest rate and the payments'));
+    await user.type(screen.getByLabelText('Interest rate (% a year)'), '8.99');
+    await user.type(screen.getByLabelText('Monthly payment'), '133.71');
+    await user.click(screen.getByRole('button', { name: '+ Fixed charge' }));
+    await user.type(screen.getByLabelText('Charge'), 'Insurance');
+    await user.type(screen.getByLabelText('Charge amount'), '7.09');
+    await screen.findAllByRole('option', { name: 'Insurance' });
+    await user.selectOptions(screen.getByLabelText('Charge category'), 'Insurance');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(requests.find((r) => r.method === 'POST')?.body).toMatchObject({
+      type: 'loan',
+      debt_terms: { payment: 13371, charges: [insurance] },
     });
   });
 });
@@ -237,7 +273,7 @@ describe('DebtOccurrenceForm', () => {
 });
 
 describe('TransactionForm', () => {
-  it('splits a transfer into a loan into principal and interest', async () => {
+  it('splits a transfer into a loan into principal, interest and fixed charges', async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
     const { requests } = renderWithApi(<TransactionForm open onClose={onClose} day="2026-11-05" />, routes);
@@ -252,8 +288,9 @@ describe('TransactionForm', () => {
       date: '2026-11-05',
       splits: [
         { type: 'account', account_id: 1, amount: -80000, memo: null },
-        { type: 'account', account_id: 3, amount: 42500, memo: null },
+        { type: 'account', account_id: 3, amount: 41791, memo: null },
         { type: 'external', amount: -37500, category_id: 5, memo: 'Interest' },
+        { type: 'external', amount: -709, category_id: 6, memo: 'Insurance' },
       ],
     });
   });

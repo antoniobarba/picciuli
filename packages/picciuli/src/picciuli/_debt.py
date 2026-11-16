@@ -61,16 +61,19 @@ def minimum_payment(
     card: bool,
     payment: int | None,
     percent: Decimal | None,
+    charges: int = 0,
 ) -> int | None:
-    """What is due on `owed`, never more than `owed`; `None` if unknown.
+    """What is due on `owed`, never more than `owed` plus `charges`; `None` if unknown.
 
-    A loan owes its fixed `payment`. A credit card owes `percent` of the
-    balance, at least `payment` (the floor).
+    A loan owes its fixed `payment`, which includes its fixed `charges`. A
+    credit card owes `percent` of the balance, at least `payment` (the floor).
     """
     if owed <= 0:
         return 0
     if not card:
-        return None if payment is None else min(owed, payment)
+        return (
+            None if payment is None else min(owed, max(0, payment - charges)) + charges
+        )
     candidates = []
     if percent is not None:
         with decimal.localcontext() as context:
@@ -118,15 +121,26 @@ class PlanDebt:
     card: bool
     payment: int | None
     percent: Decimal | None
+    charges: int = 0
+    """Fixed charges included in every payment of a loan."""
+
+    def fee(self, owed: int) -> int:
+        """The fixed charges paid in a month in which `owed` is still owed."""
+        return self.charges if owed > 0 else 0
 
     def minimum(self, owed: int) -> int:
-        """The minimum payment on `owed`; unknown minimums count as zero."""
-        return (
-            minimum_payment(
-                owed, card=self.card, payment=self.payment, percent=self.percent
-            )
-            or 0
+        """The minimum payment on `owed`, charges included.
+
+        An unknown minimum counts as the charges alone.
+        """
+        due = minimum_payment(
+            owed,
+            card=self.card,
+            payment=self.payment,
+            percent=self.percent,
+            charges=self.charges,
         )
+        return self.fee(owed) if due is None else due
 
     def interest(self, owed: int, month: dt.date) -> int:
         """Interest of `month` on `owed`."""
@@ -147,6 +161,7 @@ class PlanResult:
     payoff: tuple[dt.date | None, ...]
     interest: tuple[int, ...]
     paid: tuple[int, ...]
+    charges: tuple[int, ...]
 
 
 def payoff_order(
@@ -172,7 +187,9 @@ def simulate(
     """Pay off `debts` month by month, starting with `first_month`.
 
     Every month each debt accrues interest, then gets its minimum payment;
-    the rest of the budget goes to the debts in payoff order. The budget is
+    the rest of the budget goes to the debts in payoff order. The fixed
+    charges of a loan are paid every month it is owed, within its minimum
+    payment, and do not reduce it. The budget is
     the minimum payments of the first month plus `extra`, adjusted by the
     `rollover` rule as minimum payments shrink, plus the lump sum of the
     month (`lump_sums` maps 0-based month numbers to amounts).
@@ -182,6 +199,7 @@ def simulate(
     balances = [d.owed for d in order]
     interest = [0] * len(order)
     paid = [0] * len(order)
+    charges = [0] * len(order)
     payoff: list[dt.date | None] = [None] * len(order)
     initial = sum(d.minimum(d.owed) for d in order)
     share = Decimal(100) if rollover is Rollover.FULL else Decimal(0)
@@ -197,11 +215,12 @@ def simulate(
             for d, balance in zip(order, balances, strict=True)
         ]
         balances = [b + a for b, a in zip(balances, accrued, strict=True)]
+        fees = [d.fee(b) for d, b in zip(order, balances, strict=True)]
         minimums = [
-            min(b, d.minimum(b)) if b else 0
-            for d, b in zip(order, balances, strict=True)
+            min(b, d.minimum(b) - fee) if b else 0
+            for d, b, fee in zip(order, balances, fees, strict=True)
         ]
-        current = sum(minimums)
+        current = sum(minimums) + sum(fees)
         freed = max(0, initial - current)
         with decimal.localcontext() as context:
             context.prec = 80
@@ -217,14 +236,15 @@ def simulate(
         for index, payment in enumerate(payments):
             balances[index] -= payment
             interest[index] += accrued[index]
-            paid[index] += payment
+            paid[index] += payment + fees[index]
+            charges[index] += fees[index]
             if (
                 balances[index] == 0
                 and payoff[index] is None
                 and (payment or accrued[index])
             ):
                 payoff[index] = month
-        months.append((month, sum(payments), sum(accrued), tuple(balances)))
+        months.append((month, sum(payments) + sum(fees), sum(accrued), tuple(balances)))
         following = _calendar.add_months(month, 1, 1)
         if following is None:
             break
@@ -241,4 +261,5 @@ def simulate(
         payoff=tuple(payoff),
         interest=tuple(interest),
         paid=tuple(paid),
+        charges=tuple(charges),
     )

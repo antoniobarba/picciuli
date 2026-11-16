@@ -14,10 +14,12 @@ from picciuli import (
     Book,
     Category,
     ConflictError,
+    DebtCharge,
     DebtLinkKind,
     DebtTerms,
     ExternalSplit,
     LumpSum,
+    NotFoundError,
     PayoffStrategy,
     Rollover,
     ScheduleDebt,
@@ -95,6 +97,7 @@ debts_strategy = st.lists(
         card=st.booleans(),
         payment=st.none() | st.integers(1, 10**6),
         percent=st.none() | st.decimals(1, 10, places=1),
+        charges=st.integers(0, 2000),
     ),
     max_size=4,
 )
@@ -107,7 +110,9 @@ def test_paid_off_debts_cost_their_balance_plus_interest(
     result = _debt.simulate(debts, first_month=d(1), extra=extra, max_months=240)
     for index, debt in enumerate(result.order):
         if result.payoff[index] is not None:
-            assert result.paid[index] == debt.owed + result.interest[index]
+            assert result.paid[index] == (
+                debt.owed + result.interest[index] + result.charges[index]
+            )
     for _, payment, _, balances in result.months:
         assert payment >= 0
         assert all(balance >= 0 for balance in balances)
@@ -292,6 +297,104 @@ def test_recurring_loan_payments_compute_interest_when_posted(
     assert unlinked.debt is None
 
 
+@pytest.fixture
+def insurance(book: Book) -> Category:
+    return book.categories.create("Insurance")
+
+
+def _loan_with_insurance(
+    book: Book, interest: Category, insurance: Category
+) -> Account:
+    # Like a real 10,000 loan at 8.99% with 7.09 of insurance in each 133.71.
+    loan = book.accounts.create("Loan", AccountType.LOAN, opening_balance=-952000)
+    return book.debts.set_terms(
+        loan.id,
+        DebtTerms(
+            Decimal("8.99"),
+            payment=13371,
+            interest_category_id=interest.id,
+            charges=(DebtCharge(709, insurance.id, "Insurance"),),
+        ),
+    )
+
+
+def test_loan_payments_pay_fixed_charges_before_principal(
+    book: Book, checking: Account, interest: Category, insurance: Category
+) -> None:
+    loan = _loan_with_insurance(book, interest, insurance)
+    assert loan.debt_terms is not None
+    assert loan.debt_terms.charges == (DebtCharge(709, insurance.id, "Insurance"),)
+    split = book.debts.loan_payment_split(loan.id, d(16, 11), 13371)
+    assert (split.interest, split.charges, split.principal) == (
+        7132,
+        (DebtCharge(709, insurance.id, "Insurance"),),
+        5530,
+    )
+    recorded = book.debts.record_loan_payment(
+        d(16, 11), 13371, loan_account_id=loan.id, from_account_id=checking.id
+    )
+    assert recorded.splits == (
+        AccountSplit(checking.id, -13371),
+        AccountSplit(loan.id, 5530),
+        ExternalSplit(-7132, interest.id, "Interest"),
+        ExternalSplit(-709, insurance.id, "Insurance"),
+    )
+    # A payment too small for everything pays the interest, then the charges.
+    small = book.debts.loan_payment_split(loan.id, d(16, 12), 7400)
+    assert (small.interest, small.charges, small.principal) == (
+        7091,
+        (DebtCharge(309, insurance.id, "Insurance"),),
+        0,
+    )
+
+    template = [AccountSplit(checking.id, -13371), AccountSplit(loan.id, 13371)]
+    book.schedules.create(
+        d(16, 12), template, debt=ScheduleDebt(DebtLinkKind.LOAN_PAYMENT, loan.id)
+    )
+    (posted,) = book.schedules.catch_up(d(16, 12)).posted
+    assert posted.splits == (
+        AccountSplit(checking.id, -13371),
+        AccountSplit(loan.id, 5571),
+        ExternalSplit(-7091, interest.id, "Interest"),
+        ExternalSplit(-709, insurance.id, "Insurance"),
+    )
+
+    book.categories.delete(insurance.id, reassign_to=None)
+    terms = book.accounts.get(loan.id).debt_terms
+    assert terms is not None and terms.charges == (DebtCharge(709, None, "Insurance"),)
+    card = book.accounts.update(loan.id, type=AccountType.CREDIT_CARD)
+    assert card.debt_terms is not None and card.debt_terms.charges == ()
+
+
+def test_fixed_charges_are_validated(
+    book: Book, card: Account, mortgage: Account, insurance: Category
+) -> None:
+    charge = DebtCharge(709, insurance.id)
+    with pytest.raises(ValidationError, match="only loans"):
+        book.debts.set_terms(card.id, DebtTerms(Decimal(20), charges=(charge,)))
+    with pytest.raises(ValidationError, match="less than the payment"):
+        book.debts.set_terms(
+            mortgage.id,
+            DebtTerms(Decimal(3), payment=1000, charges=(charge, DebtCharge(291))),
+        )
+    with pytest.raises(ValidationError, match="charge 1 amount"):
+        book.debts.set_terms(
+            mortgage.id, DebtTerms(Decimal(3), charges=(DebtCharge(0),))
+        )
+    with pytest.raises(ValidationError, match="more than 10"):
+        book.debts.set_terms(mortgage.id, DebtTerms(Decimal(3), charges=(charge,) * 11))
+    with pytest.raises(NotFoundError):
+        book.debts.set_terms(
+            mortgage.id, DebtTerms(Decimal(3), charges=(DebtCharge(709, 999),))
+        )
+    terms = DebtTerms(Decimal(3), charges=(charge, DebtCharge(150, label=" Fee ")))
+    saved = book.debts.set_terms(mortgage.id, terms).debt_terms
+    assert saved is not None
+    assert saved.charges == (charge, DebtCharge(150, None, "Fee"))
+    replaced = book.debts.set_terms(mortgage.id, replace(terms, charges=()))
+    assert replaced.debt_terms is not None and replaced.debt_terms.charges == ()
+
+
 # --- Credit cards ------------------------------------------------------------------
 
 
@@ -431,6 +534,27 @@ def test_debt_list_forecasts_the_payoff(
     assert (unknown.owed, unknown.payoff, unknown.interest_to_payoff) == (0, None, 0)
 
 
+def test_forecasts_pay_fixed_charges_without_reducing_the_debt(
+    book: Book, interest: Category, insurance: Category
+) -> None:
+    loan = _loan_with_insurance(book, interest, insurance)
+    (status,) = book.debts.list(today=d(16, 11))
+    assert status.minimum_payment == 13371
+    assert status.payoff is not None and status.charges_to_payoff is not None
+    assert status.charges_to_payoff % 709 == 0 and status.charges_to_payoff > 0
+    plan = book.debts.plan(today=d(16, 11))
+    (payoff,) = plan.debts
+    assert payoff.charges == plan.total_charges == status.charges_to_payoff
+    assert plan.total_paid == 952000 + plan.total_interest + plan.total_charges
+    assert plan.months[0].payment == 13371
+    terms = book.accounts.get(loan.id).debt_terms
+    assert terms is not None
+    book.debts.set_terms(loan.id, replace(terms, charges=()))
+    without = book.debts.plan(today=d(16, 11))
+    assert without.payoff is not None and plan.payoff is not None
+    assert without.payoff < plan.payoff
+
+
 def test_plans_compare_strategies(book: Book, checking: Account) -> None:
     card = book.accounts.create(
         "Card", AccountType.CREDIT_CARD, opening_balance=-300000
@@ -474,7 +598,12 @@ def test_import_copies_terms_and_card_schedules_once(
     book: Book, card: Account, checking: Account, interest: Category, mortgage: Account
 ) -> None:
     _card_with_proposals(book, card, checking, interest)
-    book.debts.set_terms(mortgage.id, DebtTerms(Decimal(3), payment=80000))
+    book.debts.set_terms(
+        mortgage.id,
+        DebtTerms(
+            Decimal(3), payment=80000, charges=(DebtCharge(500, interest.id, "Fee"),)
+        ),
+    )
     book.schedules.create(
         d(5, 2),
         [AccountSplit(checking.id, -80000), AccountSplit(mortgage.id, 80000)],

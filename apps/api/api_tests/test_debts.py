@@ -47,6 +47,7 @@ def test_card_terms_and_proposed_minimum_payments(alice: TestClient) -> None:
         "interest_category_id": category["id"],
         "propose_interest": True,
         "propose_minimum": True,
+        "charges": [],
     }
     schedules = alice.get(f"{API}/schedules").json()
     kinds = {s["debt"]["kind"]: s for s in schedules}
@@ -198,3 +199,59 @@ def test_loan_payments_and_plans(alice: TestClient) -> None:
     ).json()
     assert occurrence["amount"] == 80000
     assert occurrence["splits"][-1]["amount"] == -37394
+
+
+def test_loan_payments_include_fixed_charges(alice: TestClient) -> None:
+    checking = create_account(alice, "Checking")
+    insurance = create_category(alice, "Insurance")
+    charge = {"amount": 709, "category_id": insurance["id"], "label": "Insurance"}
+    loan = create_account(
+        alice,
+        "Loan",
+        "loan",
+        opening_balance=-952000,
+        debt_terms={
+            "annual_rate": "8.99",
+            "payment": 13371,
+            "new_interest_category": "Loan interest",
+            "charges": [charge],
+        },
+    )
+    assert loan["debt_terms"]["charges"] == [charge]
+    url = f"{API}/debts/{loan['id']}"
+    split = alice.get(
+        f"{url}/payment-split", params={"date": "2026-11-16", "amount": 13371}
+    ).json()
+    assert (split["interest"], split["charges"], split["principal"]) == (
+        7132,
+        [charge],
+        5530,
+    )
+    response = alice.post(
+        f"{url}/payments",
+        json={"date": "2026-11-16", "amount": 13371, "from_account_id": checking["id"]},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["splits"][-1] == {
+        "type": "external",
+        "amount": -709,
+        "category_id": insurance["id"],
+        "memo": "Insurance",
+    }
+    (debt,) = alice.get(f"{API}/debts", params={"today": "2026-11-16"}).json()
+    assert debt["charges_to_payoff"] > 0
+    plan = alice.post(f"{API}/debts/plan", json={"today": "2026-11-16"}).json()
+    assert plan["avalanche"]["total_charges"] == debt["charges_to_payoff"]
+
+    response = alice.patch(
+        f"{API}/accounts/{loan['id']}",
+        json={
+            "debt_terms": {
+                "annual_rate": "8.99",
+                "payment": 700,
+                "charges": [charge],
+            }
+        },
+    )
+    assert response.status_code == 422
+    assert "less than the payment" in response.json()["detail"]

@@ -25,7 +25,7 @@ from picciuli.errors import SchemaVersionError
 
 from .tables import Base, MetaRow
 
-SCHEMA_VERSION: Final = 5
+SCHEMA_VERSION: Final = 6
 """Version of the schema created by this library release."""
 
 MigrationStep = Callable[[Connection], None]
@@ -423,11 +423,38 @@ def _upgrade_4_to_5(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+# Schema version 6 adds the fixed charges included in every payment of a loan
+# (`debt_charges`). It only creates a new, empty table. Frozen like `_V2_DDL`.
+_V6_DDL: Final = (
+    """CREATE TABLE debt_charges (
+	id INTEGER NOT NULL,
+	account_id INTEGER NOT NULL,
+	position INTEGER NOT NULL,
+	amount INTEGER NOT NULL,
+	category_id INTEGER,
+	label VARCHAR,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_debt_charge_amount CHECK (amount > 0),
+	CONSTRAINT ck_debt_charge_position CHECK (position >= 1),
+	FOREIGN KEY(account_id) REFERENCES debt_terms (account_id) ON DELETE CASCADE,
+	FOREIGN KEY(category_id) REFERENCES categories (id) ON DELETE RESTRICT
+)""",
+    "CREATE INDEX ix_debt_charges_account_id ON debt_charges (account_id)",
+    "CREATE INDEX ix_debt_charges_category_id ON debt_charges (category_id)",
+)
+
+
+def _upgrade_5_to_6(connection: Connection) -> None:
+    for statement in _V6_DDL:
+        connection.exec_driver_sql(statement)
+
+
 MIGRATIONS: Final[Mapping[int, MigrationStep]] = {
     1: _upgrade_1_to_2,
     2: _upgrade_2_to_3,
     3: _upgrade_3_to_4,
     4: _upgrade_4_to_5,
+    5: _upgrade_5_to_6,
 }
 """Upgrade steps keyed by the version they upgrade *from* (step `n` -> `n + 1`).
 

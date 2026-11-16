@@ -48,7 +48,29 @@ describe('termsBody', () => {
       new_interest_category: 'Visa interest',
       propose_interest: true,
       propose_minimum: true,
+      charges: [],
     });
+  });
+
+  it('builds the fixed charges of a loan, dropping blank rows', () => {
+    const loan = {
+      ...card,
+      payment: '133.71',
+      charges: [
+        { label: ' Insurance ', amount: '7,09', categoryId: 6 },
+        { label: '', amount: '', categoryId: NONE_ID },
+        { label: '', amount: '1.50', categoryId: NONE_ID },
+      ],
+    };
+    expect(termsBody(loan, 'loan', money)?.charges).toEqual([
+      { amount: 709, category_id: 6, label: 'Insurance' },
+      { amount: 150, category_id: null, label: null },
+    ]);
+    expect(termsBody(loan, 'credit_card', money)?.charges).toEqual([]);
+    expect(() => termsBody({ ...loan, payment: '8' }, 'loan', money)).toThrow(/less than the monthly payment/);
+    expect(() =>
+      termsBody({ ...loan, charges: [{ label: 'Fee', amount: '', categoryId: NONE_ID }] }, 'loan', money),
+    ).toThrow(/amount of the Fee charge/);
   });
 
   it('drops card fields from loans and returns null without terms', () => {

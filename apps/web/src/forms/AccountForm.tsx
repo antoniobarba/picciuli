@@ -8,14 +8,17 @@ import { AmountField, FormDialog, SelectField, TextField, type Option } from '..
 import { todayDay } from '../lib/dates';
 import {
   balanceFromOwed,
+  emptyChargeDraft,
   emptyTermsDraft,
   interestCategoryName,
   isCard,
   isLiability,
+  MAX_CHARGES,
   NEW_CATEGORY,
   owedText,
   termsBody,
   termsDraftFromAccount,
+  type ChargeDraft,
   type TermsDraft,
 } from '../lib/debts';
 import { ACCOUNT_TYPE_LABELS } from '../lib/format';
@@ -117,7 +120,7 @@ export function AccountForm({ account, onClose }: { account: Account | null; onC
       wide={liability && terms.enabled}
       help={
         liability
-          ? 'Enter what you owe as a positive amount. With the interest rate and the payments, Picciuli splits loan payments into principal and interest, forecasts the payoff and plans it on the Debts screen.'
+          ? 'Enter what you owe as a positive amount. With the interest rate and the payments, Picciuli splits loan payments into principal, interest and fixed charges, forecasts the payoff and plans it on the Debts screen.'
           : undefined
       }
     >
@@ -191,6 +194,7 @@ function DebtTermsFields({
     ],
     [categoryList],
   );
+  const chargeCategories = useMemo(() => categoryOptions(categoryList ?? []), [categoryList]);
 
   return (
     <fieldset className="debt-terms">
@@ -282,6 +286,14 @@ function DebtTermsFields({
               onChange={(value) => update({ newCategory: value })}
             />
           ) : null}
+          {card ? null : (
+            <ChargesFields
+              charges={draft.charges}
+              onChange={(charges) => update({ charges })}
+              categories={chargeCategories}
+              money={money}
+            />
+          )}
           {card ? (
             <>
               <label className="switch">
@@ -305,6 +317,65 @@ function DebtTermsFields({
         </>
       ) : null}
     </fieldset>
+  );
+}
+
+/** Fixed charges included in every loan payment, such as an insurance premium. */
+function ChargesFields({
+  charges,
+  onChange,
+  categories,
+  money,
+}: {
+  charges: ChargeDraft[];
+  onChange: (charges: ChargeDraft[]) => void;
+  categories: Option<number>[];
+  money: MoneyFormat;
+}) {
+  const change = (index: number, changes: Partial<ChargeDraft>) =>
+    onChange(charges.map((charge, i) => (i === index ? { ...charge, ...changes } : charge)));
+  return (
+    <div className="debt-charges">
+      <p className="muted small">
+        Fixed charges in each payment, such as an insurance premium or a fee: they are expenses and do not reduce the
+        debt.
+      </p>
+      {charges.map((charge, index) => (
+        <div className="form-row" key={index}>
+          <TextField
+            label="Charge"
+            value={charge.label}
+            onChange={(label) => change(index, { label })}
+            placeholder="e.g. Insurance"
+          />
+          <AmountField
+            label="Charge amount"
+            value={charge.amount}
+            onChange={(amount) => change(index, { amount })}
+            placeholder={money.plain(0)}
+          />
+          <SelectField
+            label="Charge category"
+            value={charge.categoryId}
+            options={categories}
+            onChange={(categoryId) => change(index, { categoryId })}
+          />
+          <button
+            type="button"
+            className="button small"
+            aria-label={`Remove ${charge.label.trim() || 'charge'}`}
+            onClick={() => onChange(charges.filter((_, i) => i !== index))}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      {charges.length < MAX_CHARGES ? (
+        <button type="button" className="button small" onClick={() => onChange([...charges, emptyChargeDraft()])}>
+          + Fixed charge
+        </button>
+      ) : null}
+    </div>
   );
 }
 

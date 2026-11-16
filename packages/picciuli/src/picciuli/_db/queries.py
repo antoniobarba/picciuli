@@ -19,6 +19,7 @@ from picciuli.model import (
     AccountType,
     Budget,
     Category,
+    DebtCharge,
     DebtLinkKind,
     DebtTerms,
     ExchangeRate,
@@ -86,6 +87,9 @@ def to_debt_terms(row: AccountRow) -> DebtTerms | None:
         interest_category_id=terms.interest_category_id,
         propose_interest=DebtLinkKind.CARD_INTEREST.value in kinds,
         propose_minimum=DebtLinkKind.CARD_MIN_PAYMENT.value in kinds,
+        charges=tuple(
+            DebtCharge(c.amount, c.category_id, c.label) for c in terms.charges
+        ),
     )
 
 

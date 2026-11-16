@@ -42,6 +42,7 @@ def list_debts(book: BookDep, today: QueryDate = None) -> list[DebtStatusOut]:
             next_due=status_.next_due,
             payoff=status_.payoff,
             interest_to_payoff=status_.interest_to_payoff,
+            charges_to_payoff=status_.charges_to_payoff,
         )
         for status_ in book.debts.list(today=today)
     ]
@@ -78,7 +79,7 @@ def payment_split(
     amount: Annotated[int, Query(gt=0, le=MAX_AMOUNT)],
     exclude_transaction_id: QueryId = None,
 ) -> LoanPaymentSplitOut:
-    """How a payment into a loan divides into interest and principal.
+    """How a payment into a loan divides into interest, fixed charges and principal.
 
     Pass the payment being edited as `exclude_transaction_id`.
     """
@@ -92,7 +93,7 @@ def payment_split(
 def record_payment(
     book: BookDep, account_id: PathId, body: LoanPaymentIn
 ) -> TransactionOut:
-    """Record a payment into a loan, split into principal and interest."""
+    """Record a payment into a loan, split into principal, interest and charges."""
     category = (
         body.interest_category_id
         if "interest_category_id" in body.model_fields_set

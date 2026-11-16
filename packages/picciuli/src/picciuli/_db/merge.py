@@ -29,6 +29,7 @@ from picciuli.errors import ConflictError, NotFoundError, ValidationError
 from picciuli.model import (
     AccountSplit,
     AccountType,
+    DebtCharge,
     DebtLinkKind,
     DebtTerms,
     ExternalSplit,
@@ -63,6 +64,7 @@ from .tables import (
     AccountRow,
     BudgetRow,
     CategoryRow,
+    DebtChargeRow,
     DebtTermsRow,
     ExchangeRateRow,
     PeriodRow,
@@ -621,6 +623,24 @@ class _Importer:
         terms, or none, and its own credit card schedules.
         """
         imported: set[int] = set()
+        charges: dict[int, list[tuple[int, DebtCharge]]] = {}
+        for label, raw in self._rows("debt_charges", "debt charge"):
+            with _context(label):
+                _, account, position, amount, category, text = raw
+                owner = _mapped_id(account, accounts, "account id", "account")
+                charges.setdefault(owner, []).append(
+                    (
+                        v.integer(position, "position"),
+                        DebtCharge(
+                            v.integer(amount, "amount"),
+                            _optional_mapped_id(
+                                category, categories, "category id", "category"
+                            ),
+                            v.optional_text(text, "label"),
+                        ),
+                    )
+                )
+        with_terms: set[int] = set()
         for label, row in self._rows("debt_terms", "debt terms"):
             with _context(label):
                 (
@@ -635,10 +655,12 @@ class _Importer:
                     category,
                 ) = row
                 account_id = _mapped_id(account, accounts, "account id", "account")
-                if account_id in imported:
+                if account_id in with_terms:
                     raise ValidationError("the account has terms twice")
+                with_terms.add(account_id)
                 if account_id not in self._created:
                     continue
+                own_charges = sorted(charges.get(account_id, []), key=lambda c: c[0])
                 terms = DebtTerms(
                     annual_rate=_scaled(rate, "annual rate"),
                     payment=v.optional_integer(payment, "payment"),
@@ -654,6 +676,7 @@ class _Importer:
                     interest_category_id=_optional_mapped_id(
                         category, categories, "interest category id", "category"
                     ),
+                    charges=tuple(charge for _, charge in own_charges),
                 )
                 target = self._session.get(AccountRow, account_id)
                 assert target is not None
@@ -662,6 +685,10 @@ class _Importer:
                 self._session.flush()
                 self._session.expire(target, ["debt_terms"])
                 imported.add(account_id)
+        if set(charges) - with_terms:
+            raise ValidationError(
+                "the file has debt charges of an account without terms"
+            )
         return imported
 
     def _schedules(
@@ -1186,6 +1213,7 @@ def _wipe(session: Session) -> None:
         delete(ScheduleDebtRow),
         delete(ScheduleSplitRow),
         delete(ScheduleRow),
+        delete(DebtChargeRow),
         delete(DebtTermsRow),
         delete(BudgetRow),
         delete(PeriodRow),

@@ -1,6 +1,6 @@
 /** Debts: account types, debt terms drafts, payoff labels and planner choices. */
 
-import type { Account, AccountType, DebtTermsIn, Rollover } from '../api/types';
+import type { Account, AccountType, DebtChargeIn, DebtTermsIn, Rollover } from '../api/types';
 import { monthName, parts, type Day } from './dates';
 import { InputError, NONE_ID, optionalAmount } from './forms';
 import { parseDecimal, type MoneyFormat } from './money';
@@ -38,6 +38,21 @@ export function owedText(balance: number, money: MoneyFormat): string {
 /** Choice value of the interest category that creates a new category. */
 export const NEW_CATEGORY = -1;
 
+/** Most fixed charges of a loan, as the API accepts. */
+export const MAX_CHARGES = 10;
+
+/** A fixed charge included in every loan payment, as typed. */
+export interface ChargeDraft {
+  label: string;
+  amount: string;
+  /** A category, or `NONE_ID` for none. */
+  categoryId: number;
+}
+
+export function emptyChargeDraft(): ChargeDraft {
+  return { label: '', amount: '', categoryId: NONE_ID };
+}
+
 export interface TermsDraft {
   /** Whether the account has terms at all. */
   enabled: boolean;
@@ -54,6 +69,8 @@ export interface TermsDraft {
   newCategory: string;
   proposeInterest: boolean;
   proposeMinimum: boolean;
+  /** Loans only: fixed charges such as an insurance premium. */
+  charges: ChargeDraft[];
 }
 
 /** The suggested name of the interest category of a new debt. */
@@ -75,6 +92,7 @@ export function emptyTermsDraft(): TermsDraft {
     newCategory: '',
     proposeInterest: true,
     proposeMinimum: true,
+    charges: [],
   };
 }
 
@@ -94,6 +112,11 @@ export function termsDraftFromAccount(account: Account, money: MoneyFormat): Ter
     newCategory: '',
     proposeInterest: terms.propose_interest,
     proposeMinimum: terms.propose_minimum,
+    charges: terms.charges.map((charge) => ({
+      label: charge.label ?? '',
+      amount: money.plain(charge.amount),
+      categoryId: charge.category_id ?? NONE_ID,
+    })),
   };
 }
 
@@ -122,6 +145,23 @@ function optionalPositive(text: string, money: MoneyFormat, label: string): numb
   return value;
 }
 
+/** The charges of a loan draft; rows left blank are dropped. */
+function chargesBody(charges: readonly ChargeDraft[], payment: number | null, money: MoneyFormat): DebtChargeIn[] {
+  const result = charges
+    .filter((charge) => charge.amount.trim() || charge.label.trim())
+    .map((charge) => {
+      const name = charge.label.trim();
+      const amount = optionalPositive(charge.amount, money, `amount of the ${name || 'fixed'} charge`);
+      if (amount === null) throw new InputError(`enter the amount of the ${name || 'fixed'} charge`);
+      return { amount, category_id: charge.categoryId === NONE_ID ? null : charge.categoryId, label: name || null };
+    });
+  const total = result.reduce((sum, charge) => sum + charge.amount, 0);
+  if (payment !== null && result.length && total >= payment) {
+    throw new InputError('the fixed charges must be less than the monthly payment');
+  }
+  return result;
+}
+
 /** The API terms of a draft, or `null` when the account has no terms. */
 export function termsBody(draft: TermsDraft, type: AccountType, money: MoneyFormat): DebtTermsIn | null {
   if (!draft.enabled || !isLiability(type)) return null;
@@ -140,12 +180,14 @@ export function termsBody(draft: TermsDraft, type: AccountType, money: MoneyForm
     credit_limit: null,
     propose_interest: false,
     propose_minimum: false,
+    charges: [],
   };
   if (draft.interestCategoryId === NEW_CATEGORY) {
     const name = draft.newCategory.trim();
     if (!name) throw new InputError('name the new interest category');
     body.new_interest_category = name;
   }
+  if (!card) body.charges = chargesBody(draft.charges, body.payment ?? null, money);
   if (card) {
     body.payment_percent = draft.percent.trim() ? parsePercent(draft.percent, 'minimum payment percent', 100) : null;
     body.statement_day = optionalDay(draft.statementDay, 'statement day');

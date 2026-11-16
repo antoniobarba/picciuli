@@ -23,6 +23,7 @@ from picciuli._db.session import UnitOfWork
 from picciuli._db.tables import (
     AccountRow,
     CategoryRow,
+    DebtChargeRow,
     DebtTermsRow,
     ScheduleDebtRow,
     ScheduleRow,
@@ -31,12 +32,14 @@ from picciuli._db.tables import (
 )
 from picciuli._decimal import from_scaled, to_decimal, to_scaled
 from picciuli.errors import ConflictError, ValidationError
+from picciuli.limits import MAX_MEMO_LENGTH
 from picciuli.model import (
     UNSET,
     Account,
     AccountClass,
     AccountSplit,
     AccountType,
+    DebtCharge,
     DebtLinkKind,
     DebtPayoff,
     DebtPlan,
@@ -63,6 +66,9 @@ MAX_RATE = Decimal(1000)
 
 MAX_LUMP_SUMS = 100
 """Most lump sums in a single plan."""
+
+MAX_CHARGES = 10
+"""Most fixed charges in the terms of a loan."""
 
 CARD_KINDS = (DebtLinkKind.CARD_INTEREST, DebtLinkKind.CARD_MIN_PAYMENT)
 
@@ -108,6 +114,41 @@ def is_liability(row: AccountRow) -> bool:
 
 def is_card(row: AccountRow) -> bool:
     return row.type == AccountType.CREDIT_CARD.value
+
+
+def _validated_charges(
+    session: Session, charges: object, *, card: bool, payment: int | None
+) -> builtins.list[DebtChargeRow]:
+    if isinstance(charges, (str, bytes)) or not isinstance(charges, Sequence):
+        raise ValidationError("charges must be a sequence of DebtCharge")
+    if charges and card:
+        raise ValidationError(
+            "only loans, mortgages and other liabilities have fixed charges"
+        )
+    if len(charges) > MAX_CHARGES:
+        raise ValidationError(f"a debt cannot have more than {MAX_CHARGES} charges")
+    rows = []
+    for position, charge in enumerate(charges, start=1):
+        if not isinstance(charge, DebtCharge):
+            raise ValidationError(f"charge {position} must be a DebtCharge")
+        amount = v.positive_amount(charge.amount, f"charge {position} amount")
+        category = None
+        if charge.category_id is not None:
+            category = v.identifier(
+                charge.category_id, f"charge {position} category id"
+            )
+            get_row(session, CategoryRow, category, "category")
+        label = v.optional_text(
+            charge.label, f"charge {position} label", MAX_MEMO_LENGTH
+        )
+        rows.append(
+            DebtChargeRow(
+                position=position, amount=amount, category_id=category, label=label
+            )
+        )
+    if payment is not None and sum(r.amount for r in rows) >= payment:
+        raise ValidationError("the fixed charges must be less than the payment")
+    return rows
 
 
 def validated_terms(
@@ -186,6 +227,9 @@ def validated_terms(
         "credit_limit": limit,
         "payment_account_id": payer,
         "interest_category_id": category,
+        "charges": _validated_charges(
+            session, terms.charges, card=card, payment=payment
+        ),
     }
     return columns, propose_interest, propose_minimum
 
@@ -331,6 +375,8 @@ def on_type_change(
             terms.payment_percent = None
             terms.statement_day = None
             terms.credit_limit = None
+        else:
+            terms.charges = []
     _refresh(session, account)
 
 
@@ -353,11 +399,16 @@ def on_delete(session: Session, account: AccountRow) -> None:
 
 
 def on_category_delete(session: Session, category_id: int, target: int | None) -> None:
-    """Move the interest of debts and loan payments to another category (or none)."""
+    """Move the interest and charges of debts and loan payments to another category."""
     session.execute(
         update(DebtTermsRow)
         .where(DebtTermsRow.interest_category_id == category_id)
         .values(interest_category_id=target)
+    )
+    session.execute(
+        update(DebtChargeRow)
+        .where(DebtChargeRow.category_id == category_id)
+        .values(category_id=target)
     )
     session.execute(
         update(ScheduleDebtRow)
@@ -487,28 +538,50 @@ def loan_interest(ledger: Ledger, terms: DebtTermsRow | None, day: dt.date) -> i
     return _debt.monthly_interest(ledger.owed(day - dt.timedelta(days=1)), _rate(terms))
 
 
+def loan_charges(terms: DebtTermsRow | None) -> tuple[DebtCharge, ...]:
+    """The fixed charges of a loan's terms."""
+    if terms is None:
+        return ()
+    return tuple(DebtCharge(c.amount, c.category_id, c.label) for c in terms.charges)
+
+
+def _divide(
+    paid: int, interest: int, charges: Sequence[DebtCharge]
+) -> tuple[int, tuple[DebtCharge, ...], int]:
+    """Interest, charges and principal of a payment: interest first, then charges."""
+    interest = min(interest, paid)
+    left = paid - interest
+    charged = []
+    for charge in charges:
+        amount = min(charge.amount, left)
+        if amount:
+            charged.append(DebtCharge(amount, charge.category_id, charge.label))
+            left -= amount
+    return interest, tuple(charged), left
+
+
 def _loan_splits(
     template: Sequence[Split],
     loan_id: int,
     total: int | None,
     interest: int,
+    charges: Sequence[DebtCharge],
     category: int | None,
     payer: int | None,
 ) -> builtins.list[Split]:
+    paid = total if total is not None else max(abs(s.amount) for s in template)
+    charged_interest, charged, principal = _divide(paid, interest, charges)
     result: builtins.list[Split] = []
     for split in template:
         assert isinstance(split, AccountSplit)
-        amount = total if total is not None else abs(split.amount)
         if split.account_id == loan_id:
-            principal = amount - min(interest, amount)
             if principal:
                 result.append(AccountSplit(loan_id, principal, split.memo))
         else:
-            result.append(AccountSplit(payer or split.account_id, -amount, split.memo))
-    paid = total if total is not None else max(abs(s.amount) for s in template)
-    charged = min(interest, paid)
-    if charged:
-        result.append(ExternalSplit(-charged, category, "Interest"))
+            result.append(AccountSplit(payer or split.account_id, -paid, split.memo))
+    if charged_interest:
+        result.append(ExternalSplit(-charged_interest, category, "Interest"))
+    result.extend(ExternalSplit(-c.amount, c.category_id, c.label) for c in charged)
     return result
 
 
@@ -572,7 +645,13 @@ def debt_occurrence(
         if category is None and terms is not None:
             category = terms.interest_category_id
         return total, _loan_splits(
-            template, account.id, amount, interest, category, payer
+            template,
+            account.id,
+            amount,
+            interest,
+            loan_charges(terms),
+            category,
+            payer,
         )
     if terms is None:
         raise ConflictError(f"account {account.name!r} has no debt terms")
@@ -602,7 +681,8 @@ class DebtService:
     Credit cards, loans, mortgages and other liabilities can have
     [`DebtTerms`][picciuli.model.DebtTerms]: an interest rate, a minimum or
     fixed payment and the days of the statement and of the payment. With
-    them the library splits loan payments into principal and interest,
+    them the library splits loan payments into principal, interest and fixed
+    charges (such as an insurance premium),
     proposes the interest charge and the minimum payment of credit cards for
     confirmation (as recurring transactions that wait for it), forecasts when
     each debt is paid off, and simulates paying them all off with the
@@ -691,16 +771,19 @@ class DebtService:
                     card=plan_debt.card,
                     payment=terms.payment,
                     percent=plan_debt.percent,
+                    charges=plan_debt.charges,
                 )
-                payoff = interest = None
+                payoff = interest = charges = None
                 if plan_debt.owed == 0:
-                    interest = 0
+                    interest = charges = 0
                 elif minimum is not None:
                     outcome = _debt.simulate(
                         [plan_debt], first_month=first, rollover=Rollover.NONE
                     )
                     payoff = outcome.payoff[0]
-                    interest = outcome.interest[0] if payoff is not None else None
+                    if payoff is not None:
+                        interest = outcome.interest[0]
+                        charges = outcome.charges[0]
                 result.append(
                     DebtStatus(
                         account=to_account(row),
@@ -711,6 +794,7 @@ class DebtService:
                         else _debt.on_or_after(today, terms.due_day),
                         payoff=payoff,
                         interest_to_payoff=interest,
+                        charges_to_payoff=charges,
                     )
                 )
         return result
@@ -793,6 +877,7 @@ class DebtService:
                 payoff=outcome.payoff[index - 1],
                 interest=outcome.interest[index - 1],
                 paid=outcome.paid[index - 1],
+                charges=outcome.charges[index - 1],
             )
             for index, debt in enumerate(outcome.order, start=1)
         )
@@ -814,6 +899,7 @@ class DebtService:
             else max((day for day in last if day is not None), default=first),
             total_interest=sum(outcome.interest),
             total_paid=sum(outcome.paid),
+            total_charges=sum(outcome.charges),
         )
 
     def loan_payment_split(
@@ -824,11 +910,12 @@ class DebtService:
         *,
         exclude_transaction_id: int | None = None,
     ) -> LoanPaymentSplit:
-        """Divide a payment into a loan into interest and principal.
+        """Divide a payment into a loan into interest, charges and principal.
 
         The interest is one month at the loan's rate on the amount owed at
-        the start of `date`, at most the whole payment. A loan without terms
-        has no interest.
+        the start of `date`, at most the whole payment. The fixed charges of
+        the loan's terms come next, at most what is left; the rest is
+        principal. A loan without terms has no interest and no charges.
 
         Args:
             account_id: A loan, mortgage or other liability (not a credit
@@ -850,14 +937,19 @@ class DebtService:
             row = _loan_row(session, account_id)
             ledger = Ledger(session, row, exclude=exclude)
             owed = ledger.owed(date - dt.timedelta(days=1))
-            interest = min(amount, loan_interest(ledger, row.debt_terms, date))
+            interest, charges, principal = _divide(
+                amount,
+                loan_interest(ledger, row.debt_terms, date),
+                loan_charges(row.debt_terms),
+            )
             return LoanPaymentSplit(
                 account_id=row.id,
                 date=date,
                 amount=amount,
                 owed=owed,
                 interest=interest,
-                principal=amount - interest,
+                principal=principal,
+                charges=charges,
             )
 
     def record_loan_payment(
@@ -871,7 +963,10 @@ class DebtService:
         description: str | None = None,
         notes: str | None = None,
     ) -> Transaction:
-        """Record a payment into a loan, split into principal and interest.
+        """Record a payment into a loan, split into principal, interest and charges.
+
+        The fixed charges of the loan's terms are recorded as expenses in
+        their categories, like the interest.
 
         Args:
             date: Day of the payment.
@@ -910,6 +1005,7 @@ class DebtService:
                 row.id,
                 amount,
                 interest,
+                loan_charges(row.debt_terms),
                 category,
                 payer,
             )
@@ -983,6 +1079,7 @@ def _plan_debt(row: AccountRow, balance: int) -> _debt.PlanDebt:
         card=is_card(row),
         payment=terms.payment,
         percent=_card_percent(terms),
+        charges=sum(c.amount for c in terms.charges),
     )
 
 

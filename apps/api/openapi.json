@@ -4725,7 +4725,7 @@
           "debts"
         ],
         "summary": "Payment Split",
-        "description": "How a payment into a loan divides into interest and principal.\n\nPass the payment being edited as `exclude_transaction_id`.",
+        "description": "How a payment into a loan divides into interest, fixed charges and principal.\n\nPass the payment being edited as `exclude_transaction_id`.",
         "operationId": "payment_split_api_v1_debts__account_id__payment_split_get",
         "security": [
           {
@@ -4854,7 +4854,7 @@
           "debts"
         ],
         "summary": "Record Payment",
-        "description": "Record a payment into a loan, split into principal and interest.",
+        "description": "Record a payment into a loan, split into principal, interest and charges.",
         "operationId": "record_payment_api_v1_debts__account_id__payments_post",
         "security": [
           {
@@ -10485,6 +10485,91 @@
         "title": "CostMethod",
         "description": "How the cost of sold shares is computed when a sale is recorded.\n\nThe cost removed from the account sets the realized gain of the sale:\n`gain = proceeds - cost`."
       },
+      "DebtChargeIn": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id",
+            "description": "Expense category."
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "Memo of the split.",
+            "examples": [
+              "Insurance"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "DebtChargeIn",
+        "description": "A fixed charge included in every payment of a loan, such as insurance."
+      },
+      "DebtChargeOut": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "category_id",
+          "label"
+        ],
+        "title": "DebtChargeOut",
+        "description": "A fixed charge included in every payment of a loan, such as insurance."
+      },
       "DebtLinkKind": {
         "type": "string",
         "enum": [
@@ -10527,7 +10612,13 @@
           },
           "paid": {
             "type": "integer",
-            "title": "Paid"
+            "title": "Paid",
+            "description": "Total paid, fixed charges included."
+          },
+          "charges": {
+            "type": "integer",
+            "title": "Charges",
+            "description": "Fixed charges of a loan paid."
           }
         },
         "type": "object",
@@ -10537,7 +10628,8 @@
           "balance",
           "payoff",
           "interest",
-          "paid"
+          "paid",
+          "charges"
         ],
         "title": "DebtPayoffOut",
         "description": "How one debt is paid off."
@@ -10663,6 +10755,10 @@
           "total_paid": {
             "type": "integer",
             "title": "Total Paid"
+          },
+          "total_charges": {
+            "type": "integer",
+            "title": "Total Charges"
           }
         },
         "type": "object",
@@ -10676,7 +10772,8 @@
           "months",
           "payoff",
           "total_interest",
-          "total_paid"
+          "total_paid",
+          "total_charges"
         ],
         "title": "DebtPlanOut",
         "description": "A month-by-month payoff simulation."
@@ -10721,7 +10818,8 @@
                 "type": "null"
               }
             ],
-            "title": "Minimum Payment"
+            "title": "Minimum Payment",
+            "description": "What is due every month now, a loan's fixed charges included."
           },
           "next_due": {
             "anyOf": [
@@ -10758,6 +10856,18 @@
               }
             ],
             "title": "Interest To Payoff"
+          },
+          "charges_to_payoff": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Payoff",
+            "description": "Fixed charges of a loan paid until then; `null` with `payoff`."
           }
         },
         "type": "object",
@@ -10768,7 +10878,8 @@
           "minimum_payment",
           "next_due",
           "payoff",
-          "interest_to_payoff"
+          "interest_to_payoff",
+          "charges_to_payoff"
         ],
         "title": "DebtStatusOut",
         "description": "A liability with terms, and when it is paid off at the minimum payment."
@@ -10915,6 +11026,16 @@
             "type": "boolean",
             "title": "Propose Minimum",
             "default": false
+          },
+          "charges": {
+            "items": {
+              "$ref": "#/components/schemas/DebtChargeIn"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Charges",
+            "description": "Loans: fixed charges included in every payment, such as an insurance premium; together less than the payment.",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -10923,7 +11044,7 @@
           "annual_rate"
         ],
         "title": "DebtTermsIn",
-        "description": "Interest and payment terms of a credit card, loan, mortgage or other debt.\n\nPayment percent, statement day, credit limit and the proposals only apply\nto credit cards."
+        "description": "Interest and payment terms of a credit card, loan, mortgage or other debt.\n\nPayment percent, statement day, credit limit and the proposals only apply\nto credit cards; fixed charges only to the other debts."
       },
       "DebtTermsOut": {
         "properties": {
@@ -11020,6 +11141,14 @@
             "type": "boolean",
             "title": "Propose Minimum",
             "description": "Credit cards: the minimum payment waits for confirmation on every due day."
+          },
+          "charges": {
+            "items": {
+              "$ref": "#/components/schemas/DebtChargeOut"
+            },
+            "type": "array",
+            "title": "Charges",
+            "description": "Loans: fixed charges included in every payment; they are paid after the interest and before the principal."
           }
         },
         "type": "object",
@@ -11033,7 +11162,8 @@
           "payment_account_id",
           "interest_category_id",
           "propose_interest",
-          "propose_minimum"
+          "propose_minimum",
+          "charges"
         ],
         "title": "DebtTermsOut",
         "description": "Interest and payment terms of a liability."
@@ -11637,7 +11767,7 @@
           "from_account_id"
         ],
         "title": "LoanPaymentIn",
-        "description": "A payment into a loan, split into principal and interest."
+        "description": "A payment into a loan, split into principal, interest and fixed charges."
       },
       "LoanPaymentSplitOut": {
         "properties": {
@@ -11665,6 +11795,14 @@
           "principal": {
             "type": "integer",
             "title": "Principal"
+          },
+          "charges": {
+            "items": {
+              "$ref": "#/components/schemas/DebtChargeOut"
+            },
+            "type": "array",
+            "title": "Charges",
+            "description": "The loan's fixed charges, with the amounts actually charged after the interest."
           }
         },
         "type": "object",
@@ -11674,10 +11812,11 @@
           "amount",
           "owed",
           "interest",
-          "principal"
+          "principal",
+          "charges"
         ],
         "title": "LoanPaymentSplitOut",
-        "description": "How a payment into a loan divides into interest and principal."
+        "description": "How a payment into a loan divides into interest, charges and principal."
       },
       "LumpSumIn": {
         "properties": {
@@ -12077,7 +12216,8 @@
           },
           "payment": {
             "type": "integer",
-            "title": "Payment"
+            "title": "Payment",
+            "description": "Total paid, fixed charges included."
           },
           "interest": {
             "type": "integer",

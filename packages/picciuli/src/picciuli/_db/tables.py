@@ -122,6 +122,32 @@ class DebtTermsRow(Base):
     interest_category_id: Mapped[int | None] = mapped_column(
         ForeignKey("categories.id", ondelete="RESTRICT")
     )
+    charges: Mapped[list[DebtChargeRow]] = relationship(
+        cascade="all, delete-orphan",
+        order_by="DebtChargeRow.position",
+        lazy="selectin",
+    )
+
+
+class DebtChargeRow(Base):
+    """A fixed charge included in every payment of a loan."""
+
+    __tablename__ = "debt_charges"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_debt_charge_amount"),
+        CheckConstraint("position >= 1", name="ck_debt_charge_position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("debt_terms.account_id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT"), index=True
+    )
+    label: Mapped[str | None] = mapped_column(String)
 
 
 class CategoryRow(Base):

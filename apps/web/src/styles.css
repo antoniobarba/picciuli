@@ -1839,6 +1839,31 @@ input[type='range'] {
   font-weight: 600;
 }
 
+.debt-charges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.debt-charges p {
+  margin: 0;
+}
+
+.debt-charges .form-row {
+  grid-template-columns: 2fr 1fr 2fr auto;
+  align-items: end;
+}
+
+.debt-charges > .button {
+  align-self: flex-start;
+}
+
+@media (max-width: 760px) {
+  .debt-charges .form-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .form-warning {
   margin: 0;
   color: var(--warning);

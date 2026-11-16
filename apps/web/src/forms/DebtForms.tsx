@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { unwrap } from '../api/client';
 import { useAccounts, useApiMutation, useCategories, useLoanSplit, useMoney, useOccurrences } from '../api/queries';
-import type { Account, Schedule } from '../api/types';
+import type { Account, LoanPaymentSplit, Schedule } from '../api/types';
 import { DateField } from '../components/DateField';
 import { AmountField, FormDialog, SelectField, type Option } from '../components/forms';
 import { Amount } from '../components/ui';
@@ -9,6 +9,7 @@ import { shiftMonth } from '../lib/calendar';
 import { todayDay, type Day } from '../lib/dates';
 import { isLiability, isLoan } from '../lib/debts';
 import { NONE_ID, optionalAmount, parseDate, positiveAmount, requiredId } from '../lib/forms';
+import type { MoneyFormat } from '../lib/money';
 import { categoryOptions } from './TransactionForm';
 
 function tryDate(text: string, today: Day): Day | null {
@@ -33,7 +34,29 @@ function payerOptions(accounts: readonly Account[], exclude: number | null): Opt
     .map((a) => ({ value: a.id, label: a.name }));
 }
 
-/** Pay into a loan: the payment is split into principal and interest from the amount owed. */
+/** Interest · each fixed charge · Principal (· Owed before) of a loan payment. */
+function LoanSplitLine({ split, money, owed = false }: { split: LoanPaymentSplit; money: MoneyFormat; owed?: boolean }) {
+  return (
+    <p className="loan-split" aria-live="polite">
+      Interest <Amount value={-split.interest} money={money} />
+      {split.charges.map((charge, index) => (
+        <span key={index}>
+          {' '}
+          · {charge.label ?? 'Charge'} <Amount value={-charge.amount} money={money} />
+        </span>
+      ))}{' '}
+      · Principal <Amount value={split.principal} money={money} />
+      {owed ? (
+        <>
+          {' '}
+          · Owed before <Amount value={-split.owed} money={money} muted />
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+/** Pay into a loan: the payment is split into principal, interest and fixed charges from the amount owed. */
 export function LoanPaymentForm({ loan, onClose }: { loan?: Account | null; onClose: () => void }) {
   const money = useMoney();
   const today = todayDay();
@@ -106,7 +129,7 @@ export function LoanPaymentForm({ loan, onClose }: { loan?: Account | null; onCl
       onClose={onClose}
       title="Loan payment"
       onSubmit={() => save.mutateAsync(undefined)}
-      help="Picciuli works out the interest of the month on what you owe; the rest of the payment reduces the debt."
+      help="Picciuli works out the interest of the month on what you owe and takes the loan's fixed charges; the rest of the payment reduces the debt."
     >
       <div className="form-row">
         <SelectField
@@ -132,13 +155,7 @@ export function LoanPaymentForm({ loan, onClose }: { loan?: Account | null; onCl
         options={categoryOptions(categories)}
         onChange={setCategoryId}
       />
-      {split ? (
-        <p className="loan-split" aria-live="polite">
-          Interest <Amount value={-split.interest} money={money} /> · Principal{' '}
-          <Amount value={split.principal} money={money} /> · Owed before{' '}
-          <Amount value={-split.owed} money={money} muted />
-        </p>
-      ) : null}
+      {split ? <LoanSplitLine split={split} money={money} owed /> : null}
       <label className="switch">
         <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
         Repeat every month from next month
@@ -175,10 +192,12 @@ export function DebtOccurrenceForm({ schedule, date, onClose }: { schedule: Sche
   const payer =
     fromId ?? (predictedPayer?.type === 'account' ? predictedPayer.account_id : null) ?? account?.debt_terms?.payment_account_id ?? null;
   const shown = amount ?? (prediction?.amount != null ? money.plain(prediction.amount) : '');
-  const interest = useMemo(
-    () => prediction?.splits?.find((s) => s.type === 'external')?.amount ?? null,
-    [prediction],
-  );
+  const loan = debt.kind === 'loan_payment';
+  const split = useLoanSplit(
+    loan ? debt.account_id : null,
+    tryDate(day, today),
+    loan ? tryAmount(shown, (text) => optionalAmount(text, money)) : null,
+  ).data;
 
   const post = useApiMutation((api) => {
     const body: Record<string, unknown> = { date: parseDate(day, today) };
@@ -216,7 +235,7 @@ export function DebtOccurrenceForm({ schedule, date, onClose }: { schedule: Sche
           ? 'Predicted from the average balance you owed during the statement cycle. Check it against your statement.'
           : debt.kind === 'card_min_payment'
             ? 'Predicted from the statement balance, less what you already paid into the card since then.'
-            : 'The interest of the month is worked out on what you owe; the rest reduces the debt.'
+            : 'The interest of the month is worked out on what you owe and the fixed charges are taken; the rest reduces the debt.'
       }
     >
       <div className="form-row">
@@ -231,12 +250,7 @@ export function DebtOccurrenceForm({ schedule, date, onClose }: { schedule: Sche
           onChange={setFromId}
         />
       ) : null}
-      {debt.kind === 'loan_payment' && interest !== null && amount === null ? (
-        <p className="loan-split">
-          Interest <Amount value={interest} money={money} /> · Principal{' '}
-          <Amount value={(prediction?.amount ?? 0) + interest} money={money} />
-        </p>
-      ) : null}
+      {loan && split ? <LoanSplitLine split={split} money={money} /> : null}
     </FormDialog>
   );
 }

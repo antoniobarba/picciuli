@@ -139,15 +139,22 @@ Credit cards, loans, mortgages and other liabilities can have
 rate in percent, the payment (the fixed monthly payment of a loan, or the
 minimum payment floor of a card), the day payments are due, the account they
 usually come from and the category of the interest. Cards also have a minimum
-payment percentage, a statement day and a credit limit. Only the current rate
-is kept: a new rate applies from then on.
+payment percentage, a statement day and a credit limit. Loans, mortgages and
+other liabilities can also have up to 10
+[fixed charges](api/model.md#picciuli.model.DebtCharge) included in every
+payment, such as an insurance premium or a collection fee, each with its
+amount, expense category and label. Only the current rate is kept: a new rate
+applies from then on.
 
 Interest is computed **per type**:
 
 - **Loans, mortgages and other liabilities** accrue one month of interest,
   `owed × rate / 12`, on what is owed at the start of the payment day. A
   payment into the loan is split into interest (an external split in the
-  interest category) and principal (the rest, which reduces the debt):
+  interest category), the fixed charges (an external split each, in their
+  categories) and principal (the rest, which reduces the debt). The interest
+  is paid first, then the charges in order, so a payment too small for
+  everything leaves out the principal, then the last charges:
   [`loan_payment_split`][picciuli.services.DebtService.loan_payment_split]
   computes it and
   [`record_loan_payment`][picciuli.services.DebtService.record_loan_payment]
@@ -181,6 +188,10 @@ payment every month and one-off lump sums) goes to one debt at a time:
 
 - **snowball**: the smallest balance first, for quick wins;
 - **avalanche**: the highest interest rate first, for the least interest.
+
+A loan's fixed charges are paid every month it is still owed, as part of its
+payment, but do not reduce it: the forecasts and the plans report them apart
+from the interest, and count them in the total paid.
 
 The [rollover](api/model.md#picciuli.model.Rollover) decides what happens to
 the payment of a debt once it is paid off: it goes to the next debt (the

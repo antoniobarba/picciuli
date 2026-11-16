@@ -736,7 +736,7 @@ export interface paths {
         };
         /**
          * Payment Split
-         * @description How a payment into a loan divides into interest and principal.
+         * @description How a payment into a loan divides into interest, fixed charges and principal.
          *
          *     Pass the payment being edited as `exclude_transaction_id`.
          */
@@ -760,7 +760,7 @@ export interface paths {
         put?: never;
         /**
          * Record Payment
-         * @description Record a payment into a loan, split into principal and interest.
+         * @description Record a payment into a loan, split into principal, interest and charges.
          */
         post: operations["record_payment_api_v1_debts__account_id__payments_post"];
         delete?: never;
@@ -1881,6 +1881,37 @@ export interface components {
          */
         CostMethod: "average" | "fifo";
         /**
+         * DebtChargeIn
+         * @description A fixed charge included in every payment of a loan, such as insurance.
+         */
+        DebtChargeIn: {
+            /** Amount */
+            amount: number;
+            /**
+             * Category Id
+             * @description Expense category.
+             */
+            category_id?: number | null;
+            /**
+             * Label
+             * @description Memo of the split.
+             * @example Insurance
+             */
+            label?: string | null;
+        };
+        /**
+         * DebtChargeOut
+         * @description A fixed charge included in every payment of a loan, such as insurance.
+         */
+        DebtChargeOut: {
+            /** Amount */
+            amount: number;
+            /** Category Id */
+            category_id: number | null;
+            /** Label */
+            label: string | null;
+        };
+        /**
          * DebtLinkKind
          * @description How a [`Schedule`][picciuli.model.Schedule] is tied to a debt.
          * @enum {string}
@@ -1901,8 +1932,16 @@ export interface components {
             payoff: string | null;
             /** Interest */
             interest: number;
-            /** Paid */
+            /**
+             * Paid
+             * @description Total paid, fixed charges included.
+             */
             paid: number;
+            /**
+             * Charges
+             * @description Fixed charges of a loan paid.
+             */
+            charges: number;
         };
         /**
          * DebtPlanIn
@@ -1959,6 +1998,8 @@ export interface components {
             total_interest: number;
             /** Total Paid */
             total_paid: number;
+            /** Total Charges */
+            total_charges: number;
         };
         /**
          * DebtPlansOut
@@ -1981,7 +2022,10 @@ export interface components {
             balance: number;
             /** Owed */
             owed: number;
-            /** Minimum Payment */
+            /**
+             * Minimum Payment
+             * @description What is due every month now, a loan's fixed charges included.
+             */
             minimum_payment: number | null;
             /** Next Due */
             next_due: string | null;
@@ -1992,13 +2036,18 @@ export interface components {
             payoff: string | null;
             /** Interest To Payoff */
             interest_to_payoff: number | null;
+            /**
+             * Charges To Payoff
+             * @description Fixed charges of a loan paid until then; `null` with `payoff`.
+             */
+            charges_to_payoff: number | null;
         };
         /**
          * DebtTermsIn
          * @description Interest and payment terms of a credit card, loan, mortgage or other debt.
          *
          *     Payment percent, statement day, credit limit and the proposals only apply
-         *     to credit cards.
+         *     to credit cards; fixed charges only to the other debts.
          */
         DebtTermsIn: {
             /**
@@ -2036,6 +2085,12 @@ export interface components {
              * @default false
              */
             propose_minimum: boolean;
+            /**
+             * Charges
+             * @description Loans: fixed charges included in every payment, such as an insurance premium; together less than the payment.
+             * @default []
+             */
+            charges: components["schemas"]["DebtChargeIn"][];
         };
         /**
          * DebtTermsOut
@@ -2077,6 +2132,11 @@ export interface components {
              * @description Credit cards: the minimum payment waits for confirmation on every due day.
              */
             propose_minimum: boolean;
+            /**
+             * Charges
+             * @description Loans: fixed charges included in every payment; they are paid after the interest and before the principal.
+             */
+            charges: components["schemas"]["DebtChargeOut"][];
         };
         /**
          * ErrorResponse
@@ -2278,7 +2338,7 @@ export interface components {
         };
         /**
          * LoanPaymentIn
-         * @description A payment into a loan, split into principal and interest.
+         * @description A payment into a loan, split into principal, interest and fixed charges.
          */
         LoanPaymentIn: {
             /**
@@ -2302,7 +2362,7 @@ export interface components {
         };
         /**
          * LoanPaymentSplitOut
-         * @description How a payment into a loan divides into interest and principal.
+         * @description How a payment into a loan divides into interest, charges and principal.
          */
         LoanPaymentSplitOut: {
             /** Account Id */
@@ -2320,6 +2380,11 @@ export interface components {
             interest: number;
             /** Principal */
             principal: number;
+            /**
+             * Charges
+             * @description The loan's fixed charges, with the amounts actually charged after the interest.
+             */
+            charges: components["schemas"]["DebtChargeOut"][];
         };
         /**
          * LumpSumIn
@@ -2501,7 +2566,10 @@ export interface components {
              * Format: date
              */
             month: string;
-            /** Payment */
+            /**
+             * Payment
+             * @description Total paid, fixed charges included.
+             */
             payment: number;
             /** Interest */
             interest: number;

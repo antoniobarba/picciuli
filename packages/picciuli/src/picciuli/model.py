@@ -43,6 +43,7 @@ __all__ = [
     "Category",
     "CategoryTotal",
     "CostMethod",
+    "DebtCharge",
     "DebtLinkKind",
     "DebtPayoff",
     "DebtPlan",
@@ -260,6 +261,24 @@ class PeriodChangeKind(str, enum.Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class DebtCharge:
+    """A fixed charge included in every payment of a loan.
+
+    For example an insurance premium or a collection fee: it is an expense,
+    so it does not reduce the debt.
+
+    Attributes:
+        amount: Positive amount charged on every payment.
+        category_id: Category of the expense, or `None`.
+        label: Memo of the split, for example `"Insurance"`, or `None`.
+    """
+
+    amount: int
+    category_id: int | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class DebtTerms:
     """Interest and payment terms of a liability account.
 
@@ -287,6 +306,9 @@ class DebtTerms:
             for confirmation on every statement day.
         propose_minimum: Credit cards only: whether the minimum payment waits
             for confirmation on every due day.
+        charges: Loans only: fixed charges included in every payment, such
+            as an insurance premium; at most 10. A payment pays the interest
+            first, then the charges in order, and the rest reduces the debt.
     """
 
     annual_rate: Decimal
@@ -299,6 +321,7 @@ class DebtTerms:
     interest_category_id: int | None = None
     propose_interest: bool = False
     propose_minimum: bool = False
+    charges: tuple[DebtCharge, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1164,13 +1187,15 @@ class DebtStatus:
         balance: Balance including every transaction up to today (negative
             while you owe money).
         minimum_payment: What is due every month now: the fixed payment of
-            a loan or the minimum payment of a credit card on the current
-            balance; `None` when the terms do not say.
+            a loan (charges included) or the minimum payment of a credit card
+            on the current balance; `None` when the terms do not say.
         next_due: Next due day on or after today, or `None` without a due day.
         payoff: First day of the month in which the debt is paid off at the
             minimum payment, with interest; `None` if it never is (the payment
             does not cover the interest) or the minimum payment is unknown.
         interest_to_payoff: Interest paid until then, or `None` with `payoff`.
+        charges_to_payoff: Fixed charges of a loan paid until then, or `None`
+            with `payoff`.
     """
 
     account: Account
@@ -1179,6 +1204,7 @@ class DebtStatus:
     next_due: dt.date | None
     payoff: dt.date | None
     interest_to_payoff: int | None
+    charges_to_payoff: int | None = None
 
     @property
     def owed(self) -> int:
@@ -1210,7 +1236,8 @@ class DebtPayoff:
         payoff: First day of the month the debt is paid off, or `None` if it
             is not paid off within the horizon of the plan.
         interest: Interest accrued until then.
-        paid: Total paid into the debt.
+        paid: Total paid into the debt, fixed charges included.
+        charges: Fixed charges of a loan paid until then.
     """
 
     account_id: int
@@ -1219,6 +1246,7 @@ class DebtPayoff:
     payoff: dt.date | None
     interest: int
     paid: int
+    charges: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1227,7 +1255,7 @@ class PlanMonth:
 
     Attributes:
         month: First day of the month.
-        payment: Total paid into the debts.
+        payment: Total paid into the debts, fixed charges included.
         interest: Total interest accrued.
         balance: Total owed at the end of the month.
         balances: Amount owed on each debt at the end of the month, in the
@@ -1264,7 +1292,8 @@ class DebtPlan:
         payoff: First day of the month the last debt is paid off, or `None`
             if some debt is not paid off within the horizon.
         total_interest: Interest accrued over the plan.
-        total_paid: Total paid over the plan.
+        total_paid: Total paid over the plan, fixed charges included.
+        total_charges: Fixed charges of loans paid over the plan.
     """
 
     strategy: PayoffStrategy
@@ -1277,11 +1306,12 @@ class DebtPlan:
     payoff: dt.date | None
     total_interest: int
     total_paid: int
+    total_charges: int = 0
 
 
 @dataclass(frozen=True, slots=True)
 class LoanPaymentSplit:
-    """How a payment into a loan divides into interest and principal.
+    """How a payment into a loan divides into interest, charges and principal.
 
     Attributes:
         account_id: The loan.
@@ -1289,7 +1319,11 @@ class LoanPaymentSplit:
         amount: The whole payment.
         owed: Amount owed at the start of the day.
         interest: Interest of the month on `owed`, at most `amount`.
-        principal: `amount - interest`: what reduces the debt.
+        principal: What reduces the debt: `amount` less the interest and the
+            charges.
+        charges: The fixed charges of the loan's terms included in the
+            payment, in order, with the amounts actually charged: what is
+            left after the interest, so a small payment can leave some out.
     """
 
     account_id: int
@@ -1298,3 +1332,4 @@ class LoanPaymentSplit:
     owed: int
     interest: int
     principal: int
+    charges: tuple[DebtCharge, ...] = ()

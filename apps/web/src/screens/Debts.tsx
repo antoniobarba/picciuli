@@ -154,6 +154,9 @@ function DebtCard({
           {debt.interest_to_payoff ? (
             <span className="muted small"> · {money.amount(debt.interest_to_payoff)} interest</span>
           ) : null}
+          {debt.charges_to_payoff ? (
+            <span className="muted small"> · {money.amount(debt.charges_to_payoff)} fixed charges</span>
+          ) : null}
         </dd>
         {utilization !== null ? (
           <>
@@ -395,6 +398,12 @@ function PlanComparison({
                 ) : null}
                 <dt>Interest</dt>
                 <dd>{money.amount(plan.total_interest)}</dd>
+                {plan.total_charges ? (
+                  <>
+                    <dt>Fixed charges</dt>
+                    <dd>{money.amount(plan.total_charges)}</dd>
+                  </>
+                ) : null}
                 <dt>Total paid</dt>
                 <dd>{money.amount(plan.total_paid)}</dd>
               </dl>

@@ -9,7 +9,7 @@ from pydantic import Field
 
 from picciuli import DebtLinkKind, PayoffStrategy, Rollover
 
-from .accounts import AccountOut
+from .accounts import AccountOut, DebtChargeOut
 from .base import (
     Date,
     DecimalStr,
@@ -68,13 +68,18 @@ class DebtStatusOut(OutputModel):
     account: AccountOut
     balance: int = Field(description="Balance up to today (negative when owed).")
     owed: int
-    minimum_payment: int | None
+    minimum_payment: int | None = Field(
+        description="What is due every month now, a loan's fixed charges included."
+    )
     next_due: dt.date | None
     payoff: dt.date | None = Field(
         description="First day of the month the debt is paid off at the "
         "minimum payment, with interest; `null` if never or unknown."
     )
     interest_to_payoff: int | None
+    charges_to_payoff: int | None = Field(
+        description="Fixed charges of a loan paid until then; `null` with `payoff`."
+    )
 
 
 class LumpSumIn(InputModel):
@@ -110,14 +115,15 @@ class DebtPayoffOut(OutputModel):
     balance: int
     payoff: dt.date | None
     interest: int
-    paid: int
+    paid: int = Field(description="Total paid, fixed charges included.")
+    charges: int = Field(description="Fixed charges of a loan paid.")
 
 
 class PlanMonthOut(OutputModel):
     """One month of a plan."""
 
     month: dt.date
-    payment: int
+    payment: int = Field(description="Total paid, fixed charges included.")
     interest: int
     balance: int
     balances: list[int] = Field(description="Owed on each debt, in plan order.")
@@ -138,6 +144,7 @@ class DebtPlanOut(OutputModel):
     )
     total_interest: int
     total_paid: int
+    total_charges: int
 
 
 class DebtPlansOut(OutputModel):
@@ -148,7 +155,7 @@ class DebtPlansOut(OutputModel):
 
 
 class LoanPaymentSplitOut(OutputModel):
-    """How a payment into a loan divides into interest and principal."""
+    """How a payment into a loan divides into interest, charges and principal."""
 
     account_id: int
     date: dt.date
@@ -156,10 +163,14 @@ class LoanPaymentSplitOut(OutputModel):
     owed: int
     interest: int
     principal: int
+    charges: list[DebtChargeOut] = Field(
+        description="The loan's fixed charges, with the amounts actually "
+        "charged after the interest."
+    )
 
 
 class LoanPaymentIn(InputModel):
-    """A payment into a loan, split into principal and interest."""
+    """A payment into a loan, split into principal, interest and fixed charges."""
 
     date: Date
     amount: PositiveAmount
