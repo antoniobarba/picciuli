@@ -88,18 +88,14 @@ class BookMachine(RuleBasedStateMachine):
         target=accounts,
         kind=st.sampled_from([AccountType.CHECKING, AccountType.INVESTMENT]),
         opening=amounts,
-        goal=st.one_of(st.none(), amounts),
         notes=texts,
     )
-    def create_account(
-        self, kind: AccountType, opening: int, goal: int | None, notes: str | None
-    ) -> int:
+    def create_account(self, kind: AccountType, opening: int, notes: str | None) -> int:
         try:
             return self.book.accounts.create(
                 self._name("Account"),
                 kind,
                 opening_balance=opening,
-                goal=goal,
                 notes=notes,
             ).id
         except PicciuliError:

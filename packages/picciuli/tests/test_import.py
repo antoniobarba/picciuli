@@ -172,6 +172,63 @@ def test_merge_refuses_new_transactions_on_closed_accounts(
     assert [a.name for a in book.accounts.list()] == ["Checking"]
 
 
+def _goal_values(book: Book) -> list[tuple[object, ...]]:
+    names = {a.id: a.name for a in book.accounts.list()}
+    return [
+        (
+            names[g.account_id],
+            g.name,
+            g.target_amount,
+            g.saved_amount,
+            g.target_date,
+            g.priority,
+        )
+        for g in book.goals.list()
+    ]
+
+
+def test_goals_are_copied_merged_and_replaced(
+    book: Book, source: Book, tmp_path: Path
+) -> None:
+    checking = source.accounts.list()[0]
+    source.goals.create(checking.id, "Car", 900000, saved_amount=1000, priority="low")
+    source.goals.create(checking.id, "Trip", 1500, target_date=d(31, 7))
+    book.settings.update(currency="EUR", currency_code="EUR")
+    wallet = book.accounts.create("Wallet", AccountType.CASH)
+    mine = book.accounts.create("Checking", AccountType.CHECKING)
+    book.goals.create(mine.id, "trip", 1500, target_date=d(31, 7))
+    book.goals.create(wallet.id, "Mine", 10)
+
+    # The account is matched by name and keeps its own id; an identical goal
+    # (same name, case-insensitively) is not duplicated.
+    assert book.import_from(source).goals == 1
+    assert book.import_from(source).goals == 0
+    assert [(g[0], g[1]) for g in _goal_values(book)] == [
+        ("Wallet", "Mine"),
+        ("Checking", "trip"),
+        ("Checking", "Car"),
+    ]
+
+    path = _write(source, tmp_path / "goals.db")
+    summary = book.import_file(path, replace=True)
+    assert summary.goals == 2
+    assert _goal_values(book) == _goal_values(source)
+
+
+def test_merge_refuses_a_different_goal_with_the_same_name(
+    book: Book, source: Book
+) -> None:
+    checking = source.accounts.list()[0]
+    source.goals.create(checking.id, "Car", 900000, saved_amount=1000)
+    book.settings.update(currency="EUR", currency_code="EUR")
+    mine = book.accounts.create("Checking", AccountType.CHECKING)
+    book.goals.create(mine.id, "car", 900000, saved_amount=2000)
+    with pytest.raises(ConflictError, match="already has a different goal named 'car'"):
+        book.import_from(source)
+    assert len(book.transactions.list()) == 0
+    assert book.goals.list()[0].saved_amount == 2000
+
+
 # --- Untrusted files (SEC-01, SEC-04) ----------------------------------------
 
 
@@ -368,6 +425,18 @@ _FIRST_EXPENSES = (
         ),
         ("UPDATE securities SET isin = 'XX0000000000'", "invalid ISIN"),
         ("UPDATE prices SET price = -1", "greater than zero"),
+        (
+            "INSERT INTO savings_goals VALUES (1, 2, 'Bad', 100, 0, NULL, 'normal')",
+            "savings goal 1 of the file: account 'Broker' cannot hold",
+        ),
+        (
+            "INSERT INTO savings_goals VALUES (1, 1, 'Bad', 100, 0, NULL, 'urgent')",
+            "invalid priority",
+        ),
+        (
+            "INSERT INTO savings_goals VALUES (1, 9, 'Bad', 100, 0, NULL, 'normal')",
+            "its account does not exist",
+        ),
         (
             f"UPDATE splits SET amount = -4611686018427387904 WHERE {_FIRST_EXPENSES}",
             "amount cannot exceed",

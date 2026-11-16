@@ -256,6 +256,16 @@ export function useSchedules() {
   return useQuery({ queryKey: ['schedules'], queryFn: () => unwrap(api.GET('/api/v1/schedules')) });
 }
 
+/** Every savings goal with its monthly amount, grouped by account, as of `today`. */
+export function useGoalReport(today: Day) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['goal-report', today],
+    queryFn: () => unwrap(api.GET('/api/v1/goals/report', { params: { query: { today } } })),
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** Days on which active recurring transactions fall between `start` and `end`; disabled when `start > end`. */
 export function useOccurrences(start: Day, end: Day, enabled = true) {
   const api = useApi();

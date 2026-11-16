@@ -34,7 +34,6 @@ COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "type",
         "opening_balance",
         "opening_date",
-        "goal",
         "notes",
         "position",
         "closed_on",
@@ -114,6 +113,15 @@ COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "label",
     ),
     "schedule_debts": ("schedule_id", "account_id", "kind", "interest_category_id"),
+    "savings_goals": (
+        "id",
+        "account_id",
+        "name",
+        "target_amount",
+        "saved_amount",
+        "target_date",
+        "priority",
+    ),
 }
 """Columns read from each table, in the order of the returned tuples."""
 

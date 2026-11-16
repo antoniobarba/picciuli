@@ -18,7 +18,6 @@ function account(id: number, name: string, type: Account['type'], extra: Partial
     account_class: type === 'checking' ? 'asset' : 'liability',
     opening_balance: 0,
     opening_date: null,
-    goal: null,
     notes: null,
     position: id,
     closed_on: null,
@@ -178,7 +177,6 @@ describe('AccountForm', () => {
     expect(requests.find((r) => r.method === 'POST')?.body).toEqual({
       name: 'Amex',
       type: 'credit_card',
-      goal: null,
       notes: null,
       opening_balance: -150000,
       opening_date: null,

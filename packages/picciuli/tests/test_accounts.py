@@ -34,7 +34,6 @@ class TestCreate:
             type=AccountType.CHECKING,
             opening_balance=0,
             opening_date=None,
-            goal=None,
             notes=None,
             position=1,
             closed_on=None,
@@ -48,7 +47,6 @@ class TestCreate:
             "mortgage",
             opening_balance=-20_000_000,
             opening_date=d(1),
-            goal=0,
             notes="  fixed rate ",
         )
         assert account.name == "Mortgage"
@@ -56,7 +54,6 @@ class TestCreate:
         assert account.account_class is AccountClass.LIABILITY
         assert account.opening_balance == -20_000_000
         assert account.opening_date == d(1)
-        assert account.goal == 0
         assert account.notes == "fixed rate"
 
     def test_positions_are_appended(self, book: Book) -> None:
@@ -85,11 +82,9 @@ class TestCreate:
             ({"opening_balance": 1.5}, "integer"),
             ({"opening_balance": True}, "integer"),
             ({"opening_date": dt.datetime(2025, 1, 1)}, "without time"),
-            ({"goal": "100"}, "integer"),
             ({"notes": 5}, "string or None"),
             ({"opening_balance": MAX_AMOUNT + 1}, "opening balance cannot exceed"),
             ({"opening_balance": -(2**63)}, "opening balance cannot exceed"),
-            ({"goal": 2**64}, "goal cannot exceed"),
             ({"name": "n" * 201}, "name cannot exceed 200"),
             ({"notes": "n" * 2001}, "notes cannot exceed 2000"),
         ],
@@ -113,17 +108,16 @@ class TestReadAndUpdate:
             checking.id,
             name="Main",
             type=AccountType.CASH,
-            goal=500,
             notes="wallet",
             opening_balance=100,
             opening_date=d(1),
         )
         assert updated.name == "Main"
         assert updated.type is AccountType.CASH
-        assert (updated.goal, updated.notes) == (500, "wallet")
+        assert updated.notes == "wallet"
         assert (updated.opening_balance, updated.opening_date) == (100, d(1))
-        cleared = book.accounts.update(checking.id, goal=None, notes=None)
-        assert (cleared.goal, cleared.notes, cleared.name) == (None, None, "Main")
+        cleared = book.accounts.update(checking.id, notes=None)
+        assert (cleared.notes, cleared.name) == (None, "Main")
 
     def test_update_keeps_own_name_but_rejects_other(
         self, book: Book, checking: Account, savings: Account

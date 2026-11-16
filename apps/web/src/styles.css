@@ -1902,6 +1902,94 @@ input[type='range'] {
   font-size: 1.15rem;
 }
 
+/* Goals */
+
+.goal-account {
+  margin-bottom: 1.5rem;
+}
+
+.goal-account-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.goal-account-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.goal-account-header h2 a {
+  color: inherit;
+}
+
+.goal-account-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  flex: 1;
+  color: var(--muted);
+}
+
+.goal-warning {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+}
+
+.goal-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.goal-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.goal-card .facts {
+  flex: 1;
+  align-content: start;
+}
+
+.goal-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1rem 0;
+}
+
+.goal-progress .progress {
+  width: 100%;
+}
+
+.goal-card.reached .progress > span {
+  background: var(--positive);
+}
+
+.goal-overdue {
+  color: var(--warning);
+}
+
+.priority-pill {
+  padding: 0.05rem 0.5rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.priority-pill.high {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .debt-facts {
   flex: 1;
   align-content: start;

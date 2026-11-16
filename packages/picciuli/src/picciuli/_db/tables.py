@@ -24,6 +24,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from picciuli.model import (
     AccountType,
     DebtLinkKind,
+    GoalPriority,
     ScheduleFrequency,
     ScheduleMode,
     SecurityKind,
@@ -34,6 +35,7 @@ _SECURITY_KINDS = ", ".join(f"'{k.value}'" for k in SecurityKind)
 _FREQUENCIES = ", ".join(f"'{f.value}'" for f in ScheduleFrequency)
 _SCHEDULE_MODES = ", ".join(f"'{m.value}'" for m in ScheduleMode)
 _DEBT_LINKS = ", ".join(f"'{k.value}'" for k in DebtLinkKind)
+_PRIORITIES = ", ".join(f"'{p.value}'" for p in GoalPriority)
 
 
 class Base(DeclarativeBase):
@@ -63,7 +65,6 @@ class AccountRow(Base):
     type: Mapped[str] = mapped_column(String)
     opening_balance: Mapped[int] = mapped_column(Integer)
     opening_date: Mapped[dt.date | None] = mapped_column(Date)
-    goal: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
     position: Mapped[int] = mapped_column(Integer)
     closed_on: Mapped[dt.date | None] = mapped_column(Date)
@@ -148,6 +149,30 @@ class DebtChargeRow(Base):
         ForeignKey("categories.id", ondelete="RESTRICT"), index=True
     )
     label: Mapped[str | None] = mapped_column(String)
+
+
+class SavingsGoalRow(Base):
+    """Money set aside by hand in one account for a purpose."""
+
+    __tablename__ = "savings_goals"
+    __table_args__ = (
+        CheckConstraint("target_amount > 0", name="ck_savings_goal_target"),
+        CheckConstraint("saved_amount >= 0", name="ck_savings_goal_saved"),
+        CheckConstraint(
+            f"priority IN ({_PRIORITIES})", name="ck_savings_goal_priority"
+        ),
+        UniqueConstraint("account_id", "name", name="uq_savings_goal_account_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    name: Mapped[str] = mapped_column(String(collation="NOCASE"))
+    target_amount: Mapped[int] = mapped_column(Integer)
+    saved_amount: Mapped[int] = mapped_column(Integer)
+    target_date: Mapped[dt.date | None] = mapped_column(Date)
+    priority: Mapped[str] = mapped_column(String)
 
 
 class CategoryRow(Base):

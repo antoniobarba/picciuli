@@ -53,7 +53,7 @@ describe('tradeOf', () => {
 
 const account = (id: number, name: string, type: string) => ({
   id, name, type, account_class: 'asset', opening_balance: 0, opening_date: null,
-  goal: null, notes: null, position: id, closed_on: null, is_closed: false,
+  notes: null, position: id, closed_on: null, is_closed: false,
 });
 
 function EditButton({ trade = buy }: { trade?: Transaction }) {

@@ -58,7 +58,13 @@ from picciuli.services.settings import (
 )
 from picciuli.services.transactions import _security_pairs, _validated_splits
 
-from .queries import check_holdings, external_flows, to_schedule_split, to_trade
+from .queries import (
+    check_holdings,
+    external_flows,
+    get_row,
+    to_schedule_split,
+    to_trade,
+)
 from .schema import DEFAULT_SETTINGS
 from .tables import (
     AccountRow,
@@ -69,6 +75,7 @@ from .tables import (
     ExchangeRateRow,
     PeriodRow,
     PriceRow,
+    SavingsGoalRow,
     ScheduleDebtRow,
     ScheduleRow,
     ScheduleSplitRow,
@@ -191,14 +198,13 @@ class _Account:
     type: AccountType
     opening_balance: int
     opening_date: dt.date | None
-    goal: int | None
     notes: str | None
     position: int
     closed_on: dt.date | None
 
     @classmethod
     def parse(cls, row: tuple[object, ...]) -> _Account:
-        id_, name, type_, opening, opened, goal, notes, position, closed = row
+        id_, name, type_, opening, opened, notes, position, closed = row
         try:
             account_type = AccountType(type_)
         except ValueError:
@@ -209,7 +215,6 @@ class _Account:
             type=account_type,
             opening_balance=v.integer(opening, "opening balance"),
             opening_date=_optional_date(opened, "opening date"),
-            goal=v.optional_integer(goal, "goal"),
             notes=v.optional_text(notes, "notes"),
             position=v.integer(position, "position"),
             closed_on=_optional_date(closed, "closing date"),
@@ -357,6 +362,7 @@ class _Importer:
         added_transactions, duplicates = self._transactions(
             accounts, categories, securities, schedules
         )
+        added_goals = self._goals(accounts)
         self._close(to_close)
         self._read_back()
         return ImportSummary(
@@ -371,6 +377,7 @@ class _Importer:
             transactions=added_transactions,
             duplicates=duplicates,
             schedules=added_schedules,
+            goals=added_goals,
         )
 
     def _accounts(
@@ -397,7 +404,6 @@ class _Importer:
                         account.type,
                         opening_balance=account.opening_balance,
                         opening_date=account.opening_date,
-                        goal=account.goal,
                         notes=account.notes,
                     )
                 by_name[key] = new.id
@@ -942,6 +948,56 @@ class _Importer:
                 "the amounts are too large: their total would overflow"
             )
 
+    def _goals(self, accounts: dict[int, int]) -> int:
+        """Add the savings goals of the file.
+
+        A goal whose account already has a goal with the same name is skipped
+        if it is identical, and refused otherwise: goals are never changed.
+        """
+        existing = {
+            (row.account_id, row.name.casefold()): row
+            for row in self._session.scalars(select(SavingsGoalRow))
+        }
+        added = 0
+        for label, row in self._rows("savings_goals", "savings goal"):
+            with _context(label):
+                _id, account_id, name, target, saved, day, priority = row
+                account = accounts.get(v.identifier(account_id, "account id"))
+                if account is None:
+                    raise ValidationError("its account does not exist")
+                goal_name = v.name(name, "goal name")
+                target_amount = v.positive_amount(target, "target amount")
+                saved_amount = v.non_negative_amount(saved, "saved amount")
+                target_date = _optional_date(day, "target date")
+                if not isinstance(priority, str):
+                    raise ValidationError("priority must be text")
+                key = (account, goal_name.casefold())
+                found = existing.get(key)
+                if found is not None:
+                    same = (
+                        found.target_amount,
+                        found.saved_amount,
+                        found.target_date,
+                        found.priority,
+                    ) == (target_amount, saved_amount, target_date, priority)
+                    if same:
+                        continue
+                    raise ConflictError(
+                        f"{label}: its account already has a different goal "
+                        f"named {found.name!r}"
+                    )
+                goal = self._book.goals.create(
+                    account,
+                    goal_name,
+                    target_amount,
+                    saved_amount=saved_amount,
+                    target_date=target_date,
+                    priority=priority,
+                )
+                existing[key] = get_row(self._session, SavingsGoalRow, goal.id, "goal")
+                added += 1
+        return added
+
     def _close(self, to_close: list[tuple[int, _Account]]) -> None:
         for account_id, account in to_close:
             self._deadline.check()
@@ -965,6 +1021,7 @@ class _Importer:
         book.securities.list()
         book.schedules.list()
         book.debts.list()
+        book.goals.report()
         book.investments.valuations(include_closed=True)
         book.investments.net_worth()
         external_flows(self._session, dt.date.min, None)
@@ -1215,6 +1272,7 @@ def _wipe(session: Session) -> None:
         delete(ScheduleRow),
         delete(DebtChargeRow),
         delete(DebtTermsRow),
+        delete(SavingsGoalRow),
         delete(BudgetRow),
         delete(PeriodRow),
         delete(PriceRow),

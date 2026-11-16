@@ -13,6 +13,7 @@ from sqlalchemy import Engine
 from picciuli._db.merge import import_book
 from picciuli._db.schema import (
     SCHEMA_VERSION,
+    backup_file,
     file_engine,
     memory_engine,
     prepare_schema,
@@ -26,6 +27,7 @@ from picciuli.services import (
     BudgetService,
     CategoryService,
     DebtService,
+    GoalService,
     InvestmentService,
     PeriodService,
     ScheduleService,
@@ -81,6 +83,8 @@ class Book:
     """Recurring transactions."""
     debts: DebtService
     """Debt terms, payoff plans, loan payments and credit card predictions."""
+    goals: GoalService
+    """Savings goals, with dates, priorities and monthly amounts."""
 
     def __init__(self, engine: Engine) -> None:
         """Wrap an already prepared engine. Prefer `open` or `in_memory`."""
@@ -96,12 +100,17 @@ class Book:
         self.investments = InvestmentService(self._uow, self.transactions)
         self.schedules = ScheduleService(self._uow)
         self.debts = DebtService(self._uow)
+        self.goals = GoalService(self._uow)
 
     @classmethod
     def open(cls, path: str | os.PathLike[str], *, create: bool = True) -> Book:
         """Open (and, if needed, create or upgrade) a database file.
 
         Older schema versions are upgraded in place, in a single transaction.
+        First, a verified copy of the file is kept next to it as
+        `<name>.schema-v<old version>.bak` (with `-2`, `-3`... if that name is
+        taken): open it with the matching older release to get the data back
+        as it was. Files already at the current version are not copied.
 
         Args:
             path: Path of the SQLite file.
@@ -112,14 +121,17 @@ class Book:
 
         Raises:
             FileNotFoundError: If the file does not exist and `create` is false.
-            SchemaVersionError: If the file is not a Picciuli database or was
-                written by a newer library version.
+            SchemaVersionError: If the file is not a Picciuli database, was
+                written by a newer library version, or cannot be backed up
+                before an upgrade.
         """
         if not create and not Path(path).exists():
             raise FileNotFoundError(f"database file not found: {os.fspath(path)}")
         engine = file_engine(path)
         try:
-            prepare_schema(engine)
+            prepare_schema(
+                engine, backup=lambda version: backup_file(Path(path), version)
+            )
         except BaseException:
             engine.dispose()
             raise

@@ -14,7 +14,14 @@ from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote
 
-from picciuli import AccountSplit, AccountType, Book, ExternalSplit, SecurityKind
+from picciuli import (
+    AccountSplit,
+    AccountType,
+    Book,
+    ExternalSplit,
+    GoalPriority,
+    SecurityKind,
+)
 from picciuli_api.auth import User
 from picciuli_api.config import Settings
 from picciuli_api.login import Zitadel
@@ -58,7 +65,20 @@ def populate_demo(book: Book, today: dt.date) -> None:
             AccountType.SAVINGS,
             opening_balance=_cents(800),
             opening_date=first,
-            goal=_cents(5000),
+        )
+        book.goals.create(
+            savings.id,
+            "Emergency fund",
+            _cents(5000),
+            saved_amount=_cents(600),
+            priority=GoalPriority.HIGH,
+        )
+        book.goals.create(
+            savings.id,
+            "Summer holiday",
+            _cents(1500),
+            saved_amount=_cents(200),
+            target_date=shift_month(today, 8),
         )
         card = accounts.create(
             "Credit card", AccountType.CREDIT_CARD, opening_date=first

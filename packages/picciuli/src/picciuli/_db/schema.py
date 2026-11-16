@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
+import datetime as dt
 import os
+import sqlite3
+import stat
 from collections import Counter
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any, Final
 
 from sqlalchemy import (
@@ -25,7 +30,7 @@ from picciuli.errors import SchemaVersionError
 
 from .tables import Base, MetaRow
 
-SCHEMA_VERSION: Final = 6
+SCHEMA_VERSION: Final = 7
 """Version of the schema created by this library release."""
 
 MigrationStep = Callable[[Connection], None]
@@ -449,12 +454,77 @@ def _upgrade_5_to_6(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+# Schema version 7 replaces the single goal of an account with savings goals:
+# several per account, with a saved amount, a date and a priority.
+_V7_DDL: Final = (
+    """CREATE TABLE savings_goals (
+	id INTEGER NOT NULL,
+	account_id INTEGER NOT NULL,
+	name VARCHAR COLLATE "NOCASE" NOT NULL,
+	target_amount INTEGER NOT NULL,
+	saved_amount INTEGER NOT NULL,
+	target_date DATE,
+	priority VARCHAR NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_savings_goal_target CHECK (target_amount > 0),
+	CONSTRAINT ck_savings_goal_saved CHECK (saved_amount >= 0),
+	CONSTRAINT ck_savings_goal_priority CHECK (priority IN ('high', 'normal', """
+    """'low')),
+	CONSTRAINT uq_savings_goal_account_name UNIQUE (account_id, name),
+	FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE RESTRICT
+)"""
+)
+_V7_GOAL_TYPES: Final = ("checking", "savings", "cash", "other_asset")
+_DROP_COLUMN_SQLITE: Final = (3, 35, 0)
+
+
+def _upgrade_6_to_7(connection: Connection) -> None:
+    """Turn positive goals of cash-like accounts into savings goals.
+
+    Each goal keeps the account name, a normal priority and no date. Its saved
+    amount is the account balance today (ignoring later transactions), between
+    zero and the target. Other account goals (investments, liabilities, zero
+    or negative values) are dropped with the column; `Book.open` keeps a
+    backup of the file as it was.
+    """
+    if sqlite3.sqlite_version_info < _DROP_COLUMN_SQLITE:
+        raise SchemaVersionError(
+            "upgrading to schema version 7 needs SQLite 3.35 or later "
+            f"(found {sqlite3.sqlite_version})"
+        )
+    connection.exec_driver_sql(_V7_DDL)
+    today = dt.date.today().isoformat()
+    types = ", ".join(f"'{t}'" for t in _V7_GOAL_TYPES)
+    accounts = connection.exec_driver_sql(
+        "SELECT id, name, opening_balance, opening_date, goal FROM accounts "
+        f"WHERE goal > 0 AND type IN ({types}) ORDER BY position, id"
+    ).all()
+    for account_id, name, opening, opened, goal in accounts:
+        balance = opening if opened is None or opened <= today else 0
+        balance += sum(
+            amount
+            for (amount,) in connection.exec_driver_sql(
+                "SELECT s.amount FROM splits s JOIN transactions t "
+                "ON t.id = s.transaction_id WHERE s.account_id = ? AND t.date <= ?",
+                (account_id, today),
+            )
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO savings_goals (account_id, name, target_amount, "
+            "saved_amount, target_date, priority) "
+            "VALUES (?, ?, ?, ?, NULL, 'normal')",
+            (account_id, name, goal, min(goal, max(balance, 0))),
+        )
+    connection.exec_driver_sql("ALTER TABLE accounts DROP COLUMN goal")
+
+
 MIGRATIONS: Final[Mapping[int, MigrationStep]] = {
     1: _upgrade_1_to_2,
     2: _upgrade_2_to_3,
     3: _upgrade_3_to_4,
     4: _upgrade_4_to_5,
     5: _upgrade_5_to_6,
+    6: _upgrade_6_to_7,
 }
 """Upgrade steps keyed by the version they upgrade *from* (step `n` -> `n + 1`).
 
@@ -505,13 +575,89 @@ def memory_engine() -> Engine:
     return engine
 
 
+def backup_file(path: Path, version: int) -> Path:
+    """Write a verified copy of a database file before it is upgraded.
+
+    The copy sits next to the file, as `<name>.schema-v<version>.bak` (or
+    `-2`, `-3`... when that name is taken; existing files are never replaced).
+    It is written with SQLite's backup API from a separate read-only
+    connection, so it includes committed WAL content, and it is checked for
+    integrity, schema version and row counts before the upgrade may start.
+
+    Raises:
+        SchemaVersionError: If the copy cannot be written or verified; the
+            database is then left as it is.
+    """
+    source = path.resolve()
+    number = 1
+    while True:
+        suffix = "" if number == 1 else f"-{number}"
+        target = source.with_name(f"{source.name}.schema-v{version}{suffix}.bak")
+        try:
+            os.close(os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+            break
+        except FileExistsError:
+            number += 1
+        except OSError as exc:
+            raise SchemaVersionError(
+                f"cannot back up the database before upgrading it: {exc}"
+            ) from exc
+    try:
+        reader = sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)
+        try:
+            writer = sqlite3.connect(target)
+            try:
+                reader.backup(writer)
+                _verify_backup(reader, writer, version)
+            finally:
+                writer.close()
+        finally:
+            reader.close()
+        os.chmod(target, stat.S_IMODE(source.stat().st_mode))
+    except (sqlite3.Error, OSError, SchemaVersionError) as exc:
+        with contextlib.suppress(OSError):
+            target.unlink()
+        raise SchemaVersionError(
+            f"cannot back up the database before upgrading it: {exc}"
+        ) from exc
+    return target
+
+
+def _verify_backup(
+    source: sqlite3.Connection, copy: sqlite3.Connection, version: int
+) -> None:
+    if copy.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+        raise SchemaVersionError("the backup is damaged")
+    found = copy.execute(
+        "SELECT value FROM meta WHERE key = 'schema_version'"
+    ).fetchall()
+    if found != [(str(version),)]:
+        raise SchemaVersionError("the backup has the wrong schema version")
+    tables = [
+        name
+        for (name,) in source.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+        )
+    ]
+    for table in tables:
+        query = f'SELECT count(*) FROM "{table}"'
+        if source.execute(query).fetchone() != copy.execute(query).fetchone():
+            raise SchemaVersionError(f"the backup of table {table!r} is incomplete")
+
+
 def prepare_schema(
     engine: Engine,
     *,
     target_version: int = SCHEMA_VERSION,
     migrations: Mapping[int, MigrationStep] = MIGRATIONS,
+    backup: Callable[[int], object] | None = None,
 ) -> None:
-    """Create a new schema, upgrade an older one or reject an unusable file."""
+    """Create a new schema, upgrade an older one or reject an unusable file.
+
+    Before an upgrade, `backup` is called with the current version, while
+    this connection already holds the write lock, so no one can change the
+    file between the backup and the upgrade.
+    """
     with engine.begin() as connection:
         tables = set(inspect(connection).get_table_names())
         if not tables:
@@ -542,6 +688,8 @@ def prepare_schema(
             )
         if version == target_version:
             return
+        if backup is not None:
+            backup(version)
         for current in range(version, target_version):
             step = migrations.get(current)
             if step is None:

@@ -17,11 +17,7 @@ months, and entering every expense takes more effort than it should.
 ### High priority
 1. (deleted, done)
 2. (deleted, done)
-3. **Real savings goals.** Today a goal is just one number per account. You
-   can't hold several goals in one savings account (emergency fund, holiday,
-   car), set a target date, or see "save X per month to hit it on time." Add
-   goals with an amount, date and priority, and show the monthly amount
-   needed.
+3. (deleted, done)
 4. **Monthly plan.** Budgets cover expenses only. Add a plan per period:
    expected income, then fixed bills, debt payments, savings goals and
    budgets. Show "left to assign / safe to spend", and planned versus actual

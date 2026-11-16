@@ -16,7 +16,7 @@ raises `ValidationError` beyond them:
 
 | Value                                                   | Limit                       |
 |---------------------------------------------------------|-----------------------------|
-| any single amount (split, opening balance, goal, budget, cost, proceeds, fee, tax) | `abs(amount) <= 10**15` minor units |
+| any single amount (split, opening balance, goal target or saved amount, budget, cost, proceeds, fee, tax) | `abs(amount) <= 10**15` minor units |
 | share quantity, price, exchange rate                    | about `9.2e10`, 8 decimal places |
 | identifiers                                             | `1` to `2**63 - 1`          |
 | splits per transaction                                  | 100                         |
@@ -50,11 +50,41 @@ balance(day) = opening balance (if opening_date is unset or <= day)
 ```
 
 - **Opening date.** When set, no transaction can be dated earlier than it.
-- **Goal.** An optional target balance, for example for a savings account.
 - **Closing.** A closed account keeps its history but rejects new transactions.
   Its transactions cannot be edited until the account is reopened. An account can
   only be closed when its balance is zero. Accounts that were never used can be
   deleted.
+
+## Savings goals
+
+A **savings goal** sets aside part of the money of a checking, savings, cash or
+other asset account for a purpose: an emergency fund, a holiday, a car. One
+account can hold several goals (names are unique within the account). Each goal
+has a positive **target amount**, a **saved amount**, an optional **target
+date** and a **priority** (high, normal or low), which only orders the goals.
+Investment and liability accounts cannot hold goals.
+
+The saved amount is assigned by hand ([`book.goals`][picciuli.Book.goals]): it
+does not move money, transactions never change it, and goals never change
+balances, budgets or net worth. It may exceed the target, and the goals of an
+account may claim more than its balance; the
+[`report`][picciuli.services.GoalService.report] then shows a **shortfall** for
+that account, comparing the saved amounts with its balance at the end of the
+planning day:
+
+```
+remaining      = max(target - saved, 0)
+months_left    = months from the planning month to the target month, both included
+monthly_amount = remaining / months_left, rounded up to the minor unit
+```
+
+A goal is *reached* when nothing remains, *undated* without a target date, and
+*overdue* when its target date has passed: the report then gives the remaining
+amount instead of a monthly amount. A goal due later this month needs the whole
+remaining amount this month.
+
+Goals survive closing their account. An account with goals cannot be deleted,
+or changed to a type that cannot hold goals, until they are moved or deleted.
 
 ## Transactions and splits
 
@@ -254,8 +284,8 @@ the actual net flow:
 - spending is negative, so overspending makes `remaining` negative;
 - the report totals count each flow only once.
 
-Only external flows consume budgets. If you want to plan your savings, give the
-savings account a goal instead.
+Only external flows consume budgets. To plan your savings, use
+[savings goals](#savings-goals) instead.
 
 ## Investments
 

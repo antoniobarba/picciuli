@@ -23,6 +23,7 @@ from picciuli_api.routers import (
     accounts,
     categories,
     debts,
+    goals,
     investments,
     periods,
     schedules,
@@ -67,6 +68,11 @@ _TAGS: list[dict[str, Any]] = [
         "name": "debts",
         "description": "Debt payoff forecasts, snowball and avalanche plans, "
         "loan payments.",
+    },
+    {
+        "name": "goals",
+        "description": "Savings goals: several per account, with a target date, "
+        "a priority and the amount to save every month.",
     },
     {"name": "periods", "description": "Named ranges of days and their summaries."},
     {"name": "budgets", "description": "Allowances per category and period."},
@@ -182,6 +188,7 @@ def create_app(
         transactions.router,
         schedules.router,
         debts.router,
+        goals.router,
         periods.periods,
         periods.budgets,
         securities.securities,

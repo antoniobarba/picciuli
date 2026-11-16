@@ -25,6 +25,7 @@ const SCREENS = [
   { to: '/reports', label: 'Reports', key: '7', icon: icons.reports, mobile: false },
   { to: '/recurring', label: 'Recurring', key: '8', icon: icons.recurring, mobile: false },
   { to: '/debts', label: 'Debts', key: '9', icon: icons.debts, mobile: false },
+  { to: '/goals', label: 'Goals', key: '0', icon: icons.goals, mobile: false },
 ] as const;
 
 interface InstallPrompt extends Event {

@@ -10,7 +10,7 @@ import { Amount, Empty, Loading, PageHeader, ProgressBar, RowMenu } from '../com
 import { shortDate, todayDay } from '../lib/dates';
 import { payoffLabel } from '../lib/debts';
 import { ACCOUNT_TYPE_LABELS } from '../lib/format';
-import { accountTarget, etaLabel, targetEta } from '../lib/goals';
+import { debtTarget, etaLabel, targetEta } from '../lib/goals';
 import { useHotkeys } from '../lib/useHotkeys';
 import { AccountForm, CloseAccountForm } from '../forms/AccountForm';
 
@@ -101,6 +101,9 @@ export function Accounts() {
   return (
     <div className="page">
       <PageHeader title="Accounts">
+        <button type="button" className="button" onClick={() => navigate('/goals')}>
+          Savings goals
+        </button>
         <button type="button" className="button primary" onClick={() => setDialog({ kind: 'edit', account: null })}>
           + New account
         </button>
@@ -119,9 +122,8 @@ export function Accounts() {
                 <th className="hide-sm">Type</th>
                 <th className="num">Balance</th>
                 <th className="num hide-sm">Market value</th>
-                <th className="num hide-md">Goal</th>
                 <th className="hide-md">Progress</th>
-                <th className="hide-md" title="Expected month to reach the goal (or zero), at the average monthly flow">
+                <th className="hide-md" title="Expected month a debt reaches zero, at the average monthly flow or the minimum payment">
                   ETA
                 </th>
                 <th className="hide-sm">State</th>
@@ -134,10 +136,9 @@ export function Accounts() {
                 const valuation = market.get(account.id);
                 const marketValue = account.type === 'investment' ? valuation?.market_value : undefined;
                 const flow = trend.get(account.id);
-                const current = account.goal ? (marketValue ?? value) : value;
-                const target = accountTarget(account.goal, current, flow?.low_point);
+                const target = debtTarget(value, flow?.low_point);
                 const progress = target?.fraction ?? null;
-                const eta = target ? targetEta(current, target.target, flow?.average_flow, today) : null;
+                const eta = target ? targetEta(value, target.target, flow?.average_flow, today) : null;
                 const debt = payoff.get(account.id);
                 const etaText = debt
                   ? debt.owed === 0
@@ -180,7 +181,6 @@ export function Accounts() {
                     <td className="num hide-sm">
                       {marketValue !== undefined ? <Amount value={marketValue} money={money} /> : ''}
                     </td>
-                    <td className="num hide-md">{account.goal != null ? money.amount(account.goal) : ''}</td>
                     <td className="hide-md">
                       {progress !== null ? (
                         <span className="progress-cell">

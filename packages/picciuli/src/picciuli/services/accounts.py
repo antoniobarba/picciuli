@@ -21,6 +21,7 @@ from picciuli._db.queries import (
 from picciuli._db.session import UnitOfWork
 from picciuli._db.tables import (
     AccountRow,
+    SavingsGoalRow,
     ScheduleRow,
     ScheduleSplitRow,
     SplitRow,
@@ -93,6 +94,17 @@ def _holds_securities(session: Session, account_id: int) -> bool:
     )
 
 
+def _goal_count(session: Session, account_id: int) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(SavingsGoalRow)
+            .where(SavingsGoalRow.account_id == account_id)
+        )
+        or 0
+    )
+
+
 class AccountService:
     """Manage accounts and compute their balances.
 
@@ -113,7 +125,6 @@ class AccountService:
         *,
         opening_balance: int = 0,
         opening_date: dt.date | None = None,
-        goal: int | None = None,
         notes: str | None = None,
     ) -> Account:
         """Create an account at the end of the display order.
@@ -125,7 +136,6 @@ class AccountService:
                 Use a negative value for money owed on a liability.
             opening_date: First day of the account; `None` means the opening
                 balance applies since the beginning of time.
-            goal: Optional target balance in minor units.
             notes: Optional free text.
 
         Returns:
@@ -139,7 +149,6 @@ class AccountService:
         account_type = _account_type(type)
         opening_balance = v.amount(opening_balance, "opening balance")
         opening_date = v.optional_date(opening_date, "opening date")
-        goal = v.optional_amount(goal, "goal")
         notes = v.optional_text(notes, "notes")
         with self._uow.session() as session:
             _ensure_unique_name(session, name)
@@ -149,7 +158,6 @@ class AccountService:
                 type=account_type.value,
                 opening_balance=opening_balance,
                 opening_date=opening_date,
-                goal=goal,
                 notes=notes,
                 position=last + 1,
                 closed_on=None,
@@ -187,7 +195,6 @@ class AccountService:
         type: AccountType | str | Unset = UNSET,
         opening_balance: int | Unset = UNSET,
         opening_date: dt.date | None | Unset = UNSET,
-        goal: int | None | Unset = UNSET,
         notes: str | None | Unset = UNSET,
     ) -> Account:
         """Change account properties; arguments left `UNSET` are not modified.
@@ -200,8 +207,10 @@ class AccountService:
             ValidationError: If an argument is invalid, or the new opening date
                 is later than an existing transaction of the account.
             ConflictError: If the name is already used, the opening values of
-                a closed account would change, or an account with security
-                transactions would stop being an investment account.
+                a closed account would change, an account with security
+                transactions would stop being an investment account, or an
+                account with savings goals would get a type that cannot hold
+                them.
         """
         with self._uow.session() as session:
             row = get_row(session, AccountRow, account_id, "account")
@@ -218,11 +227,15 @@ class AccountService:
                         f"account {row.name!r} has security transactions and must "
                         "stay an investment account"
                     )
+                if not new_type.holds_goals and _goal_count(session, row.id):
+                    raise ConflictError(
+                        f"account {row.name!r} has savings goals, which a "
+                        f"{new_type.value.replace('_', ' ')} account cannot hold; "
+                        "move or delete them first"
+                    )
                 if new_type.value != row.type:
                     debts.on_type_change(session, row, new_type)
                 row.type = new_type.value
-            if not isinstance(goal, Unset):
-                row.goal = v.optional_amount(goal, "goal")
             if not isinstance(notes, Unset):
                 row.notes = v.optional_text(notes, "notes")
             changes_opening = not isinstance(opening_balance, Unset) or not isinstance(
@@ -368,6 +381,10 @@ class AccountService:
                 raise ConflictError(
                     f"account {row.name!r} is used by the recurring transaction "
                     f"{label!r}; change or delete it first"
+                )
+            if _goal_count(session, row.id):
+                raise ConflictError(
+                    f"account {row.name!r} has savings goals; move or delete them first"
                 )
             debts.on_delete(session, row)
             session.delete(row)

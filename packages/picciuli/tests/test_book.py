@@ -19,6 +19,7 @@ from picciuli import (
     DebtCharge,
     DebtTerms,
     ExternalSplit,
+    GoalPriority,
     SchemaVersionError,
     Trade,
     TradeKind,
@@ -34,6 +35,7 @@ from .schema_v2 import SCHEMA_V2
 from .schema_v3 import SCHEMA_V3
 from .schema_v4 import SCHEMA_V4
 from .schema_v5 import SCHEMA_V5
+from .schema_v6 import SCHEMA_V6
 
 
 def test_open_creates_and_reopens_a_file(tmp_path: Path) -> None:
@@ -355,6 +357,11 @@ def _rows(path: Path) -> dict[str, list[tuple[object, ...]]]:
         }
 
 
+def _without_goal(accounts: list[tuple[object, ...]]) -> list[tuple[object, ...]]:
+    """Account rows of schema version 5 or older, without the `goal` column."""
+    return [(*row[:5], *row[6:]) for row in accounts]
+
+
 def test_version_3_is_upgraded_to_version_4_without_losing_data(
     tmp_path: Path,
 ) -> None:
@@ -371,17 +378,20 @@ def test_version_3_is_upgraded_to_version_4_without_losing_data(
         "debt_terms",
         "debt_charges",
         "schedule_debts",
+        "savings_goals",
     }
     assert after["schedules"] == after["schedule_splits"] == []
     assert after["debt_terms"] == after["debt_charges"] == after["schedule_debts"] == []
+    assert after["savings_goals"] == [(1, 1, "Checking", 500000, 85400, None, "normal")]
     assert after["transactions"] == [(*row, None) for row in before["transactions"]]
+    assert after["accounts"] == _without_goal(before["accounts"])
     assert dict(after["meta"]) == {  # type: ignore[arg-type]
         **dict(before["meta"]),  # type: ignore[arg-type]
-        "schema_version": "6",
+        "schema_version": "7",
         "period_start_day": "",
         "period_weekend_shift": "1",
     }
-    for table in set(before) - {"meta", "transactions"}:
+    for table in set(before) - {"meta", "transactions", "accounts"}:
         assert after[table] == before[table], table
 
     fresh = file_engine(tmp_path / "fresh.db")
@@ -471,13 +481,20 @@ def test_version_4_is_upgraded_to_version_5_without_losing_data(
     Book.open(path).close()
 
     after = _rows(path)
-    assert set(after) == set(before) | {"debt_terms", "debt_charges", "schedule_debts"}
+    assert set(after) == set(before) | {
+        "debt_terms",
+        "debt_charges",
+        "schedule_debts",
+        "savings_goals",
+    }
     assert after["debt_terms"] == after["debt_charges"] == after["schedule_debts"] == []
+    assert after["savings_goals"] == []
+    assert after["accounts"] == _without_goal(before["accounts"])
     assert dict(after["meta"]) == {  # type: ignore[arg-type]
         **dict(before["meta"]),  # type: ignore[arg-type]
-        "schema_version": "6",
+        "schema_version": "7",
     }
-    for table in set(before) - {"meta"}:
+    for table in set(before) - {"meta", "accounts"}:
         assert after[table] == before[table], table
 
     fresh = file_engine(tmp_path / "fresh.db")
@@ -508,7 +525,7 @@ def test_version_4_is_upgraded_to_version_5_without_losing_data(
         )
 
 
-def test_version_5_is_upgraded_to_version_6_without_losing_data(
+def test_version_5_is_upgraded_through_every_step_without_losing_data(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "v5.db"
@@ -521,7 +538,7 @@ def test_version_5_is_upgraded_to_version_6_without_losing_data(
         connection.executescript(
             """
             INSERT INTO accounts VALUES (1, 'Checking', 'checking', 300000, NULL,
-                NULL, NULL, 1, NULL);
+                250000, NULL, 1, NULL);
             INSERT INTO accounts VALUES (2, 'Loan', 'loan', -1000000, NULL,
                 NULL, NULL, 2, NULL);
             INSERT INTO categories VALUES (1, 'Interest', 'INT', NULL, 1);
@@ -534,12 +551,20 @@ def test_version_5_is_upgraded_to_version_6_without_losing_data(
 
     Book.open(path).close()
 
+    # 5 -> 6 adds the empty `debt_charges`; 6 -> 7 converts the account goal.
     after = _rows(path)
-    assert set(after) == set(before) | {"debt_charges"}
+    assert set(after) == set(before) | {"debt_charges", "savings_goals"}
     assert after["debt_charges"] == []
-    assert ("schema_version", "6") in after["meta"]
-    for table in set(before) - {"meta"}:
+    assert after["savings_goals"] == [
+        (1, 1, "Checking", 250000, 250000, None, "normal")
+    ]
+    assert after["accounts"] == _without_goal(before["accounts"])
+    assert ("schema_version", "7") in after["meta"]
+    for table in set(before) - {"meta", "accounts"}:
         assert after[table] == before[table], table
+    # One backup of the file as it was before the first step.
+    assert [p.name for p in tmp_path.glob("*.bak")] == ["v5.db.schema-v5.bak"]
+    assert _rows(tmp_path / "v5.db.schema-v5.bak") == before
 
     fresh = file_engine(tmp_path / "fresh.db")
     prepare_schema(fresh)
@@ -561,10 +586,187 @@ def test_version_5_is_upgraded_to_version_6_without_losing_data(
         assert terms is not None and terms.charges == (charge,)
 
 
+def _make_v6(path: Path) -> None:
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(SCHEMA_V6)
+        connection.executemany(
+            "INSERT INTO meta VALUES (?, ?)",
+            [
+                ("schema_version", "6"),
+                ("currency", "€"),
+                ("minor_digits", "2"),
+                ("currency_code", "EUR"),
+                ("cost_method", "average"),
+                ("price_provider", "yahoo"),
+                ("rate_provider", "yahoo"),
+                ("period_start_day", "1"),
+                ("period_weekend_shift", "1"),
+            ],
+        )
+        connection.executescript(
+            """
+            INSERT INTO accounts VALUES (1, 'Checking', 'checking', 300000, NULL,
+                NULL, NULL, 1, NULL);
+            INSERT INTO accounts VALUES (2, 'Holiday', 'savings', 50000, NULL,
+                100000, 'trip', 2, NULL);
+            INSERT INTO accounts VALUES (3, 'Wallet', 'cash', 50000, NULL,
+                10000, NULL, 3, NULL);
+            INSERT INTO accounts VALUES (4, 'Old box', 'other_asset', 0,
+                '2024-01-01', 5000, NULL, 4, '2024-06-30');
+            INSERT INTO accounts VALUES (5, 'Broker', 'investment', 0, NULL,
+                100000, NULL, 5, NULL);
+            INSERT INTO accounts VALUES (6, 'Visa', 'credit_card', 0, NULL,
+                -2000, NULL, 6, NULL);
+            INSERT INTO accounts VALUES (7, 'Overdrawn', 'checking', -500, NULL,
+                1000, NULL, 7, NULL);
+            INSERT INTO accounts VALUES (8, 'Later', 'savings', 40000,
+                '2999-01-01', 1000, NULL, 8, NULL);
+            INSERT INTO accounts VALUES (9, 'Zero', 'savings', 0, NULL, 0, NULL,
+                9, NULL);
+            INSERT INTO categories VALUES (1, 'Salary', 'PAY', NULL, 1);
+            INSERT INTO transactions VALUES (1, '2025-01-05', 'Save', NULL, NULL);
+            INSERT INTO splits VALUES (1, 1, 1, 1, NULL, -20000, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (2, 1, 2, 2, NULL, 20000, NULL, NULL, NULL);
+            INSERT INTO transactions VALUES (2, '2998-12-31', 'Future', NULL, NULL);
+            INSERT INTO splits VALUES (3, 2, 1, 2, NULL, 99999, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (4, 2, 2, NULL, 1, 99999, NULL, NULL, NULL);
+            """
+        )
+
+
+def test_version_6_is_upgraded_to_savings_goals_after_a_backup(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "v6.db"
+    _make_v6(path)
+    before = _rows(path)
+
+    with Book.open(path) as book:
+        goals = book.goals.list()
+
+    # Eligible positive goals become goals named after their account; the
+    # saved amount is today's balance (not future entries), within [0, goal].
+    assert [
+        (g.account_id, g.name, g.target_amount, g.saved_amount, g.target_date)
+        for g in goals
+    ] == [
+        (2, "Holiday", 100000, 70000, None),
+        (3, "Wallet", 10000, 10000, None),
+        (4, "Old box", 5000, 0, None),
+        (7, "Overdrawn", 1000, 0, None),
+        (8, "Later", 1000, 0, None),
+    ]
+    assert {g.priority for g in goals} == {GoalPriority.NORMAL}
+    after = _rows(path)
+    assert after["accounts"] == _without_goal(before["accounts"])
+    assert ("schema_version", "7") in after["meta"]
+    for table in set(before) - {"meta", "accounts"}:
+        assert after[table] == before[table], table
+
+    # The backup keeps the file exactly as it was, unsupported goals included.
+    backup = tmp_path / "v6.db.schema-v6.bak"
+    assert _rows(backup) == before
+    with closing(sqlite3.connect(backup)) as connection:
+        assert connection.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+
+    fresh = file_engine(tmp_path / "fresh.db")
+    prepare_schema(fresh)
+    upgraded = file_engine(path)
+    try:
+        assert _structure(upgraded) == _structure(fresh)
+    finally:
+        fresh.dispose()
+        upgraded.dispose()
+
+    # Opening the upgraded file again neither converts nor backs up again.
+    with Book.open(path) as book:
+        assert book.goals.list() == goals
+    assert sorted(p.name for p in tmp_path.glob("*.bak")) == ["v6.db.schema-v6.bak"]
+    with Book.in_memory() as copy:
+        assert copy.import_file(path).goals == 5
+
+
+def test_backup_includes_committed_wal_content(tmp_path: Path) -> None:
+    path = tmp_path / "v6.db"
+    _make_v6(path)
+    with closing(sqlite3.connect(path)) as writer:
+        writer.execute("PRAGMA journal_mode=WAL")
+        with writer:
+            writer.execute(
+                "INSERT INTO accounts VALUES (10, 'Late', 'cash', 1, NULL, NULL, "
+                "NULL, 10, NULL)"
+            )
+        assert (tmp_path / "v6.db-wal").stat().st_size > 0
+        Book.open(path).close()
+    names = [row[1] for row in _rows(tmp_path / "v6.db.schema-v6.bak")["accounts"]]
+    assert "Late" in names
+
+
+def test_backup_never_replaces_an_existing_file(tmp_path: Path) -> None:
+    path = tmp_path / "v6.db"
+    _make_v6(path)
+    taken = tmp_path / "v6.db.schema-v6.bak"
+    taken.write_bytes(b"keep me")
+
+    Book.open(path).close()
+
+    assert taken.read_bytes() == b"keep me"
+    assert _rows(tmp_path / "v6.db.schema-v6-2.bak")["accounts"][1][5] == 100000
+
+
+def test_upgrade_does_not_start_without_a_verified_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "v6.db"
+    _make_v6(path)
+    before = _rows(path)
+
+    def broken(*_args: object) -> None:
+        raise SchemaVersionError("the backup is damaged")
+
+    monkeypatch.setattr("picciuli._db.schema._verify_backup", broken)
+    with pytest.raises(SchemaVersionError, match=r"cannot back up.*damaged"):
+        Book.open(path)
+    assert _rows(path) == before
+    assert list(tmp_path.glob("*.bak")) == []
+
+
+def test_failed_upgrade_keeps_the_backup_and_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from picciuli._db import schema
+
+    path = tmp_path / "v6.db"
+    _make_v6(path)
+    before = _rows(path)
+
+    def failing(connection: Connection) -> None:
+        connection.exec_driver_sql("DELETE FROM accounts WHERE id = 9")
+        raise SchemaVersionError("boom")
+
+    monkeypatch.setitem(schema.MIGRATIONS, 6, failing)
+    with pytest.raises(SchemaVersionError, match="boom"):
+        Book.open(path)
+    assert _rows(path) == before
+    assert _rows(tmp_path / "v6.db.schema-v6.bak") == before
+
+    monkeypatch.undo()
+    with Book.open(path) as book:
+        assert len(book.goals.list()) == 5
+    assert (tmp_path / "v6.db.schema-v6-2.bak").exists()
+
+
+def test_in_memory_and_current_books_are_not_backed_up(tmp_path: Path) -> None:
+    path = tmp_path / "book.db"
+    Book.open(path).close()
+    Book.open(path).close()
+    assert list(tmp_path.glob("*.bak")) == []
+
+
 def test_each_call_is_atomic(book: Book) -> None:
     checking = book.accounts.create("Checking", AccountType.CHECKING)
     with pytest.raises(ValidationError):
-        book.accounts.update(checking.id, name="Renamed", goal="x")  # type: ignore[arg-type]
+        book.accounts.update(checking.id, name="Renamed", notes=5)  # type: ignore[arg-type]
     assert book.accounts.get(checking.id).name == "Checking"
 
 

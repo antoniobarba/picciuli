@@ -10,8 +10,10 @@ built on top of it.
 What it handles:
 
 - **Accounts** of any kind: checking, savings, cash, investments, credit cards,
-  loans and mortgages. Accounts can have a goal balance, and can be closed when
-  you stop using them.
+  loans and mortgages. Accounts can be closed when you stop using them.
+- **Savings goals**: several per account (emergency fund, holiday, car), each
+  with a target, a saved amount, an optional date, a priority and the amount
+  to save every month to be on time.
 - **Transactions** made of balanced splits. One model covers income, expenses,
   transfers between your accounts, loan payments split into principal and
   interest, and purchases split across several categories.

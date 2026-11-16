@@ -13,8 +13,11 @@ interfaces: web, mobile and desktop.
 ## Features
 
 - Multiple accounts: checking, savings, cash, investment, credit card, loan,
-  mortgage and others. Each account has an opening balance and an optional goal,
-  and can be closed when no longer used.
+  mortgage and others. Each account has an opening balance and can be closed
+  when no longer used.
+- Savings goals: several per account, each with a target, a saved amount
+  assigned by hand, an optional date, a priority and the monthly amount needed
+  to reach it on time.
 - Balanced split transactions, one model for all cases:
   - income and expenses;
   - transfers between your accounts;

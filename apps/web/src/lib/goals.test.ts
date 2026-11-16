@@ -1,23 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { accountTarget, etaLabel, targetEta } from './goals';
+import { debtTarget, etaLabel, targetEta } from './goals';
 
-describe('accountTarget', () => {
-  it('measures a goal from zero', () => {
-    expect(accountTarget(10_000, 2_500, null)).toEqual({ target: 10_000, fraction: 0.25 });
-  });
-
+describe('debtTarget', () => {
   it('measures a debt from its lowest point toward zero', () => {
-    expect(accountTarget(null, -3_000, -12_000)).toEqual({ target: 0, fraction: 0.75 });
-    expect(accountTarget(0, -12_000, -12_000)).toEqual({ target: 0, fraction: 0 });
+    expect(debtTarget(-3_000, -12_000)).toEqual({ target: 0, fraction: 0.75 });
+    expect(debtTarget(-12_000, -12_000)).toEqual({ target: 0, fraction: 0 });
   });
 
-  it('prefers the goal over the debt', () => {
-    expect(accountTarget(1_000, -500, -500)).toEqual({ target: 1_000, fraction: -0.5 });
-  });
-
-  it('has no target without goal or debt', () => {
-    expect(accountTarget(null, 500, null)).toBeNull();
-    expect(accountTarget(null, -500, null)).toBeNull();
+  it('has no target without a debt', () => {
+    expect(debtTarget(500, null)).toBeNull();
+    expect(debtTarget(-500, null)).toBeNull();
   });
 });
 

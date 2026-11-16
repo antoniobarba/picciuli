@@ -21,7 +21,6 @@ def test_create_and_get(alice: TestClient) -> None:
         "account_class": "liability",
         "opening_balance": -15000000,
         "opening_date": "2025-01-01",
-        "goal": None,
         "notes": "30 years",
         "position": 1,
         "closed_on": None,
@@ -41,17 +40,24 @@ def test_list_and_move(alice: TestClient) -> None:
 
 
 def test_partial_update(alice: TestClient) -> None:
-    account = create_account(alice, "Savings", "savings", goal=100000, notes="rainy")
+    account = create_account(alice, "Savings", "savings", notes="rainy")
     url = f"{API}/accounts/{account['id']}"
     updated = alice.patch(url, json={"name": "Rainy day"}).json()
-    assert (updated["name"], updated["goal"], updated["notes"]) == (
-        "Rainy day",
-        100000,
-        "rainy",
+    assert (updated["name"], updated["notes"]) == ("Rainy day", "rainy")
+    cleared = alice.patch(url, json={"notes": None}).json()
+    assert cleared["notes"] is None
+    assert cleared["name"] == "Rainy day"
+
+
+def test_the_account_goal_was_replaced_by_savings_goals(alice: TestClient) -> None:
+    response = alice.post(
+        f"{API}/accounts", json={"name": "Savings", "type": "savings", "goal": 100}
     )
-    cleared = alice.patch(url, json={"goal": None}).json()
-    assert cleared["goal"] is None
-    assert cleared["notes"] == "rainy"
+    assert response.status_code == 422
+    account = create_account(alice, "Savings", "savings")
+    assert "goal" not in account
+    response = alice.patch(f"{API}/accounts/{account['id']}", json={"goal": None})
+    assert response.status_code == 422
 
 
 def test_close_reopen_and_filter(alice: TestClient) -> None:

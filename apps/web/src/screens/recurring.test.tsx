@@ -12,7 +12,7 @@ import { Recurring } from './Recurring';
 const today = todayDay();
 const account = {
   id: 1, name: 'Checking', type: 'checking', account_class: 'asset', opening_balance: 0, opening_date: null,
-  goal: null, notes: null, position: 1, closed_on: null, is_closed: false,
+  notes: null, position: 1, closed_on: null, is_closed: false,
 };
 const bills = { id: 2, name: 'Bills', symbol: 'B', parent_id: null, position: 1 };
 

@@ -22,6 +22,7 @@ import {
   type TermsDraft,
 } from '../lib/debts';
 import { ACCOUNT_TYPE_LABELS } from '../lib/format';
+import { canHoldGoals } from '../lib/goals';
 import { NONE_ID, optionalAmount, optionalDate, optionalText } from '../lib/forms';
 import type { MoneyFormat } from '../lib/money';
 import { categoryOptions, NotesField } from './TransactionForm';
@@ -43,7 +44,6 @@ export function AccountForm({ account, onClose }: { account: Account | null; onC
     return isLiability(account.type) ? owedText(account.opening_balance, money) : money.plain(account.opening_balance);
   });
   const [openingDate, setOpeningDate] = useState(account?.opening_date ?? '');
-  const [goal, setGoal] = useState(account?.goal != null ? money.plain(account.goal) : '');
   const [notes, setNotes] = useState(account?.notes ?? '');
   const [terms, setTerms] = useState<TermsDraft>(() =>
     account ? termsDraftFromAccount(account, money) : emptyTermsDraft(),
@@ -74,7 +74,6 @@ export function AccountForm({ account, onClose }: { account: Account | null; onC
     const common: Record<string, unknown> = {
       name,
       type,
-      goal: liability ? (account?.goal ?? null) : optionalAmount(goal, money),
       notes: optionalText(notes),
     };
     if (!account) {
@@ -83,7 +82,6 @@ export function AccountForm({ account, onClose }: { account: Account | null; onC
           body: {
             name,
             type,
-            goal: common.goal as number | null,
             notes: common.notes as string | null,
             opening_balance: openingBalance,
             opening_date: date,
@@ -121,7 +119,9 @@ export function AccountForm({ account, onClose }: { account: Account | null; onC
       help={
         liability
           ? 'Enter what you owe as a positive amount. With the interest rate and the payments, Picciuli splits loan payments into principal, interest and fixed charges, forecasts the payoff and plans it on the Debts screen.'
-          : undefined
+          : canHoldGoals(type)
+            ? 'To save for something in this account, add savings goals on the Goals screen.'
+            : undefined
       }
     >
       <div className="form-row">
@@ -146,9 +146,7 @@ export function AccountForm({ account, onClose }: { account: Account | null; onC
           update={updateTerms}
           money={money}
         />
-      ) : (
-        <AmountField label="Goal" value={goal} onChange={setGoal} placeholder="optional target balance" />
-      )}
+      ) : null}
       {account?.debt_terms && !liability ? (
         <p className="form-warning" role="note">
           An asset has no debt terms: saving removes the interest rate and payments of this account.

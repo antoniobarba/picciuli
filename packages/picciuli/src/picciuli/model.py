@@ -51,6 +51,11 @@ __all__ = [
     "DebtTerms",
     "ExchangeRate",
     "ExternalSplit",
+    "GoalAccount",
+    "GoalPriority",
+    "GoalProgress",
+    "GoalReport",
+    "GoalStatus",
     "Holding",
     "ImportSummary",
     "LoanPaymentSplit",
@@ -68,6 +73,7 @@ __all__ = [
     "Register",
     "RegisterEntry",
     "Rollover",
+    "SavingsGoal",
     "Schedule",
     "ScheduleDebt",
     "ScheduleFrequency",
@@ -134,6 +140,15 @@ class AccountType(str, enum.Enum):
             return AccountClass.LIABILITY
         return AccountClass.ASSET
 
+    @property
+    def holds_goals(self) -> bool:
+        """Whether accounts of this type can hold savings goals.
+
+        Cash-like assets can: checking, savings, cash and other assets.
+        Investments and liabilities cannot.
+        """
+        return self in _GOAL_TYPES
+
 
 _LIABILITY_TYPES: Final = frozenset(
     {
@@ -143,6 +158,47 @@ _LIABILITY_TYPES: Final = frozenset(
         AccountType.OTHER_LIABILITY,
     }
 )
+_GOAL_TYPES: Final = frozenset(
+    {
+        AccountType.CHECKING,
+        AccountType.SAVINGS,
+        AccountType.CASH,
+        AccountType.OTHER_ASSET,
+    }
+)
+
+
+class GoalPriority(str, enum.Enum):
+    """How important a savings goal is. It only decides the display order."""
+
+    HIGH = "high"
+    NORMAL = "normal"
+    LOW = "low"
+
+    @property
+    def rank(self) -> int:
+        """Sort key: 0 for the most important priority."""
+        return _PRIORITY_RANKS[self]
+
+
+_PRIORITY_RANKS: Final = {
+    GoalPriority.HIGH: 0,
+    GoalPriority.NORMAL: 1,
+    GoalPriority.LOW: 2,
+}
+
+
+class GoalStatus(str, enum.Enum):
+    """Where a savings goal stands on the planning day."""
+
+    REACHED = "reached"
+    """The saved amount covers the target."""
+    SCHEDULED = "scheduled"
+    """Not reached, with a target date today or later."""
+    UNDATED = "undated"
+    """Not reached and without a target date."""
+    OVERDUE = "overdue"
+    """Not reached, and the target date has passed."""
 
 
 class TransactionKind(str, enum.Enum):
@@ -336,7 +392,6 @@ class Account:
         opening_date: Day the opening balance applies from. `None` means the
             opening balance applies since the beginning of time. Transactions
             cannot be dated before this day.
-        goal: Optional target balance, for example a savings goal.
         notes: Free text.
         position: 1-based display position among all accounts.
         closed_on: Day the account was closed, or `None` while it is open.
@@ -348,7 +403,6 @@ class Account:
     type: AccountType
     opening_balance: int
     opening_date: dt.date | None
-    goal: int | None
     notes: str | None
     position: int
     closed_on: dt.date | None
@@ -363,6 +417,91 @@ class Account:
     def is_closed(self) -> bool:
         """Whether the account has been closed (archived)."""
         return self.closed_on is not None
+
+
+@dataclass(frozen=True, slots=True)
+class SavingsGoal:
+    """Money you want to set aside in one account, for example a holiday.
+
+    An account can hold several goals. The saved amount is assigned by hand:
+    it does not move money and no transaction changes it, so it can exceed the
+    target or (together with the other goals) the account balance.
+
+    Attributes:
+        id: Unique identifier.
+        account_id: Account holding the money.
+        name: Display name, unique within the account (case-insensitive).
+        target_amount: Amount to reach, in minor units (positive).
+        saved_amount: Amount already set aside, in minor units (zero or more).
+        target_date: Day the target should be reached, or `None`.
+        priority: Importance, used to order the goals of an account.
+    """
+
+    id: int
+    account_id: int
+    name: str
+    target_amount: int
+    saved_amount: int
+    target_date: dt.date | None
+    priority: GoalPriority
+
+
+@dataclass(frozen=True, slots=True)
+class GoalProgress:
+    """A savings goal and what it still needs on the planning day.
+
+    Attributes:
+        goal: The goal.
+        remaining: What is still missing: the target minus the saved amount,
+            or zero once reached.
+        status: Reached, scheduled, undated or overdue.
+        months_left: Calendar months to save in, counting the current month
+            and the month of the target date; `None` unless `scheduled`.
+        monthly_amount: What to set aside every month to reach the target on
+            time (the remaining amount divided by `months_left`, rounded up);
+            zero once reached, `None` for undated or overdue goals.
+    """
+
+    goal: SavingsGoal
+    remaining: int
+    status: GoalStatus
+    months_left: int | None
+    monthly_amount: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class GoalAccount:
+    """The savings goals of one account, compared with its balance.
+
+    Attributes:
+        account: The account.
+        balance: Balance at the end of the planning day.
+        assigned: Total saved amount of its goals.
+        unassigned: Money of the balance not assigned to any goal.
+        shortfall: How much the goals claim beyond the balance; non-zero
+            means the account holds less money than its goals say.
+        goals: Its goals, by priority.
+    """
+
+    account: Account
+    balance: int
+    assigned: int
+    unassigned: int
+    shortfall: int
+    goals: tuple[GoalProgress, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GoalReport:
+    """Every savings goal on a planning day, grouped by account.
+
+    Attributes:
+        today: The planning day.
+        accounts: Accounts with at least one goal, in display order.
+    """
+
+    today: dt.date
+    accounts: tuple[GoalAccount, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1162,6 +1301,7 @@ class ImportSummary:
         duplicates: Transactions skipped because an identical one already
             existed.
         schedules: Recurring transactions added.
+        goals: Savings goals added.
     """
 
     replaced: bool
@@ -1175,6 +1315,7 @@ class ImportSummary:
     transactions: int
     duplicates: int
     schedules: int = 0
+    goals: int = 0
 
 
 @dataclass(frozen=True, slots=True)

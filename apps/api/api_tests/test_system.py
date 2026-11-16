@@ -99,6 +99,7 @@ class TestImport:
             "transactions": 2,
             "duplicates": 0,
             "schedules": 0,
+            "goals": 0,
         }
         again = _upload(alice, content).json()
         assert (again["accounts"], again["duplicates"]) == (0, 2)

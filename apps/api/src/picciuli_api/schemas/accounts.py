@@ -167,7 +167,6 @@ class AccountOut(OutputModel):
     account_class: AccountClass
     opening_balance: int
     opening_date: dt.date | None
-    goal: int | None
     notes: str | None
     position: int
     closed_on: dt.date | None
@@ -184,7 +183,6 @@ class AccountCreate(InputModel):
     type: AccountType
     opening_balance: Amount = 0
     opening_date: Date | None = None
-    goal: Amount | None = None
     notes: Text | None = None
     debt_terms: DebtTermsIn | None = Field(
         default=None, description="Terms of a credit card, loan or mortgage."
@@ -200,7 +198,6 @@ class AccountUpdate(PatchModel):
     type: AccountType | None = None
     opening_balance: Amount | None = None
     opening_date: Date | None = None
-    goal: Amount | None = None
     notes: Text | None = None
     debt_terms: DebtTermsIn | None = Field(
         default=None, description="New debt terms; `null` removes them."

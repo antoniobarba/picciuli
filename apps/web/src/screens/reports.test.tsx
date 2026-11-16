@@ -29,7 +29,6 @@ const account = (id: number, name: string) => ({
   account_class: 'asset',
   opening_balance: 0,
   opening_date: null,
-  goal: null,
   notes: null,
   position: id,
   closed_on: null,

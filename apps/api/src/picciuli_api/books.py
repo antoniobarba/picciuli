@@ -110,7 +110,7 @@ class BookRegistry:
             source.close()
 
     def delete(self, user_id: str) -> bool:
-        """Close and delete the user's database.
+        """Close and delete the user's database, with its upgrade backups.
 
         Returns:
             Whether a database file existed.
@@ -130,6 +130,9 @@ class BookRegistry:
             path.unlink(missing_ok=True)
             for suffix in _SIDE_FILES:
                 path.with_name(path.name + suffix).unlink(missing_ok=True)
+            # Copies kept by `Book.open` before schema upgrades.
+            for backup in path.parent.glob(f"{path.name}.schema-v*.bak"):
+                backup.unlink(missing_ok=True)
         return existed
 
     def close(self) -> None:

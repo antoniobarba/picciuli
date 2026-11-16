@@ -769,6 +769,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Goals
+         * @description List the savings goals by account, then priority.
+         */
+        get: operations["list_goals_api_v1_goals_get"];
+        put?: never;
+        /**
+         * Create Goal
+         * @description Create a savings goal. The saved amount may exceed the account balance.
+         */
+        post: operations["create_goal_api_v1_goals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/goals/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Goal Report
+         * @description Every goal with the monthly amount it needs, grouped by account.
+         *
+         *     `today` is the planning day (default: the server date). Each account
+         *     shows a `shortfall` when its goals claim more than its balance.
+         */
+        get: operations["goal_report_api_v1_goals_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/goals/{goal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Goal
+         * @description Get one savings goal.
+         */
+        get: operations["get_goal_api_v1_goals__goal_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Goal
+         * @description Delete a savings goal; no money moves.
+         */
+        delete: operations["delete_goal_api_v1_goals__goal_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Goal
+         * @description Change some fields of a savings goal.
+         */
+        patch: operations["update_goal_api_v1_goals__goal_id__patch"];
+        trace?: never;
+    };
     "/api/v1/periods": {
         parameters: {
             query?: never;
@@ -1477,8 +1552,6 @@ export interface components {
             opening_balance: number;
             /** Opening Date */
             opening_date?: string | null;
-            /** Goal */
-            goal?: number | null;
             /** Notes */
             notes?: string | null;
             /** @description Terms of a credit card, loan or mortgage. */
@@ -1507,8 +1580,6 @@ export interface components {
             opening_balance: number;
             /** Opening Date */
             opening_date: string | null;
-            /** Goal */
-            goal: number | null;
             /** Notes */
             notes: string | null;
             /** Position */
@@ -1604,8 +1675,6 @@ export interface components {
             opening_balance?: number;
             /** Opening Date */
             opening_date?: string | null;
-            /** Goal */
-            goal?: number | null;
             /** Notes */
             notes?: string | null;
             /** @description New debt terms; `null` removes them. */
@@ -2246,6 +2315,128 @@ export interface components {
             memo?: string | null;
         };
         /**
+         * GoalAccountOut
+         * @description The goals of one account compared with its balance.
+         */
+        GoalAccountOut: {
+            account: components["schemas"]["AccountOut"];
+            /** Balance */
+            balance: number;
+            /** Assigned */
+            assigned: number;
+            /** Unassigned */
+            unassigned: number;
+            /** Shortfall */
+            shortfall: number;
+            /** Goals */
+            goals: components["schemas"]["GoalProgressOut"][];
+        };
+        /**
+         * GoalCreate
+         * @description A new savings goal, in an open checking, savings, cash or other asset account.
+         */
+        GoalCreate: {
+            /** Account Id */
+            account_id: number;
+            /**
+             * Name
+             * @example Holiday
+             */
+            name: string;
+            /** Target Amount */
+            target_amount: number;
+            /**
+             * Saved Amount
+             * @default 0
+             */
+            saved_amount: number;
+            /** Target Date */
+            target_date?: string | null;
+            /** @default normal */
+            priority: components["schemas"]["GoalPriority"];
+        };
+        /**
+         * GoalOut
+         * @description Money set aside by hand in one account, for example for a holiday.
+         */
+        GoalOut: {
+            /** Id */
+            id: number;
+            /** Account Id */
+            account_id: number;
+            /** Name */
+            name: string;
+            /** Target Amount */
+            target_amount: number;
+            /** Saved Amount */
+            saved_amount: number;
+            /** Target Date */
+            target_date: string | null;
+            priority: components["schemas"]["GoalPriority"];
+        };
+        /**
+         * GoalPriority
+         * @description How important a savings goal is. It only decides the display order.
+         * @enum {string}
+         */
+        GoalPriority: "high" | "normal" | "low";
+        /**
+         * GoalProgressOut
+         * @description A goal and what it still needs on the planning day.
+         */
+        GoalProgressOut: {
+            goal: components["schemas"]["GoalOut"];
+            /** Remaining */
+            remaining: number;
+            status: components["schemas"]["GoalStatus"];
+            /**
+             * Months Left
+             * @description Months to save in, counting the current month and the target month; `null` unless `scheduled`.
+             */
+            months_left: number | null;
+            /**
+             * Monthly Amount
+             * @description What to set aside every month to reach the target on time; 0 once reached, `null` for undated or overdue goals.
+             */
+            monthly_amount: number | null;
+        };
+        /**
+         * GoalReportOut
+         * @description Every goal on a planning day, grouped by account in display order.
+         */
+        GoalReportOut: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Accounts */
+            accounts: components["schemas"]["GoalAccountOut"][];
+        };
+        /**
+         * GoalStatus
+         * @description Where a savings goal stands on the planning day.
+         * @enum {string}
+         */
+        GoalStatus: "reached" | "scheduled" | "undated" | "overdue";
+        /**
+         * GoalUpdate
+         * @description Changes to a savings goal; `target_date: null` removes the date.
+         */
+        GoalUpdate: {
+            /** Account Id */
+            account_id?: number;
+            /** Name */
+            name?: string;
+            /** Target Amount */
+            target_amount?: number;
+            /** Saved Amount */
+            saved_amount?: number;
+            /** Target Date */
+            target_date?: string | null;
+            priority?: components["schemas"]["GoalPriority"];
+        };
+        /**
          * HoldingOut
          * @description Shares of one security held in an account.
          */
@@ -2295,6 +2486,8 @@ export interface components {
             duplicates: number;
             /** Schedules */
             schedules: number;
+            /** Goals */
+            goals: number;
         };
         /**
          * IncomeCreate
@@ -6727,6 +6920,448 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_goals_api_v1_goals_get: {
+        parameters: {
+            query?: {
+                account_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_goal_api_v1_goals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    goal_report_api_v1_goals_report_get: {
+        parameters: {
+            query?: {
+                today?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalReportOut"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_goal_api_v1_goals__goal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                goal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_goal_api_v1_goals__goal_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                goal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_goal_api_v1_goals__goal_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                goal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
                 };
             };
             /** @description The body is not valid JSON */

@@ -13,7 +13,7 @@ import { Register } from './Register';
 
 const account: Account = {
   id: 1, name: 'Checking', type: 'checking', account_class: 'asset',
-  opening_balance: 10000, opening_date: null, goal: null, notes: null,
+  opening_balance: 10000, opening_date: null, notes: null,
   position: 1, closed_on: null, is_closed: false,
 };
 const transactions: Transaction[] = Array.from({ length: 52 }, (_, index) => ({

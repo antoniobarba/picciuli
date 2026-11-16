@@ -4968,6 +4968,597 @@
         }
       }
     },
+    "/api/v1/goals": {
+      "get": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "List Goals",
+        "description": "List the savings goals by account, then priority.",
+        "operationId": "list_goals_api_v1_goals_get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GoalOut"
+                  },
+                  "title": "Response List Goals Api V1 Goals Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Create Goal",
+        "description": "Create a savings goal. The saved amount may exceed the account balance.",
+        "operationId": "create_goal_api_v1_goals_post",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/report": {
+      "get": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Goal Report",
+        "description": "Every goal with the monthly amount it needs, grouped by account.\n\n`today` is the planning day (default: the server date). Each account\nshows a `shortfall` when its goals claim more than its balance.",
+        "operationId": "goal_report_api_v1_goals_report_get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "today",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Today"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalReportOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/goals/{goal_id}": {
+      "get": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Get Goal",
+        "description": "Get one savings goal.",
+        "operationId": "get_goal_api_v1_goals__goal_id__get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Goal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Update Goal",
+        "description": "Change some fields of a savings goal.",
+        "operationId": "update_goal_api_v1_goals__goal_id__patch",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Goal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Delete Goal",
+        "description": "Delete a savings goal; no money moves.",
+        "operationId": "delete_goal_api_v1_goals__goal_id__delete",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Goal Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/periods": {
       "get": {
         "tags": [
@@ -9407,20 +9998,6 @@
             ],
             "title": "Opening Date"
           },
-          "goal": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 1000000000000000.0,
-                "minimum": -1000000000000000.0,
-                "description": "Amount in minor units, at most 10^15 in absolute value."
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Goal"
-          },
           "notes": {
             "anyOf": [
               {
@@ -9503,17 +10080,6 @@
             ],
             "title": "Opening Date"
           },
-          "goal": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Goal"
-          },
           "notes": {
             "anyOf": [
               {
@@ -9565,7 +10131,6 @@
           "account_class",
           "opening_balance",
           "opening_date",
-          "goal",
           "notes",
           "position",
           "closed_on",
@@ -9798,20 +10363,6 @@
               }
             ],
             "title": "Opening Date"
-          },
-          "goal": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 1000000000000000.0,
-                "minimum": -1000000000000000.0,
-                "description": "Amount in minor units, at most 10^15 in absolute value."
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Goal"
           },
           "notes": {
             "anyOf": [
@@ -11421,6 +11972,294 @@
         "title": "ExternalSplitOut",
         "description": "A split crossing the boundary of your accounts (income or expense)."
       },
+      "GoalAccountOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountOut"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          },
+          "assigned": {
+            "type": "integer",
+            "title": "Assigned"
+          },
+          "unassigned": {
+            "type": "integer",
+            "title": "Unassigned"
+          },
+          "shortfall": {
+            "type": "integer",
+            "title": "Shortfall"
+          },
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/GoalProgressOut"
+            },
+            "type": "array",
+            "title": "Goals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account",
+          "balance",
+          "assigned",
+          "unassigned",
+          "shortfall",
+          "goals"
+        ],
+        "title": "GoalAccountOut",
+        "description": "The goals of one account compared with its balance."
+      },
+      "GoalCreate": {
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
+            "title": "Account Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "examples": [
+              "Holiday"
+            ]
+          },
+          "target_amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Target Amount"
+          },
+          "saved_amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
+            "title": "Saved Amount",
+            "default": 0
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/GoalPriority",
+            "default": "normal"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "account_id",
+          "name",
+          "target_amount"
+        ],
+        "title": "GoalCreate",
+        "description": "A new savings goal, in an open checking, savings, cash or other asset account."
+      },
+      "GoalOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "target_amount": {
+            "type": "integer",
+            "title": "Target Amount"
+          },
+          "saved_amount": {
+            "type": "integer",
+            "title": "Saved Amount"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/GoalPriority"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "name",
+          "target_amount",
+          "saved_amount",
+          "target_date",
+          "priority"
+        ],
+        "title": "GoalOut",
+        "description": "Money set aside by hand in one account, for example for a holiday."
+      },
+      "GoalPriority": {
+        "type": "string",
+        "enum": [
+          "high",
+          "normal",
+          "low"
+        ],
+        "title": "GoalPriority",
+        "description": "How important a savings goal is. It only decides the display order."
+      },
+      "GoalProgressOut": {
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/GoalOut"
+          },
+          "remaining": {
+            "type": "integer",
+            "title": "Remaining"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GoalStatus"
+          },
+          "months_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Months Left",
+            "description": "Months to save in, counting the current month and the target month; `null` unless `scheduled`."
+          },
+          "monthly_amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Amount",
+            "description": "What to set aside every month to reach the target on time; 0 once reached, `null` for undated or overdue goals."
+          }
+        },
+        "type": "object",
+        "required": [
+          "goal",
+          "remaining",
+          "status",
+          "months_left",
+          "monthly_amount"
+        ],
+        "title": "GoalProgressOut",
+        "description": "A goal and what it still needs on the planning day."
+      },
+      "GoalReportOut": {
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/GoalAccountOut"
+            },
+            "type": "array",
+            "title": "Accounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "accounts"
+        ],
+        "title": "GoalReportOut",
+        "description": "Every goal on a planning day, grouped by account in display order."
+      },
+      "GoalStatus": {
+        "type": "string",
+        "enum": [
+          "reached",
+          "scheduled",
+          "undated",
+          "overdue"
+        ],
+        "title": "GoalStatus",
+        "description": "Where a savings goal stands on the planning day."
+      },
+      "GoalUpdate": {
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
+            "title": "Account Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "target_amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Target Amount"
+          },
+          "saved_amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
+            "title": "Saved Amount"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/GoalPriority"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GoalUpdate",
+        "description": "Changes to a savings goal; `target_date: null` removes the date."
+      },
       "HoldingOut": {
         "properties": {
           "security": {
@@ -11562,6 +12401,10 @@
           "schedules": {
             "type": "integer",
             "title": "Schedules"
+          },
+          "goals": {
+            "type": "integer",
+            "title": "Goals"
           }
         },
         "type": "object",
@@ -11576,7 +12419,8 @@
           "budgets",
           "transactions",
           "duplicates",
-          "schedules"
+          "schedules",
+          "goals"
         ],
         "title": "ImportOut",
         "description": "What an import added to your book (reused entities are not counted)."
@@ -14135,6 +14979,10 @@
     {
       "name": "debts",
       "description": "Debt payoff forecasts, snowball and avalanche plans, loan payments."
+    },
+    {
+      "name": "goals",
+      "description": "Savings goals: several per account, with a target date, a priority and the amount to save every month."
     },
     {
       "name": "periods",

@@ -105,3 +105,5 @@ class ImportOut(OutputModel):
     duplicates: int
     """Transactions skipped because an identical one already existed."""
     schedules: int
+    goals: int
+    """Savings goals added; identical goals already present are skipped."""

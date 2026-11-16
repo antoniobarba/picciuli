@@ -21,7 +21,6 @@ const account = (id: number, name: string) => ({
   account_class: 'asset',
   opening_balance: 0,
   opening_date: null,
-  goal: null,
   notes: null,
   position: id,
   closed_on: null,
@@ -128,6 +127,7 @@ describe('ImportForm', () => {
     transactions: 5,
     duplicates: 0,
     schedules: 0,
+    goals: 0,
   };
 
   it('uploads the raw file with the chosen mode', async () => {

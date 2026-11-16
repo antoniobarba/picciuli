@@ -81,4 +81,11 @@ export const icons = {
       <path d="M4 6h16M4 6v12h16V6M8 10h8M8 14l3 3 5-5" />
     </Icon>
   ),
+  goals: (
+    <Icon>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" />
+    </Icon>
+  ),
 };

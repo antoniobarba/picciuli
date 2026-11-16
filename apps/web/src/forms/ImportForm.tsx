@@ -33,6 +33,7 @@ const COUNTS: readonly (readonly [Exclude<keyof ImportResult, 'replaced' | 'dupl
   ['prices', 'price', 'prices'],
   ['exchange_rates', 'exchange rate', 'exchange rates'],
   ['schedules', 'recurring transaction', 'recurring transactions'],
+  ['goals', 'savings goal', 'savings goals'],
 ];
 
 /** A one-line description of what an import added. */

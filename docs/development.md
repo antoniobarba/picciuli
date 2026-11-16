@@ -100,17 +100,44 @@ commit. Three boundaries still need explicit compatibility handling:
     - The schema version is stored in the `meta` table.
     - `Book.open` upgrades older files automatically, running the steps
       registered in `picciuli/_db/schema.py`.
+    - Before upgrading, it writes a verified copy of the file next to it,
+      `<file>.schema-v<old version>.bak` (`-2`, `-3`... when the name is
+      taken; an existing copy is never replaced), with SQLite's backup API
+      while it holds the write lock. If the copy cannot be written or checked
+      (integrity, schema version, row counts), the file is not upgraded. If an
+      upgrade step fails, the whole upgrade rolls back and the copy stays. To
+      restore, stop every client, then replace the file with the copy and open
+      it with the release matching its version. The API server deletes these
+      copies together with the user's data (`DELETE /me`).
     - It refuses files written by a newer version.
     - To change the schema, bump `SCHEMA_VERSION`, add a migration step and
       test it. Write the step's DDL out in full instead of reusing the ORM
       tables, so that it keeps producing the same schema when the tables change
-      later (see the version 1 → 2 step). The test in `tests/test_book.py`
-      checks that an upgraded file has the same structure as a new one.
+      later (see the version 1 → 2 step). Freeze the DDL of the old version in
+      `tests/schema_v<n>.py` before changing the tables. The test in
+      `tests/test_book.py` checks that an upgraded file has the same structure
+      as a new one.
     - The version 2 ? 3 step adds the `trades` table and back-fills it only
       for buys and sales whose splits it can rebuild exactly from the inferred
       trade; any other transaction keeps no trade and is edited as splits.
+    - The version 5 → 6 step adds the empty `debt_charges` table (fixed
+      charges of loans).
+    - The version 6 → 7 step (SQLite 3.35 or later) replaces the `goal` column
+      of `accounts` with the `savings_goals` table. A positive goal of a
+      checking, savings, cash or other asset account (closed ones included)
+      becomes a goal named after the account, with a normal priority, no date
+      and a saved amount equal to the account balance on the upgrade day
+      (future transactions ignored), between zero and the target. Other goals
+      (investments, liabilities, zero or negative values) are dropped; the
+      backup above still holds them.
 2. **The HTTP API.** Browsers and phones update on their own schedule.
     - Changes to the API should be additive.
     - Breaking changes go under a new path prefix (`/v2`), while `/v1` is kept
       for a deprecation window.
+    - Exception: savings goals removed the `goal` field of `/v1/accounts`
+      bodies and responses in place (requests still sending it get `422`);
+      use `/v1/goals` instead. Deploy the server and the web app together and
+      reload installed apps after the upgrade.
 3. **Third-party users** of the published `picciuli` package rely on semver.
+    The `goal` argument and attribute of accounts were removed in favour of
+    [`Book.goals`][picciuli.Book.goals].

@@ -40,7 +40,6 @@ def create_account(book: BookDep, body: AccountCreate) -> AccountOut:
             body.type,
             opening_balance=body.opening_balance,
             opening_date=body.opening_date,
-            goal=body.goal,
             notes=body.notes,
         )
         if body.debt_terms is not None:

@@ -178,11 +178,38 @@ or fail together, use [`Book.atomic`][picciuli.Book.atomic]:
 
 ```python
 with book.atomic():
-    savings = book.accounts.create("Savings", AccountType.SAVINGS, goal=500000)
+    savings = book.accounts.create("Savings", AccountType.SAVINGS)
     book.transactions.record_transfer(
         day, 100000, from_account_id=checking.id, to_account_id=savings.id
     )
 ```
+
+## Savings goals
+
+An account can hold several goals. Assign their saved amounts by hand, and the
+report says how much to set aside every month:
+
+```python
+from picciuli import GoalPriority
+
+holiday = book.goals.create(
+    savings.id,
+    "Holiday",
+    150000,
+    saved_amount=40000,
+    target_date=dt.date(2026, 7, 31),
+    priority=GoalPriority.HIGH,
+)
+book.goals.create(savings.id, "Emergency fund", 500000, saved_amount=60000)
+
+for account in book.goals.report().accounts:
+    if account.shortfall:
+        print(account.account.name, "goals exceed the balance by", account.shortfall)
+    for item in account.goals:
+        print(item.goal.name, item.status.value, item.monthly_amount)
+```
+
+See [Concepts](concepts.md#savings-goals) for the rules.
 
 ## Errors
 

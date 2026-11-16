@@ -108,6 +108,20 @@ class TestDelete:
     def test_unknown_user(self, registry: BookRegistry) -> None:
         assert registry.delete(ALICE) is False
 
+    def test_deletes_only_the_users_upgrade_backups(
+        self, registry: BookRegistry
+    ) -> None:
+        lease_once(registry, ALICE)
+        lease_once(registry, BOB)
+        path = registry.path_for(ALICE)
+        mine = [path.with_name(f"{path.name}.schema-v5{n}.bak") for n in ("", "-2")]
+        other = registry.path_for(BOB).with_name(f"{BOB}.db.schema-v5.bak")
+        for backup in [*mine, other]:
+            backup.write_bytes(b"old")
+        assert registry.delete(ALICE) is True
+        assert not any(backup.exists() for backup in mine)
+        assert other.exists()
+
     def test_refuses_while_in_use(self, registry: BookRegistry) -> None:
         with registry.lease(ALICE), pytest.raises(ConflictError):
             registry.delete(ALICE)

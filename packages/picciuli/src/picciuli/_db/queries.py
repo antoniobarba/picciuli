@@ -24,8 +24,10 @@ from picciuli.model import (
     DebtTerms,
     ExchangeRate,
     ExternalSplit,
+    GoalPriority,
     Period,
     Price,
+    SavingsGoal,
     Schedule,
     ScheduleDebt,
     ScheduleFrequency,
@@ -46,6 +48,7 @@ from .tables import (
     ExchangeRateRow,
     PeriodRow,
     PriceRow,
+    SavingsGoalRow,
     ScheduleRow,
     ScheduleSplitRow,
     SecurityRow,
@@ -100,11 +103,22 @@ def to_account(row: AccountRow) -> Account:
         type=AccountType(row.type),
         opening_balance=row.opening_balance,
         opening_date=row.opening_date,
-        goal=row.goal,
         notes=row.notes,
         position=row.position,
         closed_on=row.closed_on,
         debt_terms=to_debt_terms(row),
+    )
+
+
+def to_goal(row: SavingsGoalRow) -> SavingsGoal:
+    return SavingsGoal(
+        id=row.id,
+        account_id=row.account_id,
+        name=row.name,
+        target_amount=row.target_amount,
+        saved_amount=row.saved_amount,
+        target_date=row.target_date,
+        priority=GoalPriority(row.priority),
     )
 
 
