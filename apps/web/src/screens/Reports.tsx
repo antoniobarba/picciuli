@@ -1,15 +1,31 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useAccounts, useCategories, useMoney, usePeriods, useTransactions } from '../api/queries';
-import type { Category } from '../api/types';
 import { useEditors } from '../app/editors';
 import { DateField } from '../components/DateField';
 import { TransactionListControls, useTransactionList } from '../components/TransactionListControls';
 import { Amount, Empty, Loading, PageHeader } from '../components/ui';
 import { covers } from '../lib/calendar';
 import { makeDay, parts, shortDate, todayDay, type Day } from '../lib/dates';
-import { byId, categoryLabel, categoryTree, periodRange, transactionAccounts, transactionTitle } from '../lib/format';
+import {
+  accountName,
+  byId,
+  categoryLabel,
+  categoryTree,
+  periodRange,
+  transactionAccounts,
+  transactionTitle,
+} from '../lib/format';
 import { parseDate } from '../lib/forms';
-import { categoryTotals, pieSlices, reportSplits, type ReportSplit } from '../lib/report';
+import {
+  accountBucket,
+  bucketTotals,
+  categoryBucket,
+  parseBucket,
+  pieSlices,
+  reportSplits,
+  type Bucket,
+  type ReportSplit,
+} from '../lib/report';
 
 type RangeMode = 'period' | 'days';
 
@@ -23,24 +39,26 @@ function tryParse(text: string, today: Day): Day | null {
   }
 }
 
-function CategoryCheckbox({
-  category,
-  checked,
-  onToggle,
-}: {
-  category: Category;
-  checked: boolean;
-  onToggle: (category: Category) => void;
-}) {
+function Check({ label, checked, onToggle }: { label: string; checked: boolean; onToggle: () => void }) {
   return (
     <label>
-      <input type="checkbox" checked={checked} onChange={() => onToggle(category)} />
-      {category.name}
+      <input type="checkbox" checked={checked} onChange={onToggle} />
+      {label}
     </label>
   );
 }
 
-/** The external splits of chosen categories over a period or a range of days, with a total per category. */
+function toggled<T>(set: ReadonlySet<T>, value: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
+/**
+ * The cash flow of the whole portfolio or of chosen accounts, by category and
+ * by transfers with the other accounts, over a period or a range of days.
+ */
 export function Reports() {
   const money = useMoney();
   const editors = useEditors();
@@ -54,6 +72,10 @@ export function Reports() {
   const [startText, setStartText] = useState(() => makeDay(parts(today).year, parts(today).month, 1));
   const [endText, setEndText] = useState(today);
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set());
+  const [selectedAccounts, setSelectedAccounts] = useState<ReadonlySet<number>>(() => new Set());
+  const [selectedTransfers, setSelectedTransfers] = useState<ReadonlySet<number>>(() => new Set());
+  const [hover, setHover] = useState<{ bucket: Bucket; x: number; y: number } | null>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const ordered = useMemo(
     () => [...(periods.data ?? [])].sort((a, b) => a.start.localeCompare(b.start) || a.id - b.id),
@@ -73,7 +95,26 @@ export function Reports() {
   const tree = useMemo(() => categoryTree(categories.data ?? []), [categories.data]);
   const categoryMap = useMemo(() => byId(categories.data), [categories.data]);
   const accountMap = useMemo(() => byId(accounts.data), [accounts.data]);
-  const chosen = useMemo(() => tree.filter((c) => selected.has(c.id)).map((c) => c.id), [tree, selected]);
+  const orderedAccounts = useMemo(
+    () => [...(accounts.data ?? [])].sort((a, b) => a.position - b.position || a.id - b.id),
+    [accounts.data],
+  );
+  const reported = useMemo(
+    () => new Set(orderedAccounts.filter((a) => selectedAccounts.has(a.id)).map((a) => a.id)),
+    [orderedAccounts, selectedAccounts],
+  );
+  // Only accounts outside the reported ones can receive or send transfers.
+  const transferAccounts = useMemo(
+    () => (reported.size ? orderedAccounts.filter((a) => !reported.has(a.id)) : []),
+    [orderedAccounts, reported],
+  );
+  const chosen = useMemo(
+    () => [
+      ...tree.filter((c) => selected.has(c.id)).map((c) => categoryBucket(c.id)),
+      ...transferAccounts.filter((a) => selectedTransfers.has(a.id)).map((a) => accountBucket(a.id)),
+    ],
+    [tree, selected, transferAccounts, selectedTransfers],
+  );
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
 
   let range: { start: Day; end?: Day } | null = null;
@@ -89,15 +130,25 @@ export function Reports() {
   }
 
   const transactions = useTransactions({ ...range, newest_first: true }, range !== null && chosen.length > 0);
-  const splits = useMemo(() => reportSplits(transactions.data ?? [], chosenSet), [transactions.data, chosenSet]);
-  const scope = JSON.stringify([range, chosen]);
+  const splits = useMemo(
+    () => reportSplits(transactions.data ?? [], chosenSet, reported),
+    [transactions.data, chosenSet, reported],
+  );
+  const scope = JSON.stringify([range, chosen, [...reported]]);
   const paged = useTransactionList(splits, scope, (item: ReportSplit) => item.transaction);
-  const totals = useMemo(() => categoryTotals(paged.matches, chosen), [paged.matches, chosen]);
+  const totals = useMemo(() => bucketTotals(paged.matches, chosen), [paged.matches, chosen]);
   const total = totals.reduce((sum, t) => sum + t.total, 0);
   const slices = pieSlices(totals);
-  const colorOf = (categoryId: number) => COLORS[chosen.indexOf(categoryId) % COLORS.length]!;
+  const colorOf = (bucket: Bucket) => COLORS[chosen.indexOf(bucket) % COLORS.length]!;
+  const labelOf = (bucket: Bucket) => {
+    const { kind, id } = parseBucket(bucket);
+    return kind === 'category' ? categoryLabel(id, categoryMap) : `Transfers › ${accountName(id, accountMap)}`;
+  };
+  const hovered = hover ? slices.find((s) => s.bucket === hover.bucket) : undefined;
 
-  const toggle = (category: Category) => {
+  const toggle = (categoryId: number) => {
+    const category = categoryMap.get(categoryId);
+    if (!category) return;
     const next = new Set(selected);
     const on = !next.has(category.id);
     const family = [category, ...(category.parent_id === null ? tree.filter((c) => c.parent_id === category.id) : [])];
@@ -106,6 +157,15 @@ export function Reports() {
       else next.delete(c.id);
     }
     setSelected(next);
+  };
+
+  const showTooltip = (bucket: Bucket) => (event: PointerEvent<SVGPathElement>) => {
+    const box = chartRef.current?.getBoundingClientRect();
+    if (box) setHover({ bucket, x: event.clientX - box.left, y: event.clientY - box.top });
+  };
+  const hideTooltip = (event: PointerEvent) => {
+    // A tap keeps its tooltip until the next tap; a mouse hides it on leaving.
+    if (event.pointerType === 'mouse') setHover(null);
   };
 
   return (
@@ -172,53 +232,121 @@ export function Reports() {
               {rangeError}
             </p>
           ) : null}
+          <fieldset className="report-categories report-accounts">
+            <legend>Accounts</legend>
+            <div className="toolbar report-category-actions">
+              <button
+                type="button"
+                className="button small"
+                onClick={() => setSelectedAccounts(new Set())}
+                disabled={!reported.size}
+              >
+                Whole portfolio
+              </button>
+            </div>
+            {accounts.isLoading ? (
+              <Loading />
+            ) : (
+              <>
+                <p className="muted small">
+                  {reported.size
+                    ? 'Money in and out of the ticked accounts; moves between them cancel out.'
+                    : 'Tick accounts to see only their cash flow; with none ticked, the whole portfolio.'}
+                </p>
+                <ul className="report-category-list">
+                  {orderedAccounts.map((account) => (
+                    <li key={account.id}>
+                      <Check
+                        label={account.is_closed ? `${account.name} (closed)` : account.name}
+                        checked={reported.has(account.id)}
+                        onToggle={() => setSelectedAccounts(toggled(selectedAccounts, account.id))}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </fieldset>
         </div>
-        <fieldset className="report-categories">
-          <legend>Categories</legend>
-          <div className="toolbar report-category-actions">
-            <button
-              type="button"
-              className="button small"
-              onClick={() => setSelected(new Set(tree.map((c) => c.id)))}
-              disabled={!tree.length}
-            >
-              All
-            </button>
-            <button type="button" className="button small" onClick={() => setSelected(new Set())} disabled={!selected.size}>
-              None
-            </button>
-          </div>
-          {categories.isLoading ? (
-            <Loading />
-          ) : !tree.length ? (
-            <Empty>There are no categories yet: create them in Categories.</Empty>
-          ) : (
-            <ul className="report-category-list">
-              {tree
-                .filter((c) => c.parent_id === null)
-                .map((parent) => (
-                  <li key={parent.id}>
-                    <CategoryCheckbox category={parent} checked={selected.has(parent.id)} onToggle={toggle} />
-                    {tree.some((c) => c.parent_id === parent.id) ? (
-                      <ul>
-                        {tree
-                          .filter((c) => c.parent_id === parent.id)
-                          .map((child) => (
-                            <li key={child.id}>
-                              <CategoryCheckbox category={child} checked={selected.has(child.id)} onToggle={toggle} />
-                            </li>
-                          ))}
-                      </ul>
-                    ) : null}
+        <div className="report-range">
+          <fieldset className="report-categories">
+            <legend>Categories</legend>
+            <div className="toolbar report-category-actions">
+              <button
+                type="button"
+                className="button small"
+                onClick={() => {
+                  setSelected(new Set(tree.map((c) => c.id)));
+                  setSelectedTransfers(new Set(transferAccounts.map((a) => a.id)));
+                }}
+                disabled={!tree.length && !transferAccounts.length}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className="button small"
+                onClick={() => {
+                  setSelected(new Set());
+                  setSelectedTransfers(new Set());
+                }}
+                disabled={!chosen.length}
+              >
+                None
+              </button>
+            </div>
+            {categories.isLoading ? (
+              <Loading />
+            ) : !tree.length ? (
+              <Empty>There are no categories yet: create them in Categories.</Empty>
+            ) : (
+              <ul className="report-category-list">
+                {tree
+                  .filter((c) => c.parent_id === null)
+                  .map((parent) => (
+                    <li key={parent.id}>
+                      <Check label={parent.name} checked={selected.has(parent.id)} onToggle={() => toggle(parent.id)} />
+                      {tree.some((c) => c.parent_id === parent.id) ? (
+                        <ul>
+                          {tree
+                            .filter((c) => c.parent_id === parent.id)
+                            .map((child) => (
+                              <li key={child.id}>
+                                <Check label={child.name} checked={selected.has(child.id)} onToggle={() => toggle(child.id)} />
+                              </li>
+                            ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </fieldset>
+          {transferAccounts.length ? (
+            <fieldset className="report-categories">
+              <legend>Transfers with</legend>
+              <ul className="report-category-list">
+                {transferAccounts.map((account) => (
+                  <li key={account.id}>
+                    <Check
+                      label={account.is_closed ? `${account.name} (closed)` : account.name}
+                      checked={selectedTransfers.has(account.id)}
+                      onToggle={() => setSelectedTransfers(toggled(selectedTransfers, account.id))}
+                    />
                   </li>
                 ))}
-            </ul>
-          )}
-        </fieldset>
+              </ul>
+            </fieldset>
+          ) : null}
+        </div>
       </section>
 
       {!chosen.length ? (
-        <Empty>Choose one or more categories to see their transactions.</Empty>
+        <Empty>
+          {reported.size
+            ? 'Choose one or more categories or transfers to see their transactions.'
+            : 'Choose one or more categories to see their transactions.'}
+        </Empty>
       ) : !range ? null : (
         <div className="report-results">
           <section className="card report-splits" aria-label="Transactions">
@@ -230,19 +358,19 @@ export function Reports() {
                 <Empty>{splits.length === 0 ? 'No transactions in these categories.' : 'No matching transactions.'}</Empty>
               ) : (
                 <ul className="transaction-list" aria-label="Splits">
-                  {paged.items.map(({ key, transaction, split }) => (
+                  {paged.items.map(({ key, transaction, split, bucket, amount }) => (
                     <li key={key}>
                       <button type="button" className="transaction-row" onClick={() => editors.editTransaction(transaction)}>
-                        <span className="report-swatch" style={{ background: colorOf(split.category_id!) }} aria-hidden="true" />
+                        <span className="report-swatch" style={{ background: colorOf(bucket) }} aria-hidden="true" />
                         <span className="transaction-main">
                           <span className="transaction-title">{transactionTitle(transaction)}</span>
                           <span className="transaction-sub">
                             {shortDate(transaction.date)} · {transactionAccounts(transaction, accountMap)} ·{' '}
-                            {categoryLabel(split.category_id, categoryMap)}
+                            {labelOf(bucket)}
                             {split.memo ? ` · ${split.memo}` : ''}
                           </span>
                         </span>
-                        <Amount value={split.amount} money={money} />
+                        <Amount value={amount} money={money} />
                       </button>
                     </li>
                   ))}
@@ -264,26 +392,45 @@ export function Reports() {
               <h2>By category</h2>
             </div>
             {slices.length ? (
-              <svg className="pie" viewBox="-1.05 -1.05 2.1 2.1" role="img" aria-label="Total of each category">
-                {slices.map((slice) => (
-                  <path key={slice.categoryId} d={slice.path} fill={colorOf(slice.categoryId)}>
-                    <title>
-                      {categoryLabel(slice.categoryId, categoryMap)}: {money.amount(slice.total)} (
-                      {Math.round(slice.fraction * 100)}%)
-                    </title>
-                  </path>
-                ))}
-              </svg>
+              <div className="pie-wrap" ref={chartRef}>
+                <svg
+                  className="pie"
+                  viewBox="-1.05 -1.05 2.1 2.1"
+                  role="img"
+                  aria-label="Total of each category"
+                  onPointerLeave={hideTooltip}
+                >
+                  {slices.map((slice) => (
+                    <path
+                      key={slice.bucket}
+                      d={slice.path}
+                      fill={colorOf(slice.bucket)}
+                      className={hovered?.bucket === slice.bucket ? 'hovered' : undefined}
+                      onPointerEnter={showTooltip(slice.bucket)}
+                      onPointerMove={showTooltip(slice.bucket)}
+                      onPointerDown={showTooltip(slice.bucket)}
+                    />
+                  ))}
+                </svg>
+                {hover && hovered ? (
+                  <div className="pie-tooltip" role="tooltip" style={{ left: hover.x, top: hover.y }}>
+                    <strong>{labelOf(hovered.bucket)}</strong>
+                    <span>
+                      {money.amount(hovered.total)} ({Math.round(hovered.fraction * 100)}%)
+                    </span>
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <Empty>Nothing to chart.</Empty>
             )}
             <ul className="report-legend" aria-label="Category totals">
               {totals.map((t) => {
-                const slice = slices.find((s) => s.categoryId === t.categoryId);
+                const slice = slices.find((s) => s.bucket === t.bucket);
                 return (
-                  <li key={t.categoryId}>
-                    <span className="report-swatch" style={{ background: colorOf(t.categoryId) }} aria-hidden="true" />
-                    <span className="report-legend-name">{categoryLabel(t.categoryId, categoryMap)}</span>
+                  <li key={t.bucket}>
+                    <span className="report-swatch" style={{ background: colorOf(t.bucket) }} aria-hidden="true" />
+                    <span className="report-legend-name">{labelOf(t.bucket)}</span>
                     <span className="muted small">{slice ? `${Math.round(slice.fraction * 100)}%` : '—'}</span>
                     <Amount value={t.total} money={money} />
                   </li>

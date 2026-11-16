@@ -1,45 +1,89 @@
-/** Category reports: the external splits of some categories over a stretch of days. */
+/**
+ * Cash-flow reports: the money flowing in and out of some accounts over a
+ * stretch of days, by category and by the accounts it is transferred to.
+ */
 
-import type { ExternalSplit, Transaction } from '../api/types';
+import type { Split, Transaction } from '../api/types';
+
+/**
+ * Where a flow goes: `category:<id>` for a category, `account:<id>` for a
+ * transfer with an account outside the reported ones.
+ */
+export type Bucket = `category:${number}` | `account:${number}`;
+
+export const categoryBucket = (id: number): Bucket => `category:${id}`;
+export const accountBucket = (id: number): Bucket => `account:${id}`;
+
+export function parseBucket(bucket: Bucket): { kind: 'category' | 'account'; id: number } {
+  const [kind, id] = bucket.split(':');
+  return { kind: kind as 'category' | 'account', id: Number(id) };
+}
 
 export interface ReportSplit {
   /** Unique within a report: the transaction id and the split's position. */
   key: string;
   transaction: Transaction;
-  split: ExternalSplit;
+  split: Split;
+  bucket: Bucket;
+  /** Seen from the reported accounts: positive flows into them, negative out of them. */
+  amount: number;
 }
 
-export interface CategoryTotal {
-  categoryId: number;
+export interface BucketTotal {
+  bucket: Bucket;
   total: number;
 }
 
-export interface PieSlice extends CategoryTotal {
+export interface PieSlice extends BucketTotal {
   /** Share of the chart, from 0 to 1. */
   fraction: number;
   /** SVG path of the slice in a circle of radius 1 centred on the origin. */
   path: string;
 }
 
-/** The external splits of `transactions` booked exactly in one of `categoryIds`, in transaction order. */
-export function reportSplits(transactions: readonly Transaction[], categoryIds: ReadonlySet<number>): ReportSplit[] {
-  return transactions.flatMap((transaction) =>
-    transaction.splits.flatMap((split, index) =>
-      split.type === 'external' && split.category_id != null && categoryIds.has(split.category_id)
-        ? [{ key: `${transaction.id}:${index}`, transaction, split }]
-        : [],
-    ),
-  );
+/**
+ * The flows of `transactions` into one of `buckets`, in transaction order.
+ *
+ * Without `accountIds` (or with none) the whole portfolio is reported: only
+ * external splits count, as transfers between accounts cancel out. With
+ * `accountIds`, only transactions touching those accounts count; their
+ * external splits count as they are, and splits on any other account count as
+ * transfers, with their sign flipped since money leaving the reported accounts
+ * goes into the other one. Moves between the reported accounts cancel out.
+ */
+export function reportSplits(
+  transactions: readonly Transaction[],
+  buckets: ReadonlySet<Bucket>,
+  accountIds?: ReadonlySet<number>,
+): ReportSplit[] {
+  const some = accountIds !== undefined && accountIds.size > 0;
+  return transactions.flatMap((transaction) => {
+    if (some && !transaction.splits.some((s) => s.type === 'account' && accountIds.has(s.account_id))) return [];
+    return transaction.splits.flatMap((split, index): ReportSplit[] => {
+      let bucket: Bucket;
+      let amount: number;
+      if (split.type === 'external') {
+        if (split.category_id == null) return [];
+        bucket = categoryBucket(split.category_id);
+        amount = split.amount;
+      } else {
+        if (!some || accountIds.has(split.account_id) || split.amount === 0) return [];
+        bucket = accountBucket(split.account_id);
+        amount = -split.amount;
+      }
+      return buckets.has(bucket) ? [{ key: `${transaction.id}:${index}`, transaction, split, bucket, amount }] : [];
+    });
+  });
 }
 
-/** The total of each category, in the order of `categoryIds`, including categories with no splits. */
-export function categoryTotals(splits: readonly ReportSplit[], categoryIds: readonly number[]): CategoryTotal[] {
-  const totals = new Map(categoryIds.map((id) => [id, 0]));
-  for (const { split } of splits) {
-    const id = split.category_id;
-    if (id != null && totals.has(id)) totals.set(id, totals.get(id)! + split.amount);
+/** The total of each bucket, in the order of `buckets`, including buckets with no splits. */
+export function bucketTotals(splits: readonly ReportSplit[], buckets: readonly Bucket[]): BucketTotal[] {
+  const totals = new Map(buckets.map((bucket) => [bucket, 0]));
+  for (const { bucket, amount } of splits) {
+    const total = totals.get(bucket);
+    if (total !== undefined) totals.set(bucket, total + amount);
   }
-  return categoryIds.map((categoryId) => ({ categoryId, total: totals.get(categoryId)! }));
+  return buckets.map((bucket) => ({ bucket, total: totals.get(bucket)! }));
 }
 
 const round = (value: number) => Number(value.toFixed(6));
@@ -51,9 +95,9 @@ function point(angle: number): string {
 
 /**
  * Slices sized by the size of each total, whatever its sign (expenses are
- * negative); categories totalling zero have no slice.
+ * negative); buckets totalling zero have no slice.
  */
-export function pieSlices(totals: readonly CategoryTotal[]): PieSlice[] {
+export function pieSlices(totals: readonly BucketTotal[]): PieSlice[] {
   const sized = totals.filter((t) => t.total !== 0);
   const sum = sized.reduce((acc, t) => acc + Math.abs(t.total), 0);
   let start = 0;

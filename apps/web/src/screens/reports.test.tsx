@@ -21,14 +21,28 @@ const transaction = (id: number, description: string, splits: unknown[]) => ({
   kind: 'expense',
   net_amount: 0,
 });
+const account = (id: number, name: string) => ({
+  id,
+  name,
+  type: 'checking',
+  account_class: 'asset',
+  opening_balance: 0,
+  opening_date: null,
+  goal: null,
+  notes: null,
+  position: id,
+  closed_on: null,
+  is_closed: false,
+});
 const routes = {
   'GET /api/v1/settings': { currency: '€', minor_digits: 2, currency_code: 'EUR' },
-  'GET /api/v1/accounts': [],
+  'GET /api/v1/accounts': [account(1, 'Checking'), account(2, 'Card'), account(3, 'Mortgage')],
   'GET /api/v1/categories': [
     category(1, 'Food', null, 1),
     category(2, 'Groceries', 1, 1),
     category(3, 'Fun', null, 2),
     category(4, 'Salary', null, 3),
+    category(5, 'Interest', null, 4),
   ],
   'GET /api/v1/periods': [{ id: 7, name: 'March', start: '2026-03-01', end: '2026-03-31' }],
   'GET /api/v1/transactions': [
@@ -44,6 +58,15 @@ const routes = {
     transaction(3, 'Pay', [
       { type: 'account', account_id: 1, amount: 90000 },
       { type: 'external', amount: 90000, category_id: 4 },
+    ]),
+    transaction(4, 'Mortgage payment', [
+      { type: 'account', account_id: 1, amount: -10000 },
+      { type: 'account', account_id: 3, amount: 9000 },
+      { type: 'external', amount: -1000, category_id: 5 },
+    ]),
+    transaction(5, 'Card bill', [
+      { type: 'account', account_id: 1, amount: -2000 },
+      { type: 'account', account_id: 2, amount: 2000 },
     ]),
   ],
 };
@@ -103,5 +126,49 @@ describe('reports', () => {
         query: { start: '2026-03-05', end: '2026-03-20', newest_first: 'true' },
       }),
     );
+  });
+
+  it('reports the cash flow of chosen accounts, with transfers to the others', async () => {
+    const user = userEvent.setup();
+    render();
+    await user.click(await screen.findByRole('checkbox', { name: 'Interest' }));
+    let list = await screen.findByRole('list', { name: 'Splits' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+
+    const accounts = screen.getByRole('group', { name: 'Accounts' });
+    await user.click(within(accounts).getByRole('checkbox', { name: 'Checking' }));
+    await user.click(within(accounts).getByRole('checkbox', { name: 'Card' }));
+    const transfers = screen.getByRole('group', { name: 'Transfers with' });
+    expect(within(transfers).queryByRole('checkbox', { name: 'Card' })).not.toBeInTheDocument();
+    await user.click(within(transfers).getByRole('checkbox', { name: 'Mortgage' }));
+
+    list = screen.getByRole('list', { name: 'Splits' });
+    // The mortgage principal now shows up; the card bill moves money inside the chosen accounts.
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(list).queryByText('Card bill')).not.toBeInTheDocument();
+    expect(screen.getByText('Total').parentElement).toHaveTextContent('Total -€100.00');
+    const legend = screen.getByRole('list', { name: 'Category totals' });
+    expect(within(legend).getByText('Transfers › Mortgage').parentElement).toHaveTextContent('90%-€90.00');
+
+    // Without the card, paying its bill is a transfer out of checking.
+    await user.click(within(accounts).getByRole('checkbox', { name: 'Card' }));
+    await user.click(within(screen.getByRole('group', { name: 'Transfers with' })).getByRole('checkbox', { name: 'Card' }));
+    expect(within(screen.getByRole('list', { name: 'Splits' })).getByText('Card bill')).toBeInTheDocument();
+    expect(screen.getByText('Total').parentElement).toHaveTextContent('Total -€120.00');
+
+    await user.click(screen.getByRole('button', { name: 'Whole portfolio' }));
+    expect(screen.queryByRole('group', { name: 'Transfers with' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Splits' })).getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('shows a slice tooltip as soon as the pointer is over it', async () => {
+    const user = userEvent.setup();
+    render();
+    await user.click(await screen.findByRole('checkbox', { name: 'Food' }));
+    const [slice] = screen.getByRole('img', { name: 'Total of each category' }).querySelectorAll('path');
+    await user.hover(slice!);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Food-€10.00 (25%)');
+    await user.unhover(slice!);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 });
