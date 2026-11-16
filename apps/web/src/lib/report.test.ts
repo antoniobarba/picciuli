@@ -82,6 +82,31 @@ describe('reportSplits', () => {
       ]);
     });
 
+    it('counts only the share of the reported accounts in a split expense', () => {
+      // Dinner paid 60 from checking and 40 from the card.
+      const dinner = transaction(14, [
+        { type: 'account', account_id: 1, amount: -60 },
+        { type: 'account', account_id: 2, amount: -40 },
+        { type: 'external', amount: -70, category_id: 8 },
+        { type: 'external', amount: -30, category_id: 7 },
+      ]);
+      expect(reportSplits([dinner], all, new Set([1])).map((s) => [s.bucket, s.amount])).toEqual([
+        ['category:8', -42],
+        ['category:7', -18],
+      ]);
+      expect(reportSplits([dinner], all, new Set([1, 2])).map((s) => s.amount)).toEqual([-70, -30]);
+    });
+
+    it('keeps income and its withheld expenses whole for the account receiving it', () => {
+      // A salary of 1000 with 200 of tax withheld, paid into checking.
+      const salary = transaction(15, [
+        { type: 'account', account_id: 1, amount: 800 },
+        { type: 'external', amount: 1000, category_id: 8 },
+        { type: 'external', amount: -200, category_id: 7 },
+      ]);
+      expect(reportSplits([salary], all, new Set([1])).map((s) => s.amount)).toEqual([1000, -200]);
+    });
+
     it('reports the whole portfolio without accounts', () => {
       expect(reportSplits(flows, all, new Set()).map((s) => s.bucket)).toEqual(['category:7', 'category:8', 'category:7']);
     });

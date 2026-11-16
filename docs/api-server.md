@@ -88,7 +88,7 @@ picciuli-api openapi --output apps/api/openapi.json
 |----------------|---------------------------------------------------------------------------|
 | me             | `GET /me`, `GET /me/export` (SQLite download), `POST /me/import?mode=merge\|replace` (SQLite upload), `DELETE /me` (erase data) |
 | settings       | `GET`, `PATCH /settings`                                                  |
-| accounts       | CRUD, `/balances`, `/net-worth`, `/{id}/balance`, `/{id}/register`, `/{id}/move`, `/{id}/close`, `/{id}/reopen` |
+| accounts       | CRUD, `/balances`, `/trends`, `/net-worth`, `/{id}/balance`, `/{id}/register`, `/{id}/move`, `/{id}/close`, `/{id}/reopen` |
 | categories     | CRUD, `?top_level=true`, `/{id}/children`, `DELETE ?reassign_to=` or `?uncategorize=true` |
 | transactions   | CRUD with splits, search filters, `/dates`, `/expense`, `/income`, `/transfer` |
 | periods        | CRUD, `?on=<day>`, `/{id}/summary`, `/{id}/budget-report`                 |

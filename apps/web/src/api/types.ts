@@ -5,6 +5,7 @@ type S = components['schemas'];
 export type Account = S['AccountOut'];
 export type AccountType = S['AccountType'];
 export type AccountBalance = S['AccountBalanceOut'];
+export type AccountTrend = S['AccountTrendOut'];
 export type NetWorth = S['NetWorthOut'];
 export type Category = S['CategoryOut'];
 export type Transaction = S['TransactionOut'];

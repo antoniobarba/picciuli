@@ -24,6 +24,7 @@ __all__ = [
     "AccountCreate",
     "AccountMove",
     "AccountOut",
+    "AccountTrendOut",
     "AccountUpdate",
     "BalanceOut",
     "CloseAccount",
@@ -97,6 +98,20 @@ class AccountBalanceOut(OutputModel):
 
     account: AccountOut
     balance: int
+
+
+class AccountTrendOut(OutputModel):
+    """How the balance of an account has been moving."""
+
+    account: AccountOut
+    balance: int
+    """Balance including every transaction."""
+    months: int
+    """Complete months averaged, from the first transaction to last month."""
+    average_flow: int | None
+    """Average net change per month; `null` without complete months."""
+    low_point: int | None
+    """Lowest balance of the current debt; `null` when not negative."""
 
 
 class NetWorthOut(OutputModel):

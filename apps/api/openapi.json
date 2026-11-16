@@ -868,6 +868,116 @@
         }
       }
     },
+    "/api/v1/accounts/trends": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "List Trends",
+        "description": "How every account balance has been moving, to forecast goals and payoffs.\n\n`today` decides the last complete month averaged (default: the server date).",
+        "operationId": "list_trends_api_v1_accounts_trends_get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "today",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Today"
+            }
+          },
+          {
+            "name": "include_closed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Closed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountTrendOut"
+                  },
+                  "title": "Response List Trends Api V1 Accounts Trends Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/accounts/net-worth": {
       "get": {
         "tags": [
@@ -8020,6 +8130,53 @@
         ],
         "title": "AccountSplitOut",
         "description": "A split changing the balance of one of your accounts."
+      },
+      "AccountTrendOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountOut"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          },
+          "months": {
+            "type": "integer",
+            "title": "Months"
+          },
+          "average_flow": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Flow"
+          },
+          "low_point": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Point"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account",
+          "balance",
+          "months",
+          "average_flow",
+          "low_point"
+        ],
+        "title": "AccountTrendOut",
+        "description": "How the balance of an account has been moving."
       },
       "AccountType": {
         "type": "string",

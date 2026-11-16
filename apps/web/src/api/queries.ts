@@ -167,6 +167,16 @@ export function useBalances(asOf?: Day) {
   });
 }
 
+/** Average monthly flow and current debt of every open account, for forecasts. */
+export function useAccountTrends(today: Day) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['account-trends', today],
+    queryFn: () => unwrap(api.GET('/api/v1/accounts/trends', { params: { query: { today } } })),
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** Market value of every open account, as of a day. */
 export function useValuations(asOf?: Day) {
   const api = useApi();

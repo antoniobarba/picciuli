@@ -222,6 +222,22 @@ def account_balances(
     return result
 
 
+def daily_account_flows(session: Session) -> dict[int, list[tuple[dt.date, int]]]:
+    """Net change of each account per day with transactions, in date order."""
+    statement = (
+        select(SplitRow.account_id, TransactionRow.date, *_exact_sum(SplitRow.amount))
+        .join(TransactionRow, SplitRow.transaction_id == TransactionRow.id)
+        .where(SplitRow.account_id.is_not(None))
+        .group_by(SplitRow.account_id, TransactionRow.date)
+        .order_by(SplitRow.account_id, TransactionRow.date)
+    )
+    result: dict[int, list[tuple[dt.date, int]]] = {}
+    for account_id, day, high, low in session.execute(statement):
+        if account_id is not None:
+            result.setdefault(account_id, []).append((day, _combine(high, low)))
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class ShareMove:
     """One split moving shares, with its quantity still scaled."""

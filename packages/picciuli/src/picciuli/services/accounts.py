@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import datetime as dt
+from fractions import Fraction
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from picciuli import _validation as v
 from picciuli._db.queries import (
     account_balances,
+    daily_account_flows,
     get_row,
     share_moves,
     to_account,
@@ -24,6 +26,7 @@ from picciuli.model import (
     Account,
     AccountBalance,
     AccountClass,
+    AccountTrend,
     AccountType,
     NetWorth,
     Register,
@@ -392,6 +395,55 @@ class AccountService:
                 if closed and not include_closed:
                     continue
                 result.append(AccountBalance(to_account(row), balances[row.id]))
+            return result
+
+    def trends(
+        self, *, today: dt.date | None = None, include_closed: bool = False
+    ) -> builtins.list[AccountTrend]:
+        """Return how the balance of every account has been moving, in display order.
+
+        Useful to forecast when an account reaches its goal, or zero when it
+        is in debt. See [`AccountTrend`][picciuli.AccountTrend] for the details.
+
+        Args:
+            today: The current day, which decides the last complete month to
+                average; defaults to the actual date.
+            include_closed: Whether to include closed accounts.
+        """
+        today = v.optional_date(today, "today") or dt.date.today()
+        this_month = today.replace(day=1)
+        statement = select(AccountRow).order_by(AccountRow.position, AccountRow.id)
+        if not include_closed:
+            statement = statement.where(AccountRow.closed_on.is_(None))
+        with self._uow.session() as session:
+            flows = daily_account_flows(session)
+            result = []
+            for row in session.scalars(statement):
+                days = flows.get(row.id, [])
+                running = row.opening_balance
+                low = running if running < 0 else None
+                for _, amount in days:
+                    running += amount
+                    if running >= 0:
+                        low = None
+                    elif low is None or running < low:
+                        low = running
+                months = 0
+                if days and days[0][0] < this_month:
+                    first = days[0][0]
+                    months = (this_month.year - first.year) * 12 + (
+                        this_month.month - first.month
+                    )
+                past = sum(amount for day, amount in days if day < this_month)
+                result.append(
+                    AccountTrend(
+                        account=to_account(row),
+                        balance=running,
+                        months=months,
+                        average_flow=round(Fraction(past, months)) if months else None,
+                        low_point=low,
+                    )
+                )
             return result
 
     def net_worth(self, *, as_of: dt.date | None = None) -> NetWorth:

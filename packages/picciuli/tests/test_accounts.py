@@ -377,5 +377,47 @@ class TestRegister:
             book.accounts.register(checking.id, start=d(2), end=d(1))
 
 
+class TestTrends:
+    def test_average_of_complete_months(
+        self, book: Book, checking: Account, savings: Account
+    ) -> None:
+        book.accounts.update(checking.id, opening_balance=10_000)
+        book.transactions.record_income(d(20, 1), 900, account_id=checking.id)
+        book.transactions.record_expense(d(5, 3), 200, account_id=checking.id)
+        # The current month and the future are not averaged.
+        book.transactions.record_income(d(1, 4), 5000, account_id=checking.id)
+        book.transactions.record_income(d(1, 6), 5000, account_id=checking.id)
+        book.transactions.record_income(d(1, 4), 100, account_id=savings.id)
+        checking_trend, savings_trend = book.accounts.trends(today=d(15, 4))
+        assert checking_trend.account == book.accounts.get(checking.id)
+        assert (checking_trend.balance, checking_trend.months) == (20_700, 3)
+        assert checking_trend.average_flow == round(700 / 3)
+        assert checking_trend.low_point is None
+        assert (savings_trend.months, savings_trend.average_flow) == (0, None)
+
+    def test_low_point_of_the_current_debt(self, book: Book, card: Account) -> None:
+        book.accounts.update(card.id, opening_balance=-100)
+        for day, amount in ((1, -900), (2, 1500), (3, -400), (4, -800), (5, 200)):
+            if amount < 0:
+                book.transactions.record_expense(d(day), -amount, account_id=card.id)
+            else:
+                book.transactions.record_income(d(day), amount, account_id=card.id)
+        (trend,) = book.accounts.trends(today=d(1, 3))
+        assert (trend.balance, trend.low_point) == (-500, -700)
+        book.transactions.record_income(d(6), 500, account_id=card.id)
+        (settled,) = book.accounts.trends(today=d(1, 3))
+        assert (settled.balance, settled.low_point) == (0, None)
+
+    def test_opening_debt_is_the_low_point(self, book: Book) -> None:
+        loan = book.accounts.create("Loan", AccountType.LOAN, opening_balance=-5000)
+        (trend,) = book.accounts.trends()
+        assert (trend.account.id, trend.low_point, trend.months) == (loan.id, -5000, 0)
+
+    def test_closed_accounts(self, book: Book, checking: Account) -> None:
+        book.accounts.close(checking.id, on=d(1))
+        assert book.accounts.trends() == []
+        assert len(book.accounts.trends(include_closed=True)) == 1
+
+
 def test_unset_is_a_readable_sentinel() -> None:
     assert repr(UNSET) == "UNSET"

@@ -10,6 +10,7 @@ from picciuli_api.schemas.accounts import (
     AccountCreate,
     AccountMove,
     AccountOut,
+    AccountTrendOut,
     AccountUpdate,
     BalanceOut,
     CloseAccount,
@@ -49,6 +50,18 @@ def list_balances(
     """List every account with its balance on a day (default: all transactions)."""
     balances = book.accounts.balances(as_of=as_of, include_closed=include_closed)
     return [AccountBalanceOut.model_validate(b) for b in balances]
+
+
+@router.get("/trends")
+def list_trends(
+    book: BookDep, today: QueryDate = None, include_closed: bool = False
+) -> list[AccountTrendOut]:
+    """How every account balance has been moving, to forecast goals and payoffs.
+
+    `today` decides the last complete month averaged (default: the server date).
+    """
+    trends = book.accounts.trends(today=today, include_closed=include_closed)
+    return [AccountTrendOut.model_validate(t) for t in trends]
 
 
 @router.get("/net-worth")

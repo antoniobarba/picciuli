@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { unwrap } from '../api/client';
-import { useAccounts, useApiMutation, useBalances, useMoney, useNetWorth, useOptimisticMove, useValuations } from '../api/queries';
+import { useAccounts, useAccountTrends, useApiMutation, useBalances, useMoney, useNetWorth, useOptimisticMove, useValuations } from '../api/queries';
 import type { Account } from '../api/types';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
 import { DragHandle, useSortable } from '../components/SortableList';
 import { Amount, Empty, Loading, PageHeader, ProgressBar, RowMenu } from '../components/ui';
-import { shortDate } from '../lib/dates';
+import { shortDate, todayDay } from '../lib/dates';
 import { ACCOUNT_TYPE_LABELS } from '../lib/format';
+import { accountTarget, etaLabel, targetEta } from '../lib/goals';
 import { useHotkeys } from '../lib/useHotkeys';
 import { AccountForm, CloseAccountForm } from '../forms/AccountForm';
 
@@ -23,11 +24,14 @@ export function Accounts() {
   const balances = useBalances().data;
   const valuations = useValuations().data;
   const worth = useNetWorth().data;
+  const today = todayDay();
+  const trends = useAccountTrends(today).data;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const balance = useMemo(() => new Map((balances ?? []).map((b) => [b.account.id, b.balance])), [balances]);
   const market = useMemo(() => new Map((valuations ?? []).map((v) => [v.account.id, v])), [valuations]);
+  const trend = useMemo(() => new Map((trends ?? []).map((t) => [t.account.id, t])), [trends]);
   const list = useMemo(
     () => [...(accounts.data ?? [])].sort((a, b) => a.position - b.position || a.id - b.id),
     [accounts.data],
@@ -114,6 +118,9 @@ export function Accounts() {
                 <th className="num hide-sm">Market value</th>
                 <th className="num hide-md">Goal</th>
                 <th className="hide-md">Progress</th>
+                <th className="hide-md" title="Expected month to reach the goal (or zero), at the average monthly flow">
+                  ETA
+                </th>
                 <th className="hide-sm">State</th>
                 <th aria-label="Actions" />
               </tr>
@@ -123,7 +130,11 @@ export function Accounts() {
                 const value = balance.get(account.id) ?? 0;
                 const valuation = market.get(account.id);
                 const marketValue = account.type === 'investment' ? valuation?.market_value : undefined;
-                const progress = account.goal ? (marketValue ?? value) / account.goal : null;
+                const flow = trend.get(account.id);
+                const current = account.goal ? (marketValue ?? value) : value;
+                const target = accountTarget(account.goal, current, flow?.low_point);
+                const progress = target?.fraction ?? null;
+                const eta = target ? targetEta(current, target.target, flow?.average_flow, today) : null;
                 return (
                   <tr
                     key={account.id}
@@ -161,6 +172,9 @@ export function Accounts() {
                           <span className="muted small">{Math.round(progress * 100)}%</span>
                         </span>
                       ) : null}
+                    </td>
+                    <td className="hide-md muted small" title={eta?.kind === 'never' ? 'Not getting closer at the average monthly flow' : undefined}>
+                      {eta ? etaLabel(eta) : ''}
                     </td>
                     <td className="hide-sm muted">
                       {account.closed_on ? `closed ${shortDate(account.closed_on)}` : 'open'}

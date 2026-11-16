@@ -33,6 +33,7 @@ __all__ = [
     "AccountChange",
     "AccountClass",
     "AccountSplit",
+    "AccountTrend",
     "AccountType",
     "AccountValuation",
     "Budget",
@@ -435,6 +436,31 @@ class AccountBalance:
 
     account: Account
     balance: int
+
+
+@dataclass(frozen=True, slots=True)
+class AccountTrend:
+    """How the balance of an account has been moving, to forecast it.
+
+    Attributes:
+        account: The account.
+        balance: Balance including every transaction.
+        months: Number of complete months averaged: from the month of the
+            first transaction of the account to the month before the current
+            one. `0` when there is no such month.
+        average_flow: Average net change of the balance per month over those
+            months, in minor units (rounded), not counting the opening
+            balance; `None` when `months` is `0`.
+        low_point: While the balance is negative, the lowest balance reached
+            since it last went below zero (the start of the current debt);
+            `None` when the balance is not negative.
+    """
+
+    account: Account
+    balance: int
+    months: int
+    average_flow: int | None
+    low_point: int | None
 
 
 @dataclass(frozen=True, slots=True)

@@ -168,6 +168,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Trends
+         * @description How every account balance has been moving, to forecast goals and payoffs.
+         *
+         *     `today` decides the last complete month averaged (default: the server date).
+         */
+        get: operations["list_trends_api_v1_accounts_trends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/net-worth": {
         parameters: {
             query?: never;
@@ -1287,6 +1309,21 @@ export interface components {
             security_id?: number | null;
             /** Quantity */
             quantity?: string | null;
+        };
+        /**
+         * AccountTrendOut
+         * @description How the balance of an account has been moving.
+         */
+        AccountTrendOut: {
+            account: components["schemas"]["AccountOut"];
+            /** Balance */
+            balance: number;
+            /** Months */
+            months: number;
+            /** Average Flow */
+            average_flow: number | null;
+            /** Low Point */
+            low_point: number | null;
         };
         /**
          * AccountType
@@ -2876,6 +2913,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountBalanceOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_trends_api_v1_accounts_trends_get: {
+        parameters: {
+            query?: {
+                today?: string | null;
+                include_closed?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTrendOut"][];
                 };
             };
             /** @description Missing or invalid access token */

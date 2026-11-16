@@ -109,6 +109,25 @@ def test_balances_and_net_worth(alice: TestClient) -> None:
     }
 
 
+def test_trends(alice: TestClient) -> None:
+    card = create_account(alice, "Card", "credit_card", opening_balance=-12000)
+    for day in ("2025-01-10", "2025-02-10", "2025-03-01"):
+        alice.post(
+            f"{API}/transactions/income",
+            json={"date": day, "amount": 3000, "account_id": card["id"]},
+        )
+    trends = alice.get(f"{API}/accounts/trends", params={"today": "2025-03-15"})
+    assert trends.json() == [
+        {
+            "account": card,
+            "balance": -3000,
+            "months": 2,
+            "average_flow": 3000,
+            "low_point": -12000,
+        }
+    ]
+
+
 def test_register(alice: TestClient) -> None:
     checking = create_account(alice, "Checking", opening_balance=1000)
     for day, amount in (("2025-01-05", 300), ("2025-01-20", 200)):
