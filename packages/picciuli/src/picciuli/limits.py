@@ -23,6 +23,7 @@ __all__ = [
     "MAX_CATEGORY_SYMBOL_LENGTH",
     "MAX_DECIMAL",
     "MAX_GENERATED_PERIODS",
+    "MAX_HISTORY_POINTS",
     "MAX_ID",
     "MAX_MEMO_LENGTH",
     "MAX_NAME_LENGTH",
@@ -86,3 +87,6 @@ MAX_PROJECTION_DAYS: Final = 750
 
 MAX_GENERATED_PERIODS: Final = 240
 """Most monthly periods created or regenerated at once (20 years)."""
+
+MAX_HISTORY_POINTS: Final = 120
+"""Most months or periods a single history returns (10 years of months)."""

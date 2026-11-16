@@ -61,3 +61,4 @@ export type GoalStatus = S['GoalStatus'];
 export type GoalProgress = S['GoalProgressOut'];
 export type GoalAccount = S['GoalAccountOut'];
 export type GoalReport = S['GoalReportOut'];
+export type HistoryPoint = S['HistoryPointOut'];

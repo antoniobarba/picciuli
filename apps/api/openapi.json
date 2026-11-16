@@ -7061,6 +7061,144 @@
         }
       }
     },
+    "/api/v1/reports/history": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "History",
+        "description": "Income, expenses, category flows and balances, oldest first.\n\n`by=month` returns `count` calendar months ending `offset` months before\nthe current one; `by=period` the latest `count` periods started by today,\nskipping the `offset` most recent. `today` defaults to the server date.",
+        "operationId": "history_api_v1_reports_history_get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "month",
+                "period"
+              ],
+              "type": "string",
+              "default": "month",
+              "title": "By"
+            }
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 120,
+              "minimum": 1,
+              "default": 12,
+              "title": "Count"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1200,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "today",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Today"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HistoryPointOut"
+                  },
+                  "title": "Response History Api V1 Reports History Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/securities": {
       "get": {
         "tags": [
@@ -12260,6 +12398,135 @@
         "title": "GoalUpdate",
         "description": "Changes to a savings goal; `target_date: null` removes the date."
       },
+      "HistoryBalanceOut": {
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          },
+          "value": {
+            "type": "integer",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "balance",
+          "value"
+        ],
+        "title": "HistoryBalanceOut",
+        "description": "An account balance at the end of a history point."
+      },
+      "HistoryFlowOut": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id",
+          "amount"
+        ],
+        "title": "HistoryFlowOut",
+        "description": "Net external flow of one category, without its subcategories."
+      },
+      "HistoryPointOut": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          },
+          "period_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Id"
+          },
+          "partial": {
+            "type": "boolean",
+            "title": "Partial"
+          },
+          "income": {
+            "type": "integer",
+            "title": "Income"
+          },
+          "expenses": {
+            "type": "integer",
+            "title": "Expenses"
+          },
+          "flows": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryFlowOut"
+            },
+            "type": "array",
+            "title": "Flows"
+          },
+          "balances": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryBalanceOut"
+            },
+            "type": "array",
+            "title": "Balances"
+          },
+          "assets": {
+            "type": "integer",
+            "title": "Assets"
+          },
+          "liabilities": {
+            "type": "integer",
+            "title": "Liabilities"
+          },
+          "net_worth": {
+            "type": "integer",
+            "title": "Net Worth"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "period_id",
+          "partial",
+          "income",
+          "expenses",
+          "flows",
+          "balances",
+          "assets",
+          "liabilities",
+          "net_worth"
+        ],
+        "title": "HistoryPointOut",
+        "description": "Cash flows during a month or period and balances at its end."
+      },
       "HoldingOut": {
         "properties": {
           "security": {
@@ -14991,6 +15258,10 @@
     {
       "name": "budgets",
       "description": "Allowances per category and period."
+    },
+    {
+      "name": "reports",
+      "description": "History of cash flows and balances by month or period."
     },
     {
       "name": "securities",

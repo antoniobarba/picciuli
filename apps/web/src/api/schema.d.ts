@@ -1038,6 +1038,30 @@ export interface paths {
         patch: operations["update_budget_api_v1_budgets__budget_id__patch"];
         trace?: never;
     };
+    "/api/v1/reports/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History
+         * @description Income, expenses, category flows and balances, oldest first.
+         *
+         *     `by=month` returns `count` calendar months ending `offset` months before
+         *     the current one; `by=period` the latest `count` periods started by today,
+         *     skipping the `offset` most recent. `today` defaults to the server date.
+         */
+        get: operations["history_api_v1_reports_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/securities": {
         parameters: {
             query?: never;
@@ -2435,6 +2459,62 @@ export interface components {
             /** Target Date */
             target_date?: string | null;
             priority?: components["schemas"]["GoalPriority"];
+        };
+        /**
+         * HistoryBalanceOut
+         * @description An account balance at the end of a history point.
+         */
+        HistoryBalanceOut: {
+            /** Account Id */
+            account_id: number;
+            /** Balance */
+            balance: number;
+            /** Value */
+            value: number;
+        };
+        /**
+         * HistoryFlowOut
+         * @description Net external flow of one category, without its subcategories.
+         */
+        HistoryFlowOut: {
+            /** Category Id */
+            category_id: number | null;
+            /** Amount */
+            amount: number;
+        };
+        /**
+         * HistoryPointOut
+         * @description Cash flows during a month or period and balances at its end.
+         */
+        HistoryPointOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Period Id */
+            period_id: number | null;
+            /** Partial */
+            partial: boolean;
+            /** Income */
+            income: number;
+            /** Expenses */
+            expenses: number;
+            /** Flows */
+            flows: components["schemas"]["HistoryFlowOut"][];
+            /** Balances */
+            balances: components["schemas"]["HistoryBalanceOut"][];
+            /** Assets */
+            assets: number;
+            /** Liabilities */
+            liabilities: number;
+            /** Net Worth */
+            net_worth: number;
         };
         /**
          * HoldingOut
@@ -8529,6 +8609,76 @@ export interface operations {
             };
             /** @description The body is too large */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    history_api_v1_reports_history_get: {
+        parameters: {
+            query?: {
+                by?: "month" | "period";
+                count?: number;
+                offset?: number;
+                today?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryPointOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

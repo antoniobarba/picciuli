@@ -5,6 +5,20 @@
 
 import type { Split, Transaction } from '../api/types';
 
+/** Series colours of the charts, readable on light and dark backgrounds. */
+export const CHART_COLORS = [
+  '#0f7b63',
+  '#e07a2e',
+  '#3b6fd8',
+  '#c4302b',
+  '#8e5bd0',
+  '#d4a514',
+  '#1fa3b5',
+  '#d0569a',
+  '#6b8e23',
+  '#7a6a58',
+];
+
 /**
  * Where a flow goes: `category:<id>` for a category, `account:<id>` for a
  * transfer with an account outside the reported ones, `uncategorized` for an

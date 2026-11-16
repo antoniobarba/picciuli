@@ -56,6 +56,9 @@ __all__ = [
     "GoalProgress",
     "GoalReport",
     "GoalStatus",
+    "HistoryBalance",
+    "HistoryFlow",
+    "HistoryPoint",
     "Holding",
     "ImportSummary",
     "LoanPaymentSplit",
@@ -908,6 +911,77 @@ class NetWorth:
     @property
     def net_worth(self) -> int:
         """Assets plus liabilities."""
+        return self.assets + self.liabilities
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryFlow:
+    """Net external flow of one category during a history point.
+
+    Attributes:
+        category_id: The category, or `None` for the splits without one.
+        amount: Net flow of the category itself, without its subcategories
+            (signed: expenses are negative).
+    """
+
+    category_id: int | None
+    amount: int
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryBalance:
+    """The balance of one account at the end of a history point.
+
+    Attributes:
+        account_id: The account.
+        balance: Ledger balance.
+        value: Market value: the balance, with the shares of an investment
+            account valued at the prices and exchange rates known on the
+            last day (at cost when unknown).
+    """
+
+    account_id: int
+    balance: int
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryPoint:
+    """Cash flows during a month or period, and balances at its end.
+
+    Income, expenses and category flows follow the same rules as a
+    [`PeriodSummary`][picciuli.PeriodSummary].
+
+    Attributes:
+        start: First day.
+        end: Last day counted: the last day of the month or period, or the
+            current day if earlier.
+        period_id: The period, for points by period; `None` for months.
+        partial: Whether the month or period continues after `end`.
+        income: Total income.
+        expenses: Total expenses (zero or negative).
+        flows: Non-zero net flows by category, in display order, with the
+            uncategorized splits last.
+        balances: Accounts with a non-zero balance or value at the end of
+            `end`, in display order.
+        assets: Sum of the asset values.
+        liabilities: Sum of the liability values (normally negative).
+    """
+
+    start: dt.date
+    end: dt.date
+    period_id: int | None
+    partial: bool
+    income: int
+    expenses: int
+    flows: tuple[HistoryFlow, ...]
+    balances: tuple[HistoryBalance, ...]
+    assets: int
+    liabilities: int
+
+    @property
+    def net_worth(self) -> int:
+        """Assets plus liabilities, at market value."""
         return self.assets + self.liabilities
 
 

@@ -96,6 +96,7 @@ picciuli-api openapi --output apps/api/openapi.json
 | goals          | CRUD (`?account_id=` filter), `GET /goals/report?today=` (monthly amount of each goal, and per account the balance, assigned and unassigned money and any `shortfall`) |
 | periods        | CRUD, `?on=<day>`, `/{id}/summary`, `/{id}/budget-report`, `GET /regenerate?today=` (preview), `POST /regenerate` |
 | budgets        | CRUD, `/copy`                                                             |
+| reports        | `GET /reports/history?by=month\|period&count=&offset=&today=` (income, expenses, category flows and every account balance and market value, month by month or period by period) |
 | securities     | CRUD, `/{id}/prices`, `PUT`/`DELETE /{id}/prices/{date}`, `/{id}/latest-price` |
 | exchange rates | `/{currency}`, `/{currency}/latest`, `PUT /{currency}/{date}`             |
 | investments    | `/valuations`, `/net-worth`, `/buy`, `/sell`, `PUT /buy/{transaction}`, `PUT /sell/{transaction}`, `/refresh-prices`, `/refresh-exchange-rates`, `/{account}/valuation`, `/{account}/holdings`, `/{account}/sale-cost` |

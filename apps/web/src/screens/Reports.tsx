@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAccounts, useCategories, useMoney, usePeriods, useTransactions } from '../api/queries';
 import { useEditors } from '../app/editors';
@@ -21,6 +21,7 @@ import {
   accountBucket,
   bucketTotals,
   categoryBucket,
+  CHART_COLORS as COLORS,
   parseBucket,
   pieSlices,
   reportSplits,
@@ -31,8 +32,6 @@ import {
 import { useHotkeys } from '../lib/useHotkeys';
 
 type RangeMode = 'period' | 'days';
-
-const COLORS = ['#0f7b63', '#e07a2e', '#3b6fd8', '#c4302b', '#8e5bd0', '#d4a514', '#1fa3b5', '#d0569a', '#6b8e23', '#7a6a58'];
 
 function tryParse(text: string, today: Day): Day | null {
   try {
@@ -66,6 +65,55 @@ function idsParam(value: string | null): Set<number> {
   return new Set((value ?? '').split(',').map(idParam).filter((id) => id !== null));
 }
 
+type ReportView = 'cash-flow' | 'history';
+
+const History = lazy(() => import('./History').then((m) => ({ default: m.History })));
+
+/**
+ * The cash-flow report or, with `?view=history`, the history charts.
+ */
+export function Reports() {
+  const [params, setParams] = useSearchParams();
+  const view: ReportView = params.get('view') === 'history' ? 'history' : 'cash-flow';
+  const show = (next: ReportView) =>
+    setParams(
+      (current) => {
+        const result = new URLSearchParams(current);
+        if (next === 'history') result.set('view', 'history');
+        else result.delete('view');
+        return result;
+      },
+      { replace: true },
+    );
+  return (
+    <div className="page">
+      <PageHeader title="Reports">
+        <div className="segmented report-view" role="tablist" aria-label="Report">
+          {(['cash-flow', 'history'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={view === value}
+              className={view === value ? 'active' : ''}
+              onClick={() => show(value)}
+            >
+              {value === 'history' ? 'History' : 'Cash flow'}
+            </button>
+          ))}
+        </div>
+      </PageHeader>
+      {view === 'history' ? (
+        <Suspense fallback={<Loading />}>
+          <History />
+        </Suspense>
+      ) : (
+        <CashFlow />
+      )}
+    </div>
+  );
+}
+
 /**
  * The cash flow of the whole portfolio or of chosen accounts, by category and
  * by transfers with the other accounts, over a period or a range of days.
@@ -73,7 +121,7 @@ function idsParam(value: string | null): Set<number> {
  * `?period=<id>&categories=<id>,<id>&uncategorized=1` opens it on a period with
  * categories (and the uncategorized splits) ticked.
  */
-export function Reports() {
+function CashFlow() {
   const money = useMoney();
   const editors = useEditors();
   const today = todayDay();
@@ -199,8 +247,7 @@ export function Reports() {
   };
 
   return (
-    <div className="page">
-      <PageHeader title="Reports" />
+    <>
       <section className="card report-filters" aria-label="Report filters">
         <div className="report-range-bar">
           <div className="segmented" role="tablist" aria-label="Range">
@@ -502,6 +549,6 @@ export function Reports() {
           </section>
         </div>
       )}
-    </div>
+    </>
   );
 }

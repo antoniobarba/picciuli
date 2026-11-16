@@ -36,9 +36,7 @@ months, and entering every expense takes more effort than it should.
    categories, usable in Reports.
 9. **Reconciliation.** Mark transactions as cleared and match a bank
    statement balance. This catches missing entries.
-10. **History charts.** Reports only has a pie chart for one stretch of time.
-    Add net worth over time, monthly income versus expenses, a spending trend
-    per category, and debt going down and savings going up.
+10. (deleted, done)
 11. **Budget options:** roll leftover or overspent amounts into the next
     month; annual or sinking-fund budgets (car insurance, gifts) set aside
     monthly; percentage budgets (for example 50/30/20).

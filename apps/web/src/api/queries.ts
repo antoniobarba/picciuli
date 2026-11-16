@@ -197,6 +197,16 @@ export function useNetWorth(asOf?: Day) {
   });
 }
 
+/** Cash flows and balances of `count` months or periods, `offset` of them back from today's. */
+export function useHistory(by: 'month' | 'period', count: number, offset: number, today: Day) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['history', by, count, offset, today],
+    queryFn: () => unwrap(api.GET('/api/v1/reports/history', { params: { query: { by, count, offset, today } } })),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useRegister(accountId: number) {
   const api = useApi();
   return useQuery({

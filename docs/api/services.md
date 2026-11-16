@@ -19,6 +19,8 @@ example `book.accounts` or `book.transactions`.
 
 ::: picciuli.services.BudgetService
 
+::: picciuli.services.HistoryService
+
 ::: picciuli.services.SecurityService
 
 ::: picciuli.services.InvestmentService

@@ -1788,6 +1788,123 @@ input[type='range'] {
   }
 }
 
+/* Report history charts */
+
+.history-controls .history-span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.history-controls .history-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.history-range {
+  min-width: 10rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.history-controls p {
+  margin: 0;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.history-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+  padding: 0 1rem;
+}
+
+.history-summary dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.history-summary dd {
+  margin: 0;
+}
+
+.history-note {
+  margin: 0.5rem 1rem 0;
+}
+
+.history-chart {
+  padding: 0.75rem 0.75rem 0.5rem 0.25rem;
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.history-chart .recharts-cartesian-grid line,
+.history-chart .recharts-cartesian-axis-line {
+  stroke: var(--border);
+}
+
+.history-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+}
+
+.history-chart .history-zero line,
+.history-chart .recharts-reference-line line {
+  stroke: var(--muted);
+}
+
+.history-chart .recharts-legend-item-text {
+  color: var(--text) !important;
+}
+
+.history-chart .recharts-tooltip-cursor {
+  fill: var(--text);
+}
+
+.chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.chart-tooltip-name {
+  flex: 1;
+  margin-right: 0.75rem;
+}
+
+.history-categories label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.page-header .report-view {
+  min-width: 200px;
+}
+
 /* Recurring transactions */
 
 .schedule-rule {
