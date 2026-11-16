@@ -11,12 +11,13 @@ import {
   usePeriodSummary,
   useTransactions,
 } from '../api/queries';
-import type { BudgetReport, Period, PeriodSummary, Transaction } from '../api/types';
+import type { BudgetReport, Category, Period, PeriodSummary, Transaction } from '../api/types';
 import { useEditors } from '../app/editors';
 import { Calendar } from '../components/Calendar';
 import { DateField } from '../components/DateField';
 import { useConfirm, useNotify } from '../components/feedback';
 import { FormDialog } from '../components/forms';
+import { icons } from '../components/icons';
 import { Amount, Empty, onEnter, RowMenu } from '../components/ui';
 import { choosePeriod, cyclePeriod, dayFlows, shiftMonth, visibleRange } from '../lib/calendar';
 import { isValidDay, longDate, parts, todayDay, type Day } from '../lib/dates';
@@ -282,6 +283,42 @@ function PeriodTitle({
   );
 }
 
+/** The Reports screen on the whole portfolio for `period` and a whole category (or the uncategorized splits). */
+function reportLink(periodId: number, category: Category | null): string {
+  return `/reports?period=${periodId}&${category ? `categories=${category.id}` : 'uncategorized=1'}`;
+}
+
+/**
+ * Spending outside every budget: like the period's expenses, each category
+ * counts by its own net flow when negative, and the uncategorized splits count
+ * together as one more category. A budget covers its category and, for a
+ * top-level one, its subcategories.
+ */
+function unbudgeted(summary: PeriodSummary, budgeted: ReadonlySet<number>): number {
+  let total = Math.min(summary.uncategorized, 0);
+  for (const { category, amount } of summary.categories) {
+    const covered = budgeted.has(category.id) || (category.parent_id !== null && budgeted.has(category.parent_id));
+    if (!covered && amount < 0) total += amount;
+  }
+  return total;
+}
+
+function ReportLink({ to, name }: { to: string; name: string }) {
+  return (
+    <Link
+      to={to}
+      className="icon-button small"
+      aria-label={`Report on ${name}`}
+      title="Report"
+      // Keep a click or Enter from also folding the row.
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {icons.reports}
+    </Link>
+  );
+}
+
 function PeriodPanel({
   summary,
   budgets,
@@ -326,6 +363,9 @@ function PeriodPanel({
               <th className="num">Actual</th>
               <th className="num">Budget</th>
               <th className="num">Left</th>
+              <th className="actions">
+                <span className="sr-only">Report</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -360,6 +400,9 @@ function PeriodPanel({
                   </td>
                   <td className="num">{line ? money.amount(line.budget.amount) : ''}</td>
                   <td className="num">{line ? <Amount value={line.remaining} money={money} /> : ''}</td>
+                  <td className="actions">
+                    <ReportLink to={reportLink(summary.period.id, item.category)} name={item.category.name} />
+                  </td>
                 </tr>
               );
             })}
@@ -373,20 +416,35 @@ function PeriodPanel({
                 </td>
                 <td />
                 <td />
+                <td className="actions">
+                  <ReportLink to={reportLink(summary.period.id, null)} name="Uncategorized" />
+                </td>
               </tr>
             ) : null}
           </tbody>
-          {budgets && budgets.lines.length ? (
+          {budgets ? (
             <tfoot>
+              {budgets.lines.length ? (
+                <tr>
+                  <th>Budgets</th>
+                  <td className="num">
+                    <Amount value={budgets.total_actual} money={money} bold />
+                  </td>
+                  <td className="num bold">{money.amount(budgets.total_budget)}</td>
+                  <td className="num">
+                    <Amount value={budgets.total_remaining} money={money} bold />
+                  </td>
+                  <td />
+                </tr>
+              ) : null}
               <tr>
-                <th>Budgeted total</th>
+                <th>Unbudgeted</th>
                 <td className="num">
-                  <Amount value={budgets.total_actual} money={money} bold />
+                  <Amount value={unbudgeted(summary, new Set(lines.keys()))} money={money} bold />
                 </td>
-                <td className="num bold">{money.amount(budgets.total_budget)}</td>
-                <td className="num">
-                  <Amount value={budgets.total_remaining} money={money} bold />
-                </td>
+                <td />
+                <td />
+                <td />
               </tr>
             </tfoot>
           ) : null}

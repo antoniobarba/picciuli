@@ -7,14 +7,17 @@ import type { Split, Transaction } from '../api/types';
 
 /**
  * Where a flow goes: `category:<id>` for a category, `account:<id>` for a
- * transfer with an account outside the reported ones.
+ * transfer with an account outside the reported ones, `uncategorized` for an
+ * external split without a category.
  */
-export type Bucket = `category:${number}` | `account:${number}`;
+export type Bucket = `category:${number}` | `account:${number}` | 'uncategorized';
 
 export const categoryBucket = (id: number): Bucket => `category:${id}`;
 export const accountBucket = (id: number): Bucket => `account:${id}`;
+export const UNCATEGORIZED: Bucket = 'uncategorized';
 
-export function parseBucket(bucket: Bucket): { kind: 'category' | 'account'; id: number } {
+export function parseBucket(bucket: Bucket): { kind: 'category' | 'account' | 'uncategorized'; id: number } {
+  if (bucket === UNCATEGORIZED) return { kind: 'uncategorized', id: 0 };
   const [kind, id] = bucket.split(':');
   return { kind: kind as 'category' | 'account', id: Number(id) };
 }
@@ -54,13 +57,23 @@ export interface PieSlice extends BucketTotal {
  * transfers, with their sign flipped since money leaving the reported
  * accounts goes into the other one. Moves between the reported accounts
  * cancel out, and the flows add up to the change in the reported balances.
+ *
+ * A split in a subcategory whose own bucket is not chosen goes to its
+ * parent's, if chosen (`parents` maps a category to its parent), so a
+ * category totals its subcategories unless they are chosen on their own.
  */
 export function reportSplits(
   transactions: readonly Transaction[],
   buckets: ReadonlySet<Bucket>,
   accountIds?: ReadonlySet<number>,
+  parents: ReadonlyMap<number, number | null> = new Map(),
 ): ReportSplit[] {
   const some = accountIds !== undefined && accountIds.size > 0;
+  const categoryOf = (id: number): Bucket => {
+    const own = categoryBucket(id);
+    const parent = parents.get(id);
+    return buckets.has(own) || parent == null ? own : categoryBucket(parent);
+  };
   return transactions.flatMap((transaction) => {
     if (some && !transaction.splits.some((s) => s.type === 'account' && accountIds.has(s.account_id))) return [];
     const shares = some ? reportedShares(transaction, accountIds) : undefined;
@@ -68,8 +81,7 @@ export function reportSplits(
       let bucket: Bucket;
       let amount: number;
       if (split.type === 'external') {
-        if (split.category_id == null) return [];
-        bucket = categoryBucket(split.category_id);
+        bucket = split.category_id == null ? UNCATEGORIZED : categoryOf(split.category_id);
         amount = shares ? scaled(split.amount, shares.external) : split.amount;
       } else {
         if (!shares || accountIds!.has(split.account_id) || split.amount === 0) return [];

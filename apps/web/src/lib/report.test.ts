@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../api/types';
-import { accountBucket, bucketTotals, categoryBucket, pieSlices, reportSplits } from './report';
+import { accountBucket, bucketTotals, categoryBucket, pieSlices, reportSplits, UNCATEGORIZED } from './report';
 
 const transaction = (id: number, splits: Transaction['splits']): Transaction => ({
   id,
@@ -33,6 +33,11 @@ describe('reportSplits', () => {
     const splits = reportSplits(transactions, new Set([categoryBucket(2)]));
     expect(splits.map((s) => s.key)).toEqual(['1:1', '2:1']);
     expect(splits.map((s) => s.amount)).toEqual([-2000, -500]);
+  });
+
+  it('puts the external splits without a category in the uncategorized bucket', () => {
+    const splits = reportSplits(transactions, new Set([UNCATEGORIZED]));
+    expect(splits.map((s) => [s.key, s.bucket, s.amount])).toEqual([['3:1', UNCATEGORIZED, -700]]);
   });
 
   describe('for some accounts', () => {

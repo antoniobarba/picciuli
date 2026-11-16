@@ -563,6 +563,22 @@ button {
   text-align: right;
 }
 
+.table.compact .actions {
+  padding: 0 0.3rem 0 0;
+}
+
+.table .actions .icon-button.small {
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.icon-button.small svg {
+  width: 18px;
+  height: 18px;
+}
+
 .table tr.child td:first-child {
   padding-left: 1.6rem;
   color: var(--muted);
@@ -1557,10 +1573,52 @@ input[type='checkbox'] {
 /* Reports */
 
 .report-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.report-range-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.report-range-bar .segmented {
+  flex: 0 0 200px;
+}
+
+.report-range-bar .period-picker {
+  flex: 1 1 320px;
+}
+
+.report-range-bar .report-days {
+  flex: 1 1 360px;
+  max-width: 520px;
+  margin: 0;
+}
+
+.report-filters-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-left: auto;
+}
+
+.report-range-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.report-filter-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   gap: 1rem 1.5rem;
-  padding: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
 }
 
 .report-range {
@@ -1568,10 +1626,6 @@ input[type='checkbox'] {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
-}
-
-.report-range .segmented {
-  max-width: 260px;
 }
 
 .report-range p {
@@ -1627,6 +1681,19 @@ input[type='checkbox'] {
   align-items: center;
   gap: 0.45rem;
   padding: 0.3rem 0;
+  cursor: pointer;
+}
+
+/* Not a real category: set apart, in italics, with an explanation. */
+.report-uncategorized {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.45rem;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0 0.2rem;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
   cursor: pointer;
 }
 
@@ -1706,7 +1773,7 @@ input[type='checkbox'] {
 }
 
 @media (max-width: 900px) {
-  .report-filters,
+  .report-filter-panel,
   .report-results {
     grid-template-columns: minmax(0, 1fr);
   }

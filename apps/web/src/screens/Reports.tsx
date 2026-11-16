@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import { useAccounts, useCategories, useMoney, usePeriods, useTransactions } from '../api/queries';
 import { useEditors } from '../app/editors';
 import { DateField } from '../components/DateField';
 import { TransactionListControls, useTransactionList } from '../components/TransactionListControls';
 import { Amount, Empty, Loading, PageHeader } from '../components/ui';
 import { covers } from '../lib/calendar';
-import { makeDay, parts, shortDate, todayDay, type Day } from '../lib/dates';
+import { addDays, daysBetween, makeDay, parts, shortDate, todayDay, type Day } from '../lib/dates';
 import {
   accountName,
   byId,
@@ -23,9 +24,11 @@ import {
   parseBucket,
   pieSlices,
   reportSplits,
+  UNCATEGORIZED,
   type Bucket,
   type ReportSplit,
 } from '../lib/report';
+import { useHotkeys } from '../lib/useHotkeys';
 
 type RangeMode = 'period' | 'days';
 
@@ -55,25 +58,39 @@ function toggled<T>(set: ReadonlySet<T>, value: T): Set<T> {
   return next;
 }
 
+function idParam(value: string | null): number | null {
+  return value && /^\d+$/.test(value) ? Number(value) : null;
+}
+
+function idsParam(value: string | null): Set<number> {
+  return new Set((value ?? '').split(',').map(idParam).filter((id) => id !== null));
+}
+
 /**
  * The cash flow of the whole portfolio or of chosen accounts, by category and
  * by transfers with the other accounts, over a period or a range of days.
+ *
+ * `?period=<id>&categories=<id>,<id>&uncategorized=1` opens it on a period with
+ * categories (and the uncategorized splits) ticked.
  */
 export function Reports() {
   const money = useMoney();
   const editors = useEditors();
   const today = todayDay();
+  const [params] = useSearchParams();
   const periods = usePeriods();
   const categories = useCategories();
   const accounts = useAccounts(true);
 
   const [mode, setMode] = useState<RangeMode>('period');
-  const [chosenPeriodId, setChosenPeriodId] = useState<number | null>(null);
+  const [chosenPeriodId, setChosenPeriodId] = useState<number | null>(() => idParam(params.get('period')));
   const [startText, setStartText] = useState(() => makeDay(parts(today).year, parts(today).month, 1));
   const [endText, setEndText] = useState(today);
-  const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set());
+  const [selected, setSelected] = useState<ReadonlySet<number>>(() => idsParam(params.get('categories')));
+  const [uncategorized, setUncategorized] = useState(() => params.get('uncategorized') === '1');
   const [selectedAccounts, setSelectedAccounts] = useState<ReadonlySet<number>>(() => new Set());
   const [selectedTransfers, setSelectedTransfers] = useState<ReadonlySet<number>>(() => new Set());
+  const [showFilters, setShowFilters] = useState(true);
   const [hover, setHover] = useState<{ bucket: Bucket; x: number; y: number } | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
 
@@ -111,9 +128,10 @@ export function Reports() {
   const chosen = useMemo(
     () => [
       ...tree.filter((c) => selected.has(c.id)).map((c) => categoryBucket(c.id)),
+      ...(uncategorized ? [UNCATEGORIZED] : []),
       ...transferAccounts.filter((a) => selectedTransfers.has(a.id)).map((a) => accountBucket(a.id)),
     ],
-    [tree, selected, transferAccounts, selectedTransfers],
+    [tree, selected, uncategorized, transferAccounts, selectedTransfers],
   );
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
 
@@ -129,10 +147,23 @@ export function Reports() {
     else range = { start, end };
   }
 
+  // Moves to the previous or next period, or shifts the days by as many days as they span.
+  const step = (delta: number) => {
+    if (mode === 'period') {
+      stepPeriod(delta);
+    } else if (range?.end) {
+      const shift = delta * (daysBetween(range.start, range.end) + 1);
+      setStartText(addDays(range.start, shift));
+      setEndText(addDays(range.end, shift));
+    }
+  };
+  useHotkeys({ ArrowLeft: () => step(-1), ArrowRight: () => step(1) });
+
   const transactions = useTransactions({ ...range, newest_first: true }, range !== null && chosen.length > 0);
+  const parents = useMemo(() => new Map(tree.map((c) => [c.id, c.parent_id])), [tree]);
   const splits = useMemo(
-    () => reportSplits(transactions.data ?? [], chosenSet, reported),
-    [transactions.data, chosenSet, reported],
+    () => reportSplits(transactions.data ?? [], chosenSet, reported, parents),
+    [transactions.data, chosenSet, reported, parents],
   );
   const scope = JSON.stringify([range, chosen, [...reported]]);
   const paged = useTransactionList(splits, scope, (item: ReportSplit) => item.transaction);
@@ -142,22 +173,21 @@ export function Reports() {
   const colorOf = (bucket: Bucket) => COLORS[chosen.indexOf(bucket) % COLORS.length]!;
   const labelOf = (bucket: Bucket) => {
     const { kind, id } = parseBucket(bucket);
+    if (kind === 'uncategorized') return 'Uncategorized';
     return kind === 'category' ? categoryLabel(id, categoryMap) : `Transfers › ${accountName(id, accountMap)}`;
   };
   const hovered = hover ? slices.find((s) => s.bucket === hover.bucket) : undefined;
+  const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const transferCount = transferAccounts.filter((a) => selectedTransfers.has(a.id)).length;
+  const filterSummary = [
+    reported.size ? plural(reported.size, 'account', 'accounts') : 'Whole portfolio',
+    plural(tree.filter((c) => selected.has(c.id)).length, 'category', 'categories'),
+    ...(uncategorized ? ['uncategorized'] : []),
+    ...(transferCount ? [plural(transferCount, 'transfer', 'transfers')] : []),
+  ].join(' · ');
 
-  const toggle = (categoryId: number) => {
-    const category = categoryMap.get(categoryId);
-    if (!category) return;
-    const next = new Set(selected);
-    const on = !next.has(category.id);
-    const family = [category, ...(category.parent_id === null ? tree.filter((c) => c.parent_id === category.id) : [])];
-    for (const c of family) {
-      if (on) next.add(c.id);
-      else next.delete(c.id);
-    }
-    setSelected(next);
-  };
+  // A category includes its subcategories, unless they are ticked to show apart.
+  const toggle = (categoryId: number) => setSelected(toggled(selected, categoryId));
 
   const showTooltip = (bucket: Bucket) => (event: PointerEvent<SVGPathElement>) => {
     const box = chartRef.current?.getBoundingClientRect();
@@ -172,7 +202,7 @@ export function Reports() {
     <div className="page">
       <PageHeader title="Reports" />
       <section className="card report-filters" aria-label="Report filters">
-        <div className="report-range">
+        <div className="report-range-bar">
           <div className="segmented" role="tablist" aria-label="Range">
             {(['period', 'days'] as const).map((value) => (
               <button
@@ -227,118 +257,150 @@ export function Reports() {
               <DateField label="To" value={endText} onChange={setEndText} today={today} />
             </div>
           )}
+          <div className="report-filters-toggle">
+            {showFilters ? null : <span className="muted small">{filterSummary}</span>}
+            <button
+              type="button"
+              className="button small"
+              aria-expanded={showFilters}
+              aria-controls="report-filter-panel"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              {showFilters ? 'Hide accounts and categories' : 'Show accounts and categories'}
+            </button>
+          </div>
           {rangeError ? (
-            <p className="negative small" role="alert">
+            <p className="negative small report-range-error" role="alert">
               {rangeError}
             </p>
           ) : null}
-          <fieldset className="report-categories report-accounts">
-            <legend>Accounts</legend>
-            <div className="toolbar report-category-actions">
-              <button
-                type="button"
-                className="button small"
-                onClick={() => setSelectedAccounts(new Set())}
-                disabled={!reported.size}
-              >
-                Whole portfolio
-              </button>
-            </div>
-            {accounts.isLoading ? (
-              <Loading />
-            ) : (
-              <>
-                <p className="muted small">
-                  {reported.size
-                    ? 'Money in and out of the ticked accounts; moves between them cancel out.'
-                    : 'Tick accounts to see only their cash flow; with none ticked, the whole portfolio.'}
-                </p>
-                <ul className="report-category-list">
-                  {orderedAccounts.map((account) => (
-                    <li key={account.id}>
-                      <Check
-                        label={account.is_closed ? `${account.name} (closed)` : account.name}
-                        checked={reported.has(account.id)}
-                        onToggle={() => setSelectedAccounts(toggled(selectedAccounts, account.id))}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </fieldset>
         </div>
-        <div className="report-range">
-          <fieldset className="report-categories">
-            <legend>Categories</legend>
-            <div className="toolbar report-category-actions">
-              <button
-                type="button"
-                className="button small"
-                onClick={() => {
-                  setSelected(new Set(tree.map((c) => c.id)));
-                  setSelectedTransfers(new Set(transferAccounts.map((a) => a.id)));
-                }}
-                disabled={!tree.length && !transferAccounts.length}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className="button small"
-                onClick={() => {
-                  setSelected(new Set());
-                  setSelectedTransfers(new Set());
-                }}
-                disabled={!chosen.length}
-              >
-                None
-              </button>
+        {showFilters ? (
+          <div className="report-filter-panel" id="report-filter-panel">
+            <div className="report-range">
+              <fieldset className="report-categories report-accounts">
+                <legend>Accounts</legend>
+                <div className="toolbar report-category-actions">
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={() => setSelectedAccounts(new Set())}
+                    disabled={!reported.size}
+                  >
+                    Whole portfolio
+                  </button>
+                </div>
+                {accounts.isLoading ? (
+                  <Loading />
+                ) : (
+                  <>
+                    <p className="muted small">
+                      {reported.size
+                        ? 'Money in and out of the ticked accounts; moves between them cancel out.'
+                        : 'Tick accounts to see only their cash flow; with none ticked, the whole portfolio.'}
+                    </p>
+                    <ul className="report-category-list">
+                      {orderedAccounts.map((account) => (
+                        <li key={account.id}>
+                          <Check
+                            label={account.is_closed ? `${account.name} (closed)` : account.name}
+                            checked={reported.has(account.id)}
+                            onToggle={() => setSelectedAccounts(toggled(selectedAccounts, account.id))}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </fieldset>
             </div>
-            {categories.isLoading ? (
-              <Loading />
-            ) : !tree.length ? (
-              <Empty>There are no categories yet: create them in Categories.</Empty>
-            ) : (
-              <ul className="report-category-list">
-                {tree
-                  .filter((c) => c.parent_id === null)
-                  .map((parent) => (
-                    <li key={parent.id}>
-                      <Check label={parent.name} checked={selected.has(parent.id)} onToggle={() => toggle(parent.id)} />
-                      {tree.some((c) => c.parent_id === parent.id) ? (
-                        <ul>
-                          {tree
-                            .filter((c) => c.parent_id === parent.id)
-                            .map((child) => (
-                              <li key={child.id}>
-                                <Check label={child.name} checked={selected.has(child.id)} onToggle={() => toggle(child.id)} />
-                              </li>
-                            ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </fieldset>
-          {transferAccounts.length ? (
-            <fieldset className="report-categories">
-              <legend>Transfers with</legend>
-              <ul className="report-category-list">
-                {transferAccounts.map((account) => (
-                  <li key={account.id}>
-                    <Check
-                      label={account.is_closed ? `${account.name} (closed)` : account.name}
-                      checked={selectedTransfers.has(account.id)}
-                      onToggle={() => setSelectedTransfers(toggled(selectedTransfers, account.id))}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </fieldset>
-          ) : null}
-        </div>
+            <div className="report-range">
+              <fieldset className="report-categories">
+                <legend>Categories</legend>
+                <div className="toolbar report-category-actions">
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={() => {
+                      setSelected(new Set(tree.filter((c) => c.parent_id === null).map((c) => c.id)));
+                      setUncategorized(true);
+                      setSelectedTransfers(new Set(transferAccounts.map((a) => a.id)));
+                    }}
+                    disabled={!tree.length && !transferAccounts.length}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={() => {
+                      setSelected(new Set());
+                      setUncategorized(false);
+                      setSelectedTransfers(new Set());
+                    }}
+                    disabled={!chosen.length}
+                  >
+                    None
+                  </button>
+                </div>
+                {categories.isLoading ? (
+                  <Loading />
+                ) : !tree.length ? (
+                  <Empty>There are no categories yet: create them in Categories.</Empty>
+                ) : (
+                  <>
+                  <p className="muted small">
+                    A category includes its subcategories; tick a subcategory too to show it apart.
+                  </p>
+                  <ul className="report-category-list">
+                    {tree
+                      .filter((c) => c.parent_id === null)
+                      .map((parent) => (
+                        <li key={parent.id}>
+                          <Check label={parent.name} checked={selected.has(parent.id)} onToggle={() => toggle(parent.id)} />
+                          {tree.some((c) => c.parent_id === parent.id) ? (
+                            <ul>
+                              {tree
+                                .filter((c) => c.parent_id === parent.id)
+                                .map((child) => (
+                                  <li key={child.id}>
+                                    <Check label={child.name} checked={selected.has(child.id)} onToggle={() => toggle(child.id)} />
+                                  </li>
+                                ))}
+                            </ul>
+                          ) : null}
+                        </li>
+                      ))}
+                  </ul>
+                  </>
+                )}
+                {categories.isLoading ? null : (
+                  <label className="report-uncategorized">
+                    <input type="checkbox" checked={uncategorized} onChange={() => setUncategorized(!uncategorized)} />
+                    <em>Uncategorized</em>
+                    <span className="muted small">not a category: splits without one</span>
+                  </label>
+                )}
+              </fieldset>
+              {transferAccounts.length ? (
+                <fieldset className="report-categories">
+                  <legend>Transfers with</legend>
+                  <ul className="report-category-list">
+                    {transferAccounts.map((account) => (
+                      <li key={account.id}>
+                        <Check
+                          label={account.is_closed ? `${account.name} (closed)` : account.name}
+                          checked={selectedTransfers.has(account.id)}
+                          onToggle={() => setSelectedTransfers(toggled(selectedTransfers, account.id))}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </fieldset>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {!chosen.length ? (

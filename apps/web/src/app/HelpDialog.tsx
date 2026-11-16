@@ -37,6 +37,10 @@ const SECTIONS: [string, [string, string][]][] = [
     ],
   ],
   [
+    'Reports',
+    [['← →', 'Previous / next period, or the same number of days before / after']],
+  ],
+  [
     'Investments',
     [
       ['f', 'Find a security online'],
