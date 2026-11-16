@@ -42,6 +42,12 @@ export const icons = {
       <path d="M3 17l6-6 4 4 8-8M15 7h6v6" />
     </Icon>
   ),
+  reports: (
+    <Icon>
+      <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z" />
+      <path d="M15 3.8A8.5 8.5 0 0 1 20.2 9H15z" />
+    </Icon>
+  ),
   settings: (
     <Icon>
       <circle cx="12" cy="12" r="3" />

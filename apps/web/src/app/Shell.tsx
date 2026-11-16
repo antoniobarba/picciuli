@@ -21,6 +21,7 @@ const SCREENS = [
   { to: '/periods', label: 'Periods', key: '4', icon: icons.periods, mobile: false },
   { to: '/budgets', label: 'Budgets', key: '5', icon: icons.budgets, mobile: true },
   { to: '/investments', label: 'Investments', key: '6', icon: icons.investments, mobile: true },
+  { to: '/reports', label: 'Reports', key: '7', icon: icons.reports, mobile: false },
 ] as const;
 
 interface InstallPrompt extends Event {
@@ -222,6 +223,11 @@ export function Shell() {
           <li>
             <NavLink to="/periods">
               {icons.periods} Periods
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/reports">
+              {icons.reports} Reports
             </NavLink>
           </li>
           <li>
