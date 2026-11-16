@@ -7,6 +7,8 @@ example `book.accounts` or `book.transactions`.
 
 ::: picciuli.services.TransactionService
 
+::: picciuli.services.ScheduleService
+
 ::: picciuli.services.CategoryService
 
 ::: picciuli.services.PeriodService

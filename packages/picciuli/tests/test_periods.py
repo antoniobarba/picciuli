@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 
 from picciuli import (
@@ -11,8 +13,11 @@ from picciuli import (
     ExternalSplit,
     NotFoundError,
     Period,
+    PeriodChange,
+    PeriodChangeKind,
     ValidationError,
 )
+from picciuli.limits import MAX_GENERATED_PERIODS
 
 from .conftest import d
 
@@ -174,3 +179,118 @@ class TestSummary:
     def test_missing_period(self, book: Book) -> None:
         with pytest.raises(NotFoundError):
             book.periods.summary(1)
+
+
+def _spans(periods: list[Period]) -> list[tuple[str, dt.date, dt.date | None]]:
+    return [(p.name, p.start, p.end) for p in periods]
+
+
+class TestMonthlyPeriods:
+    def test_off_does_nothing(self, book: Book) -> None:
+        book.settings.update(period_start_day=None)
+        assert book.periods.ensure_monthly(d(15)) == []
+        assert book.periods.list() == []
+        with pytest.raises(ValidationError, match="off"):
+            book.periods.regenerate(d(15))
+
+    def test_empty_book_gets_the_current_period(self, book: Book) -> None:
+        book.settings.update(period_start_day=27, period_weekend_shift=False)
+        created = book.periods.ensure_monthly(d(15, 3))
+        assert _spans(created) == [("March 2025", d(27, 2), d(26, 3))]
+        assert book.periods.ensure_monthly(d(26, 3)) == []
+
+    def test_missing_periods_copy_budgets_and_end_open_ones(
+        self, book: Book, food: Category
+    ) -> None:
+        manual = book.periods.create(d(1))
+        book.budgets.create(food.id, manual.id, 30000)
+        book.settings.update(period_start_day=1)
+
+        created = book.periods.ensure_monthly(d(10, 4))
+
+        # 1 February and 1 March 2025 are Saturdays: those periods start on
+        # the Friday before.
+        assert _spans(created) == [
+            ("February 2025", d(31), d(27, 2)),
+            ("March 2025", d(28, 2), d(31, 3)),
+            ("April 2025", d(1, 4), d(30, 4)),
+        ]
+        assert book.periods.get(manual.id).end == d(30)
+        for period in created:
+            assert [
+                (b.category_id, b.amount)
+                for b in book.budgets.list(period_id=period.id)
+            ] == [(food.id, 30000)]
+
+    def test_at_most_the_limit_of_periods_is_created(self, book: Book) -> None:
+        book.periods.create(dt.date(1990, 1, 1), end=dt.date(1990, 1, 31))
+        created = book.periods.ensure_monthly(d(15))
+        assert len(created) == MAX_GENERATED_PERIODS
+        assert created[-1].start == d(1)
+
+    def test_regenerate_aligns_existing_periods(
+        self, book: Book, food: Category
+    ) -> None:
+        book.settings.update(period_start_day=27, period_weekend_shift=False)
+        november = book.periods.create(d(1, 11, 2024), end=d(30, 11, 2024))
+        book.budgets.create(food.id, november.id, 100)
+        december = book.periods.create(d(1, 12, 2024), name="Dec")
+        twin = book.periods.create(d(5, 12, 2024), end=d(20, 12, 2024))
+        aligned = book.periods.create(d(27, 12, 2024), end=d(26))
+        aligned = book.periods.update(aligned.id, name="January 2025")
+
+        preview = book.periods.regenerate(d(10, 2), dry_run=True)
+
+        assert [(c.kind, c.period, c.name, c.start, c.end) for c in preview] == [
+            (
+                PeriodChangeKind.UPDATE,
+                november,
+                "November 2024",
+                d(27, 10, 2024),
+                d(26, 11, 2024),
+            ),
+            (
+                PeriodChangeKind.UPDATE,
+                book.periods.get(december.id),
+                "December 2024",
+                d(27, 11, 2024),
+                d(26, 12, 2024),
+            ),
+            (PeriodChangeKind.KEEP, twin, twin.name, twin.start, twin.end),
+            (PeriodChangeKind.CREATE, None, "February 2025", d(27), d(26, 2)),
+        ]
+        assert book.periods.get(november.id) == november
+
+        assert book.periods.regenerate(d(10, 2)) == preview
+        assert _spans(book.periods.list()) == [
+            ("November 2024", d(27, 10, 2024), d(26, 11, 2024)),
+            ("December 2024", d(27, 11, 2024), d(26, 12, 2024)),
+            (twin.name, twin.start, twin.end),
+            ("January 2025", d(27, 12, 2024), d(26)),
+            ("February 2025", d(27), d(26, 2)),
+        ]
+        assert [b.period_id for b in book.budgets.list()] == [november.id]
+        assert book.periods.regenerate(d(10, 2)) == [
+            PeriodChange(PeriodChangeKind.KEEP, twin, twin.name, twin.start, twin.end)
+        ]
+
+    def test_regenerate_without_periods(self, book: Book) -> None:
+        assert book.periods.regenerate(d(1)) == []
+
+    def test_regenerate_keeps_periods_that_are_already_aligned(
+        self, book: Book
+    ) -> None:
+        # Periods started on the 27th, then the setting moved to the 1st and
+        # the current monthly period was created before regenerating.
+        old = book.periods.create(d(27, 10, 2026), end=d(26, 11, 2026))
+        book.settings.update(period_start_day=1)
+        (current,) = book.periods.ensure_monthly(d(16, 11, 2026))
+        assert (current.start, current.end) == (d(30, 10, 2026), d(30, 11, 2026))
+
+        changes = book.periods.regenerate(d(16, 11, 2026))
+
+        assert [(c.kind, c.period) for c in changes] == [
+            (PeriodChangeKind.CREATE, None),
+            (PeriodChangeKind.KEEP, old),
+        ]
+        assert book.periods.get(current.id) == current

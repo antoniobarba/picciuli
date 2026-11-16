@@ -19,7 +19,14 @@ from picciuli._db.queries import (
     to_transaction,
 )
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import AccountRow, SplitRow, TradeRow, TransactionRow
+from picciuli._db.tables import (
+    AccountRow,
+    ScheduleRow,
+    ScheduleSplitRow,
+    SplitRow,
+    TradeRow,
+    TransactionRow,
+)
 from picciuli.errors import ConflictError, ValidationError
 from picciuli.model import (
     UNSET,
@@ -340,6 +347,23 @@ class AccountService:
             if used:
                 raise ConflictError(
                     f"account {row.name!r} has transactions; close it instead"
+                )
+            schedule = session.scalar(
+                select(ScheduleRow)
+                .where(
+                    ScheduleRow.id.in_(
+                        select(ScheduleSplitRow.schedule_id).where(
+                            ScheduleSplitRow.account_id == row.id
+                        )
+                    )
+                )
+                .limit(1)
+            )
+            if schedule is not None:
+                label = schedule.description or f"#{schedule.id}"
+                raise ConflictError(
+                    f"account {row.name!r} is used by the recurring transaction "
+                    f"{label!r}; change or delete it first"
                 )
             session.delete(row)
             session.flush()

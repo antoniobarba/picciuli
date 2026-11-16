@@ -5,6 +5,7 @@ from .budgets import BudgetService
 from .categories import CategoryService
 from .investments import InvestmentService
 from .periods import PeriodService
+from .schedules import ScheduleService
 from .securities import SecurityService
 from .settings import SettingsService
 from .transactions import TransactionService
@@ -15,6 +16,7 @@ __all__ = [
     "CategoryService",
     "InvestmentService",
     "PeriodService",
+    "ScheduleService",
     "SecurityService",
     "SettingsService",
     "TransactionService",

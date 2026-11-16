@@ -28,6 +28,7 @@ from picciuli._db.tables import AccountRow
 from .conftest import d
 from .schema_v1 import SCHEMA_V1
 from .schema_v2 import SCHEMA_V2
+from .schema_v3 import SCHEMA_V3
 
 
 def test_open_creates_and_reopens_a_file(tmp_path: Path) -> None:
@@ -281,6 +282,125 @@ def test_version_2_is_upgraded_with_the_trades_it_can_prove(tmp_path: Path) -> N
     finally:
         fresh.dispose()
         upgraded.dispose()
+
+
+def _make_v3(path: Path) -> None:
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(SCHEMA_V3)
+        connection.executemany(
+            "INSERT INTO meta VALUES (?, ?)",
+            [
+                ("schema_version", "3"),
+                ("currency", "€"),
+                ("minor_digits", "2"),
+                ("currency_code", "EUR"),
+                ("cost_method", "fifo"),
+                ("price_provider", "yahoo"),
+                ("rate_provider", "yahoo"),
+            ],
+        )
+        connection.executescript(
+            """
+            INSERT INTO accounts VALUES (1, 'Checking', 'checking', 100000,
+                '2025-01-01', 500000, 'main', 1, NULL);
+            INSERT INTO accounts VALUES (2, 'Broker', 'investment', 0, NULL, NULL,
+                NULL, 2, NULL);
+            INSERT INTO accounts VALUES (3, 'Old', 'cash', 0, NULL, NULL, NULL, 3,
+                '2025-02-01');
+            INSERT INTO categories VALUES (1, 'Food', 'FOOD', NULL, 1);
+            INSERT INTO categories VALUES (2, 'Groceries', 'GRO', 1, 1);
+            INSERT INTO categories VALUES (3, 'Fees', 'F', NULL, 2);
+            INSERT INTO securities VALUES (1, 'ETF', 'VWCE.DE', 'IE00BK5BQT80',
+                'EUR', 'etf', 'notes');
+            INSERT INTO prices VALUES (1, 1, '2025-01-02', 10000000000, 'yahoo');
+            INSERT INTO exchange_rates VALUES (1, 'USD', '2025-01-02', 90000000);
+            INSERT INTO periods VALUES (1, 'January 2025', '2025-01-01',
+                '2025-01-31');
+            INSERT INTO periods VALUES (2, 'February', '2025-02-01', NULL);
+            INSERT INTO budgets VALUES (1, 2, 1, 30000);
+            INSERT INTO transactions VALUES (1, '2025-01-02', 'Shop', 'note');
+            INSERT INTO splits VALUES (1, 1, 1, 1, NULL, -4500, 'memo', NULL, NULL);
+            INSERT INTO splits VALUES (2, 1, 2, NULL, 2, -4500, NULL, NULL, NULL);
+            INSERT INTO transactions VALUES (2, '2025-01-03', 'Buy ETF', NULL);
+            INSERT INTO splits VALUES (3, 2, 1, 2, NULL, 10000, NULL, 1, 100000000);
+            INSERT INTO splits VALUES (4, 2, 2, 1, NULL, -10100, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (5, 2, 3, NULL, 3, -100, 'Fee', NULL, NULL);
+            INSERT INTO trades VALUES (2, 'buy', 2, 1, 100000000, 10000, 1, 100, 3,
+                0, NULL, NULL);
+            INSERT INTO transactions VALUES (3, '2025-01-05', 'Cash in', NULL);
+            INSERT INTO splits VALUES (6, 3, 1, 3, NULL, 700, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (7, 3, 2, NULL, NULL, 700, NULL, NULL, NULL);
+            INSERT INTO transactions VALUES (4, '2025-01-06', 'Cash out', NULL);
+            INSERT INTO splits VALUES (8, 4, 1, 3, NULL, -700, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (9, 4, 2, NULL, 1, -700, NULL, NULL, NULL);
+            """
+        )
+
+
+def _rows(path: Path) -> dict[str, list[tuple[object, ...]]]:
+    with closing(sqlite3.connect(path)) as connection:
+        tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+        ).fetchall()
+        return {
+            name: connection.execute(
+                f'SELECT * FROM "{name}" ORDER BY rowid'
+            ).fetchall()
+            for (name,) in tables
+        }
+
+
+def test_version_3_is_upgraded_to_version_4_without_losing_data(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "v3.db"
+    _make_v3(path)
+    before = _rows(path)
+
+    Book.open(path).close()
+
+    after = _rows(path)
+    assert set(after) == set(before) | {"schedules", "schedule_splits"}
+    assert after["schedules"] == after["schedule_splits"] == []
+    assert after["transactions"] == [(*row, None) for row in before["transactions"]]
+    assert dict(after["meta"]) == {  # type: ignore[arg-type]
+        **dict(before["meta"]),  # type: ignore[arg-type]
+        "schema_version": "4",
+        "period_start_day": "",
+        "period_weekend_shift": "1",
+    }
+    for table in set(before) - {"meta", "transactions"}:
+        assert after[table] == before[table], table
+
+    fresh = file_engine(tmp_path / "fresh.db")
+    prepare_schema(fresh)
+    upgraded = file_engine(path)
+    try:
+        assert _structure(upgraded) == _structure(fresh)
+    finally:
+        fresh.dispose()
+        upgraded.dispose()
+
+    with Book.open(path) as book:
+        settings = book.settings.get()
+        assert (settings.period_start_day, settings.cost_method) == (
+            None,
+            CostMethod.FIFO,
+        )
+        assert book.accounts.balance(1) == 100000 - 4500 - 10100
+        assert book.transactions.get(2).trade == Trade(
+            TradeKind.BUY, 2, 1, Decimal(1), 10000, 1, 100, 3
+        )
+        rent = book.schedules.create(
+            d(31), [AccountSplit(1, -100), ExternalSplit(-100, 1)]
+        )
+        (posted,) = book.schedules.catch_up(d(31)).posted
+        assert posted.schedule_id == rent.id
+    # The upgraded file has exactly the current schema: it can be imported.
+    with Book.in_memory() as copy:
+        summary = copy.import_file(path)
+        assert (summary.transactions, summary.schedules) == (5, 1)
+        assert copy.transactions.list()[-1].schedule_id == copy.schedules.list()[0].id
 
 
 def test_each_call_is_atomic(book: Book) -> None:

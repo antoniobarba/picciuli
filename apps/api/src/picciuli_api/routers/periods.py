@@ -14,8 +14,10 @@ from picciuli_api.schemas.periods import (
     BudgetOut,
     BudgetReportOut,
     BudgetUpdate,
+    PeriodChangeOut,
     PeriodCreate,
     PeriodOut,
+    PeriodRegenerate,
     PeriodSummaryOut,
     PeriodUpdate,
 )
@@ -45,6 +47,24 @@ def create_period(book: BookDep, body: PeriodCreate) -> PeriodOut:
     """
     period = book.periods.create(body.start, end=body.end, name=body.name)
     return PeriodOut.model_validate(period)
+
+
+@periods.get("/regenerate")
+def preview_regeneration(book: BookDep, today: Date) -> list[PeriodChangeOut]:
+    """Preview how existing periods would follow the monthly period settings."""
+    changes = book.periods.regenerate(today, dry_run=True)
+    return [PeriodChangeOut.model_validate(c) for c in changes]
+
+
+@periods.post("/regenerate")
+def regenerate_periods(book: BookDep, body: PeriodRegenerate) -> list[PeriodChangeOut]:
+    """Align existing periods with the monthly period settings.
+
+    Periods get new dates and names but keep their budgets; missing monthly
+    periods are created; nothing is deleted.
+    """
+    changes = book.periods.regenerate(body.today)
+    return [PeriodChangeOut.model_validate(c) for c in changes]
 
 
 @periods.get("/{period_id:int}")

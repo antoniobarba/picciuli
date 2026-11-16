@@ -91,7 +91,8 @@ picciuli-api openapi --output apps/api/openapi.json
 | accounts       | CRUD, `/balances`, `/trends`, `/net-worth`, `/{id}/balance`, `/{id}/register`, `/{id}/move`, `/{id}/close`, `/{id}/reopen` |
 | categories     | CRUD, `?top_level=true`, `/{id}/children`, `DELETE ?reassign_to=` or `?uncategorize=true` |
 | transactions   | CRUD with splits, search filters, `/dates`, `/expense`, `/income`, `/transfer` |
-| periods        | CRUD, `?on=<day>`, `/{id}/summary`, `/{id}/budget-report`                 |
+| schedules      | CRUD, `/occurrences?start=&end=`, `/{id}/post`, `/{id}/skip`, `POST /catch-up` (body `{"today": ...}`, the user's current day: records due recurring transactions and creates the missing monthly periods) |
+| periods        | CRUD, `?on=<day>`, `/{id}/summary`, `/{id}/budget-report`, `GET /regenerate?today=` (preview), `POST /regenerate` |
 | budgets        | CRUD, `/copy`                                                             |
 | securities     | CRUD, `/{id}/prices`, `PUT`/`DELETE /{id}/prices/{date}`, `/{id}/latest-price` |
 | exchange rates | `/{currency}`, `/{currency}/latest`, `PUT /{currency}/{date}`             |

@@ -7,6 +7,7 @@ import {
   useBudgetReport,
   useCategories,
   useMoney,
+  useOccurrences,
   usePeriodsOn,
   usePeriodSummary,
   useTransactions,
@@ -18,11 +19,13 @@ import { DateField } from '../components/DateField';
 import { useConfirm, useNotify } from '../components/feedback';
 import { FormDialog } from '../components/forms';
 import { icons } from '../components/icons';
+import { RecurringPanel } from '../components/RecurringPanel';
 import { Amount, Empty, onEnter, RowMenu } from '../components/ui';
 import { choosePeriod, cyclePeriod, dayFlows, shiftMonth, visibleRange } from '../lib/calendar';
-import { isValidDay, longDate, parts, todayDay, type Day } from '../lib/dates';
+import { addDays, isValidDay, longDate, parts, todayDay, type Day } from '../lib/dates';
 import {
   byId,
+  movesShares,
   periodRange,
   transactionAccounts,
   transactionCategory,
@@ -62,12 +65,14 @@ export function Overview() {
   const accounts = useAccounts(true);
   const categories = useCategories();
   const transactions = useTransactions({ start, end });
+  const scheduledDays = useOccurrences(start > today ? start : addDays(today, 1), end).data;
   const covering = usePeriodsOn(day).data ?? [];
   const period = choosePeriod(covering, periodId);
   const summary = usePeriodSummary(period?.id ?? null).data;
   const budgets = useBudgetReport(period?.id ?? null).data;
 
   const flows = useMemo(() => dayFlows(transactions.data ?? []), [transactions.data]);
+  const scheduled = useMemo(() => new Set((scheduledDays ?? []).map((o) => o.date)), [scheduledDays]);
   const dayTransactions = useMemo(
     () => (transactions.data ?? []).filter((transaction) => transaction.date === day),
     [transactions.data, day],
@@ -135,6 +140,7 @@ export function Overview() {
           day={day}
           today={today}
           flows={flows}
+          scheduled={scheduled}
           period={period}
           money={money}
           onSelect={selectDay}
@@ -158,6 +164,7 @@ export function Overview() {
       </div>
 
       <div className="overview-details">
+        <RecurringPanel today={today} money={money} categories={categoryMap} />
         <section className="card day-panel" aria-label="Transactions of the day">
           <div className="card-header">
             <h2>
@@ -191,7 +198,15 @@ export function Overview() {
                     onFocus={() => setSelectedId(transaction.id)}
                   >
                     <span className="transaction-main">
-                      <span className="transaction-title">{transactionTitle(transaction)}</span>
+                      <span className="transaction-title">
+                        {transactionTitle(transaction)}
+                        {transaction.schedule_id != null ? (
+                          <span className="recurring-mark" title="Recurring" aria-label="recurring">
+                            {' '}
+                            ↻
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="transaction-sub">
                         {transactionAccounts(transaction, accountMap)} · {transactionCategory(transaction, categoryMap)}
                       </span>
@@ -205,6 +220,11 @@ export function Overview() {
                   <RowMenu
                     actions={[
                       { label: 'Edit', onSelect: () => editors.editTransaction(transaction), shortcut: 'e' },
+                      transaction.schedule_id == null &&
+                        !movesShares(transaction) && {
+                          label: 'Make recurring…',
+                          onSelect: () => editors.newSchedule({ from: transaction }),
+                        },
                       { label: 'Delete', onSelect: () => void deleteTransaction(transaction), danger: true, shortcut: 'd' },
                     ]}
                   />

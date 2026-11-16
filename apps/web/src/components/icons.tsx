@@ -71,4 +71,9 @@ export const icons = {
       <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
     </Icon>
   ),
+  recurring: (
+    <Icon>
+      <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" />
+    </Icon>
+  ),
 };

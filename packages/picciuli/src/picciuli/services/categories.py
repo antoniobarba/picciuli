@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from picciuli import _validation as v
 from picciuli._db.queries import get_row, ordered_categories, to_category
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import BudgetRow, CategoryRow, SplitRow, TradeRow
+from picciuli._db.tables import (
+    BudgetRow,
+    CategoryRow,
+    ScheduleSplitRow,
+    SplitRow,
+    TradeRow,
+)
 from picciuli.errors import ConflictError, ValidationError
 from picciuli.limits import MAX_CATEGORY_SYMBOL_LENGTH
 from picciuli.model import UNSET, Category, Unset
@@ -266,6 +272,12 @@ class CategoryService:
                     .where(SplitRow.category_id == row.id)
                     .values(category_id=target)
                 )
+            # Recurring transactions follow their recorded transactions.
+            session.execute(
+                update(ScheduleSplitRow)
+                .where(ScheduleSplitRow.category_id == row.id)
+                .values(category_id=target)
+            )
             for column in (
                 TradeRow.fee_category_id,
                 TradeRow.tax_category_id,

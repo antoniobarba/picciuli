@@ -44,7 +44,7 @@ export function byId<T extends { id: number }>(items: readonly T[] | undefined):
 }
 
 /** `01 Feb 2025 – open` */
-export function periodRange(period: Period): string {
+export function periodRange(period: Pick<Period, 'start' | 'end'>): string {
   return `${shortDate(period.start)} – ${period.end ? shortDate(period.end) : 'open'}`;
 }
 

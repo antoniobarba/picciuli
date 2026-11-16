@@ -8,6 +8,8 @@ export interface CalendarProps {
   day: Day;
   today: Day;
   flows: ReadonlyMap<Day, DayFlow>;
+  /** Future days on which a recurring transaction is due. */
+  scheduled?: ReadonlySet<Day>;
   period: Period | null;
   money: MoneyFormat;
   onSelect: (day: Day) => void;
@@ -21,9 +23,21 @@ const STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -
 
 /**
  * The month calendar of the overview: each day shows its net flow, `↔` marks
- * days with only transfers, and the selected period is drawn as a band.
+ * days with only transfers, `↻` days with a recurring transaction due, and
+ * the selected period is drawn as a band.
  */
-export function Calendar({ day, today, flows, period, money, onSelect, onActivate, onMonth, autoFocus }: CalendarProps) {
+export function Calendar({
+  day,
+  today,
+  flows,
+  scheduled,
+  period,
+  money,
+  onSelect,
+  onActivate,
+  onMonth,
+  autoFocus,
+}: CalendarProps) {
   const { year, month } = parts(day);
   const grid = monthGrid(year, month);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -115,6 +129,8 @@ export function Calendar({ day, today, flows, period, money, onSelect, onActivat
                   ? `, transfers only`
                   : `, net ${money.amount(flow.net, { plus: true })}, ${flow.count} transaction${flow.count === 1 ? '' : 's'}`;
               }
+              const due = scheduled?.has(cell) ?? false;
+              if (due) label += ', recurring transaction due';
               return (
                 <div role="gridcell" key={cell} className="day-cell">
                   <button
@@ -128,6 +144,11 @@ export function Calendar({ day, today, flows, period, money, onSelect, onActivat
                     onDoubleClick={onActivate ? () => onActivate(cell) : undefined}
                   >
                     <span className="day-number">{parts(cell).day}</span>
+                    {due ? (
+                      <span className="scheduled-mark" aria-hidden="true">
+                        ↻
+                      </span>
+                    ) : null}
                     {flow ? (
                       flow.transfersOnly && flow.net === 0 ? (
                         <span className="flow muted">↔</span>

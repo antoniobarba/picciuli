@@ -97,6 +97,40 @@ from its external splits:
 - *expense*: all external splits are negative;
 - *mixed*: there are external splits of both signs.
 
+## Recurring transactions
+
+A [schedule](api/model.md#picciuli.model.Schedule) is a template of splits
+(any transaction that does not move shares: a salary, the rent, a transfer to
+savings, a mortgage instalment with its interest...) and a rule saying when it
+repeats: every *n* days, weeks, months or years from its first occurrence.
+Monthly and yearly schedules fall on a day of the month; on 29, 30 or 31 they
+fall on the last day of shorter months (31 means "the last day of every
+month"), without drifting. A schedule can stop after an end day or a number of
+occurrences, and can be paused.
+
+Nothing happens on its own. Call
+[`catch_up`][picciuli.services.ScheduleService.catch_up] with the user's
+current day, for example when an application starts:
+
+- **automatic** schedules record every due occurrence, each on its own day,
+  so opening the app after a month away adds everything that was missed;
+- schedules that **wait for confirmation** (bills whose amount changes) are
+  listed instead. [`post`][picciuli.services.ScheduleService.post] records
+  the next occurrence, optionally with another day or other splits for this
+  time only, and [`skip`][picciuli.services.ScheduleService.skip] moves past
+  it.
+
+When an occurrence cannot be recorded, for example because its account was
+closed, the schedule stops there and keeps the reason in `last_error`; the
+other schedules go on. Fixing the schedule clears it.
+
+Recorded transactions are ordinary transactions that remember their schedule
+in `schedule_id`; editing them never changes the schedule. Deleting a schedule
+keeps its transactions. An account used by a schedule cannot be deleted;
+deleting a category moves the schedules' splits like the transactions'.
+[`occurrences`][picciuli.services.ScheduleService.occurrences] projects the
+upcoming occurrences, for calendars and lists of upcoming bills.
+
 ## Categories
 
 Categories form a two-level tree: top-level categories with optional
@@ -125,6 +159,23 @@ Transfers never count as income or expense. Income and expenses add up the
 categories by their net flow, so a refund or reimbursement booked in an expense
 category lowers the expenses instead of counting as income. Uncategorized
 splits count one by one, by their sign.
+
+### Monthly periods
+
+With [`Settings.period_start_day`][picciuli.model.Settings] set (new books
+start on day 1; books created before this feature have it off), periods can be
+created on their own: one per month, starting on that day, for example your
+payday. A period that would start on a Saturday or Sunday starts on the Friday
+before, unless `period_weekend_shift` is off. Each is named after the month it
+covers most: with payday 27, the period from 27 October to 26 November is
+"November".
+
+[`ensure_monthly`][picciuli.services.PeriodService.ensure_monthly] creates the
+missing monthly periods up to the one containing a day, each with the budgets
+of the period before it. After changing the start day,
+[`regenerate`][picciuli.services.PeriodService.regenerate] previews (with
+`dry_run=True`) and applies new dates and names to the existing periods: their
+budgets are kept and nothing is deleted.
 
 ## Budgets
 
@@ -264,5 +315,6 @@ limited.
 
 The book stores a currency symbol and its number of minor digits. They tell user
 interfaces how to display amounts; they never change stored values. It also
-stores the ISO currency code, the cost method for sales and the selected price
-provider (see [Investments](#investments)).
+stores the ISO currency code, the cost method for sales, the selected price
+provider (see [Investments](#investments)) and the day monthly periods start on
+(see [Monthly periods](#monthly-periods)).

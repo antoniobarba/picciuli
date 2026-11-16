@@ -37,7 +37,7 @@ when you are offline.
 
 On wide screens the tabs at the top switch screens; on phones the bar at the
 bottom shows Overview, Accounts, Budgets and Investments, and **More** has the
-rest (Categories, Periods, Reports, Settings). Every list row opens when clicked; its **⋯** menu has the other actions.
+rest (Categories, Periods, Reports, Recurring, Settings). Every list row opens when clicked; its **⋯** menu has the other actions.
 A category, period or budget opens its transactions with their total and what
 is left of the budget (`e` or **⋯ › Edit** edits it); a transaction there opens
 in the editor.
@@ -58,18 +58,25 @@ along.
 
 | Screen | What you can do |
 |--------|-----------------|
-| Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions, all on one list, and the period's categories against their budgets; a category's report button opens Reports on that period and category (with its subcategories) for the whole portfolio, and the *Uncategorized* row's on the splits without a category. Below them, *Budgets* totals the budgets and *Unbudgeted* the spending no budget covers (a budget covers its category and, for a top-level one, its subcategories), adding up whole categories like the period's expenses do: each category with a negative net flow, and the uncategorized splits as one. Swipe the calendar to change month on a phone. |
+| Overview | Month calendar with each day's net flow (`↔` = only transfers, `↻` = a recurring transaction due) and the selected period as a band; double-click a day to record a new transaction on it. The *Recurring* card lists the bills waiting for confirmation (**Confirm** opens them prefilled to adjust the amount or day, **Skip** passes this one), the recurring transactions that could not be added and why, and what is due in the next 14 days. The day's transactions, all on one list (`↻` marks those recorded by a recurring transaction; **⋯ › Make recurring…** repeats one), and the period's categories against their budgets; a category's report button opens Reports on that period and category (with its subcategories) for the whole portfolio, and the *Uncategorized* row's on the splits without a category. Below them, *Budgets* totals the budgets and *Unbudgeted* the spending no budget covers (a budget covers its category and, for a top-level one, its subcategories), adding up whole categories like the period's expenses do: each category with a negative net flow, and the uncategorized splits as one. Swipe the calendar to change month on a phone. |
 | Accounts | Accounts with balance, market value, goal and progress (toward the goal, or toward zero for an account in debt, from the lowest point of the debt), and the ETA: the month the goal (or zero) should be reached at the account's average monthly flow over the last 3 complete months (fewer for a newer account). Create, edit, close or reopen, reorder (drag the handle) and delete. A row opens the **register** with running balances. |
 | Categories | The two-level tree, with subcategories folded: clicking a top-level category (or `enter` on it) shows or hides its subcategories (**▸** / **▾**). Create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). A subcategory, or a top-level category without any, shows the category's transactions when clicked; **⋯ › Transactions** does it for a top-level category with subcategories (including them). With them come their total and what is left of its budget in the period covering today. |
 | Periods | Create, edit and delete periods. A row shows the transactions dated in the period, their net total and what is left of all its budgets. |
 | Budgets | Budgets of a period with their progress; copy them from another period. A row shows the transactions of the budget's category (and subcategories, for a top-level one) in the period, their total and what is left. |
 | Investments | Holdings at market value, securities and their latest prices; find a security online, buy, sell (with a preview of the cost basis and gain), enter prices, refresh prices, download the price history, live prices. |
 | Reports | Choose categories (a top-level category includes its subcategories; tick a subcategory too to show it apart, so the category keeps only the rest) and either a period or a range of days typed or picked by hand. **All** ticks every top-level category, the uncategorized splits and the transfers. *Uncategorized*, set apart below the categories since it is not one, reports the splits without a category. The period or days stay at the top; the accounts and categories below them can be hidden (a summary of what is ticked shows instead). `←` and `→` move to the previous or next period, or shift the days by as many days as they span (3–8 January becomes 28 December – 2 January or 9–14 January). Lists the splits booked in those categories in that stretch of time, searchable and paged, with their total; a pie chart and legend show each category's total and share (expenses and income are sized by their amount), and hovering or tapping a slice shows its total at once. With no accounts ticked the report covers the whole portfolio, so transfers between accounts cancel out. Tick some accounts to see only their cash flow: only transactions touching them count, and only for the ticked accounts' share (an expense paid partly from another account counts only for the part paid from the ticked ones), moves between them cancel out, and money moved to or from any other account (say, the principal of a loan payment) can be ticked under *Transfers with*, signed as seen from the ticked accounts. A split opens its transaction in the editor. |
-| Settings | Currency, decimal digits, currency code, cost method and providers; export your data as a SQLite file (it opens with the Picciuli library); import a SQLite file, such as a previous export, choosing to **merge** it with your data or to **replace** your data; delete all your data, sign out. |
+| Settings | Currency, decimal digits, currency code, cost method and providers; **Monthly periods**: the day each period starts on (for example your payday, or *Off* to create periods by hand) and whether a weekend start moves to the Friday before; saving offers to align your existing periods, listing every change first; export your data as a SQLite file (it opens with the Picciuli library); import a SQLite file, such as a previous export, choosing to **merge** it with your data or to **replace** your data; delete all your data, sign out. |
+| Recurring | Salary, rent, subscriptions, loan payments, savings: any expense, income, transfer or split, repeated every *n* days, weeks, months or years (optionally on the last day of the month), until a date, a number of times or forever. Each one is either **added automatically** or **waits for you to confirm it** (for bills whose amount changes). Edit, record the next one now, skip it, pause or resume, delete (its transactions are kept). *Needs attention* marks one that could not be added (hover for the reason). |
+
+**Recurring transactions and monthly periods** are brought up to date when the
+app starts, and again when it comes back to the foreground on a new day, using
+your device's date: every due automatic transaction is added on its own date
+(even after weeks away), the current monthly period is created with the budgets
+of the previous one, and a message says what was done.
 
 **Importing.** *Merge* reuses accounts, categories, securities and periods that
 have the same name (securities also by ISIN, periods by their days) and skips
-transactions identical to ones you already have, so importing the same file
+transactions and recurring transactions identical to ones you already have, so importing the same file
 twice adds nothing; your settings are kept and the file must use the same
 currency and decimal digits (unless your book is still empty). *Replace*
 deletes all your data first and adopts the file's settings. Either way the
@@ -99,7 +106,7 @@ list and `ctrl+k` for the command palette.
 
 | Key | Action |
 |-----|--------|
-| `1` … `7`, `s` | Switch screen, settings |
+| `1` … `8`, `s` | Switch screen, settings |
 | `n` / `e` / `d` | New / edit / delete the selected item |
 | `shift+↑ ↓` | Move the selected account or category up / down |
 | `alt+↑ ↓`; `space`, `↑ ↓`, `space` | On a focused **⠿** handle: move the row one step; or pick it up, choose its place and drop it (`esc` cancels) |
@@ -143,7 +150,7 @@ src/auth/        native identity screens and OpenID Connect with PKCE
 src/lib/         logic without components:
                  money.ts, dates.ts, calendar.ts, forms.ts, format.ts
 src/components/  calendar, dialogs, form fields, menus
-src/forms/       transaction, account, period and investment forms
+src/forms/       transaction, recurring transaction, account, period and investment forms
 src/screens/     one module per screen
 src/app/         shell, routes, keyboard help, command palette, live prices
 ```

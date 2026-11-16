@@ -107,6 +107,10 @@ class TransactionOut(OutputModel):
         description="Set when the splits were built by a purchase or sale of "
         "shares; editing the splits directly removes it.",
     )
+    schedule_id: int | None = Field(
+        default=None,
+        description="The recurring transaction that recorded it, if any.",
+    )
 
     @field_validator("splits", mode="before")
     @classmethod

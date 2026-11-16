@@ -545,6 +545,141 @@ export interface paths {
         patch: operations["update_transaction_api_v1_transactions__transaction_id__patch"];
         trace?: never;
     };
+    "/api/v1/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Schedules
+         * @description List the recurring transactions, the next due first.
+         */
+        get: operations["list_schedules_api_v1_schedules_get"];
+        put?: never;
+        /**
+         * Create Schedule
+         * @description Create a recurring transaction.
+         */
+        post: operations["create_schedule_api_v1_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedules/occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Occurrences
+         * @description Occurrences of active schedules between two days (at most 750 days).
+         */
+        get: operations["list_occurrences_api_v1_schedules_occurrences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedules/catch-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Catch Up
+         * @description Create the missing monthly periods and record due automatic occurrences.
+         *
+         *     Call it when the app starts, with the user's current day. It is
+         *     idempotent: calling it again the same day changes nothing.
+         */
+        post: operations["catch_up_api_v1_schedules_catch_up_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Schedule
+         * @description Get one recurring transaction.
+         */
+        get: operations["get_schedule_api_v1_schedules__schedule_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Schedule
+         * @description Delete a recurring transaction; the transactions it recorded are kept.
+         */
+        delete: operations["delete_schedule_api_v1_schedules__schedule_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Schedule
+         * @description Change a recurring transaction. A `splits` list replaces the template.
+         */
+        patch: operations["update_schedule_api_v1_schedules__schedule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/schedules/{schedule_id}/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Occurrence
+         * @description Record the next occurrence, possibly with another day or amount.
+         */
+        post: operations["post_occurrence_api_v1_schedules__schedule_id__post_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schedules/{schedule_id}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip Occurrence
+         * @description Move to the following occurrence without recording anything.
+         */
+        post: operations["skip_occurrence_api_v1_schedules__schedule_id__skip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/periods": {
         parameters: {
             query?: never;
@@ -566,6 +701,33 @@ export interface paths {
          *     before it starts.
          */
         post: operations["create_period_api_v1_periods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/periods/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Regeneration
+         * @description Preview how existing periods would follow the monthly period settings.
+         */
+        get: operations["preview_regeneration_api_v1_periods_regenerate_get"];
+        put?: never;
+        /**
+         * Regenerate Periods
+         * @description Align existing periods with the monthly period settings.
+         *
+         *     Periods get new dates and names but keep their budgets; missing monthly
+         *     periods are created; nothing is deleted.
+         */
+        post: operations["regenerate_periods_api_v1_periods_regenerate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1508,6 +1670,43 @@ export interface components {
             notes?: string | null;
         };
         /**
+         * CatchUpIn
+         * @description The current day of the user, in their own time zone.
+         */
+        CatchUpIn: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+        };
+        /**
+         * CatchUpOut
+         * @description What catching up created, and what waits for confirmation.
+         */
+        CatchUpOut: {
+            /**
+             * Periods
+             * @description Monthly periods created.
+             */
+            periods: components["schemas"]["PeriodOut"][];
+            /**
+             * Posted
+             * @description Transactions recorded by automatic schedules.
+             */
+            posted: components["schemas"]["TransactionOut"][];
+            /**
+             * Due
+             * @description Occurrences waiting for confirmation, up to today.
+             */
+            due: components["schemas"]["OccurrenceOut"][];
+            /**
+             * Failed
+             * @description Automatic schedules that could not record an occurrence.
+             */
+            failed: components["schemas"]["ScheduleOut"][];
+        };
+        /**
          * CategoryCreate
          * @description A new category.
          */
@@ -1735,6 +1934,8 @@ export interface components {
             transactions: number;
             /** Duplicates */
             duplicates: number;
+            /** Schedules */
+            schedules: number;
         };
         /**
          * IncomeCreate
@@ -1803,6 +2004,43 @@ export interface components {
             net_worth: number;
         };
         /**
+         * OccurrenceOut
+         * @description A day on which a recurring transaction is (or was) due.
+         */
+        OccurrenceOut: {
+            /** Schedule Id */
+            schedule_id: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+        };
+        /**
+         * PeriodChangeKind
+         * @description What [`PeriodService.regenerate`][picciuli.services.PeriodService] does.
+         * @enum {string}
+         */
+        PeriodChangeKind: "create" | "update" | "keep";
+        /**
+         * PeriodChangeOut
+         * @description How regenerating the monthly periods changes one period.
+         */
+        PeriodChangeOut: {
+            kind: components["schemas"]["PeriodChangeKind"];
+            /** @description The period before the change; `null` when it is created. */
+            period: components["schemas"]["PeriodOut"] | null;
+            /** Name */
+            name: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** End */
+            end: string | null;
+        };
+        /**
          * PeriodCreate
          * @description A new period. Its name defaults to one derived from the dates.
          */
@@ -1833,6 +2071,17 @@ export interface components {
             start: string;
             /** End */
             end: string | null;
+        };
+        /**
+         * PeriodRegenerate
+         * @description The current day of the user: periods are regenerated up to it.
+         */
+        PeriodRegenerate: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
         };
         /**
          * PeriodSummaryOut
@@ -1973,6 +2222,147 @@ export interface components {
         SaleCostOut: {
             /** Cost */
             cost: number;
+        };
+        /**
+         * ScheduleCreate
+         * @description A new recurring transaction. Its splits cannot move shares.
+         */
+        ScheduleCreate: {
+            /**
+             * Start
+             * Format: date
+             * @description Day of the first occurrence.
+             */
+            start: string;
+            /** Splits */
+            splits: (components["schemas"]["AccountSplitIn"] | components["schemas"]["ExternalSplitIn"])[];
+            /** @default monthly */
+            frequency: components["schemas"]["ScheduleFrequency"];
+            /**
+             * Every
+             * @default 1
+             */
+            every: number;
+            /**
+             * Day Of Month
+             * @description Defaults to the day of `start`.
+             */
+            day_of_month?: number | null;
+            /** End */
+            end?: string | null;
+            /** Occurrences */
+            occurrences?: number | null;
+            /** @default auto */
+            mode: components["schemas"]["ScheduleMode"];
+            /** Description */
+            description?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * ScheduleFrequency
+         * @description The unit a [`Schedule`][picciuli.model.Schedule] repeats by.
+         * @enum {string}
+         */
+        ScheduleFrequency: "daily" | "weekly" | "monthly" | "yearly";
+        /**
+         * ScheduleMode
+         * @description What happens when an occurrence of a schedule is due.
+         * @enum {string}
+         */
+        ScheduleMode: "auto" | "confirm";
+        /**
+         * ScheduleOut
+         * @description A recurring transaction: a template of splits and when it repeats.
+         */
+        ScheduleOut: {
+            /** Id */
+            id: number;
+            /** Description */
+            description: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Splits */
+            splits: (components["schemas"]["AccountSplitOut"] | components["schemas"]["ExternalSplitOut"])[];
+            frequency: components["schemas"]["ScheduleFrequency"];
+            /** Every */
+            every: number;
+            /** Day Of Month */
+            day_of_month: number | null;
+            /**
+             * Next Date
+             * @description `null` once finished.
+             */
+            next_date: string | null;
+            /** End */
+            end: string | null;
+            /**
+             * Remaining
+             * @description Occurrences left including the next; `null` for no limit.
+             */
+            remaining: number | null;
+            mode: components["schemas"]["ScheduleMode"];
+            /** Paused */
+            paused: boolean;
+            /**
+             * Last Error
+             * @description Why the last automatic posting failed, if it did.
+             */
+            last_error: string | null;
+            kind: components["schemas"]["TransactionKind"];
+            /** Net Amount */
+            net_amount: number;
+            /** Is Finished */
+            is_finished: boolean;
+        };
+        /**
+         * SchedulePost
+         * @description Record the next occurrence; the fields change only this transaction.
+         */
+        SchedulePost: {
+            /**
+             * Date
+             * @description Defaults to the day of the next occurrence.
+             */
+            date?: string | null;
+            /**
+             * Splits
+             * @description Default to the template, for example to record a bill whose amount varies.
+             */
+            splits?: (components["schemas"]["AccountSplitIn"] | components["schemas"]["ExternalSplitIn"])[] | null;
+            /** Description */
+            description?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * ScheduleUpdate
+         * @description Changes to a recurring transaction; recorded transactions are kept.
+         */
+        ScheduleUpdate: {
+            /** Splits */
+            splits?: (components["schemas"]["AccountSplitIn"] | components["schemas"]["ExternalSplitIn"])[];
+            /**
+             * Next Date
+             * Format: date
+             */
+            next_date?: string;
+            frequency?: components["schemas"]["ScheduleFrequency"];
+            /** Every */
+            every?: number;
+            /** Day Of Month */
+            day_of_month?: number | null;
+            /** End */
+            end?: string | null;
+            /** Occurrences */
+            occurrences?: number | null;
+            mode?: components["schemas"]["ScheduleMode"];
+            /** Paused */
+            paused?: boolean;
+            /** Description */
+            description?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * SecurityCreate
@@ -2128,6 +2518,16 @@ export interface components {
             price_provider: string;
             /** Rate Provider */
             rate_provider: string;
+            /**
+             * Period Start Day
+             * @description Day of the month monthly periods start on (for example your payday), or `null` when periods are created by hand.
+             */
+            period_start_day: number | null;
+            /**
+             * Period Weekend Shift
+             * @description Whether monthly periods starting on a weekend start on the Friday before.
+             */
+            period_weekend_shift: boolean;
         };
         /**
          * SettingsUpdate
@@ -2145,6 +2545,10 @@ export interface components {
             price_provider?: string;
             /** Rate Provider */
             rate_provider?: string;
+            /** Period Start Day */
+            period_start_day?: number | null;
+            /** Period Weekend Shift */
+            period_weekend_shift?: boolean;
         };
         /**
          * TradeKind
@@ -2231,6 +2635,11 @@ export interface components {
             net_amount: number;
             /** @description Set when the splits were built by a purchase or sale of shares; editing the splits directly removes it. */
             trade?: components["schemas"]["TradeOut"] | null;
+            /**
+             * Schedule Id
+             * @description The recurring transaction that recorded it, if any.
+             */
+            schedule_id?: number | null;
         };
         /**
          * TransactionUpdate
@@ -4866,6 +5275,690 @@ export interface operations {
             };
         };
     };
+    list_schedules_api_v1_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_schedule_api_v1_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_occurrences_api_v1_schedules_occurrences_get: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OccurrenceOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    catch_up_api_v1_schedules_catch_up_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatchUpIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatchUpOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_schedule_api_v1_schedules__schedule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_schedule_api_v1_schedules__schedule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_schedule_api_v1_schedules__schedule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_occurrence_api_v1_schedules__schedule_id__post_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulePost"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skip_occurrence_api_v1_schedules__schedule_id__skip_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_periods_api_v1_periods_get: {
         parameters: {
             query?: {
@@ -4954,6 +6047,160 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeriodOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_regeneration_api_v1_periods_regenerate_get: {
+        parameters: {
+            query: {
+                today: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeriodChangeOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    regenerate_periods_api_v1_periods_regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeriodRegenerate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeriodChangeOut"][];
                 };
             };
             /** @description The body is not valid JSON */

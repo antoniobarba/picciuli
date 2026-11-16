@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { unwrap } from '../api/client';
 import { useAccounts, useApiMutation, useCategories, useMoney, useSecurities } from '../api/queries';
-import type { Account, Category, Transaction } from '../api/types';
+import type { Account, Category, Schedule, Transaction } from '../api/types';
 import { DateField } from '../components/DateField';
 import { AmountField, FormDialog, SelectField, TextField, type Option } from '../components/forms';
 import { useConfirm } from '../components/feedback';
 import { todayDay, type Day } from '../lib/dates';
-import { byId, categoryTree, transactionTitle } from '../lib/format';
+import { byId, categoryTree, movesShares, transactionTitle } from '../lib/format';
 import {
   accountTarget,
   categoryTarget,
@@ -25,6 +25,13 @@ import {
   type TransactionDraft,
 } from '../lib/forms';
 import { quantityText } from '../lib/money';
+import { templateTransaction } from '../lib/schedules';
+
+/** An occurrence of a recurring transaction, to record (possibly changed) or skip. */
+export interface OccurrenceToConfirm {
+  schedule: Schedule;
+  date: Day;
+}
 
 export interface TransactionFormProps {
   open: boolean;
@@ -32,6 +39,10 @@ export interface TransactionFormProps {
   day: Day;
   transaction?: Transaction | null;
   accountId?: number | null;
+  /** Record this occurrence of a recurring transaction instead of a new transaction. */
+  occurrence?: OccurrenceToConfirm | null;
+  /** Offered for existing transactions: repeat this transaction on a schedule. */
+  onMakeRecurring?: (transaction: Transaction) => void;
 }
 
 function accountOptions(accounts: readonly Account[], keep: ReadonlySet<number>): Option<number>[] {
@@ -54,51 +65,30 @@ export function categoryOptions(categories: readonly Category[]): Option<number>
   ];
 }
 
-export function TransactionForm({ open, onClose, day, transaction, accountId }: TransactionFormProps) {
+/** The account a simple draft uses: the chosen one, or the first open account. */
+export function useSelectedAccount(draft: TransactionDraft): number | null {
+  const accounts = useAccounts(true).data ?? [];
+  const defaultAccount = accounts.find((account) => !account.is_closed)?.id ?? null;
+  return draft.accountId ?? (draft.kind !== 'split' ? defaultAccount : null);
+}
+
+export interface TransactionFieldsProps {
+  draft: TransactionDraft;
+  update: (changes: Partial<TransactionDraft>) => void;
+  /** Accounts used by the edited splits stay selectable even when closed. */
+  usedAccounts?: ReadonlySet<number>;
+  dateLabel?: string;
+}
+
+/** Kind tabs, date, amount, accounts, categories or split lines, description and notes. */
+export function TransactionFields({ draft, update, usedAccounts, dateLabel = 'Date' }: TransactionFieldsProps) {
   const money = useMoney();
   const accounts = useAccounts(true).data ?? [];
   const categories = useCategories().data ?? [];
-  const confirm = useConfirm();
   const today = todayDay();
-
-  const [draft, setDraft] = useState<TransactionDraft>(() => {
-    if (transaction) return draftFromTransaction(transaction, money);
-    return emptyDraft(day, accountId ?? null);
-  });
-  const update = (changes: Partial<TransactionDraft>) => setDraft((current) => ({ ...current, ...changes }));
-
-  const defaultAccount = accounts.find((account) => !account.is_closed)?.id ?? null;
-  const selectedAccount = draft.accountId ?? (draft.kind !== 'split' ? defaultAccount : null);
-
-  const used = useMemo(() => {
-    const ids = new Set<number>();
-    for (const split of transaction?.splits ?? []) if (split.type === 'account') ids.add(split.account_id);
-    return ids;
-  }, [transaction]);
-  const accountChoices = accountOptions(accounts, used);
+  const selectedAccount = useSelectedAccount(draft);
+  const accountChoices = accountOptions(accounts, usedAccounts ?? new Set());
   const categoryChoices = categoryOptions(categories);
-
-  const save = useApiMutation(async (api, current: TransactionDraft) => {
-    const body = {
-      date: parseDate(current.date, today),
-      splits: draftSplits(current, money),
-      description: optionalText(current.description),
-      notes: optionalText(current.notes),
-    };
-    if (transaction) {
-      return unwrap(
-        api.PATCH('/api/v1/transactions/{transaction_id}', {
-          params: { path: { transaction_id: transaction.id } },
-          body,
-        }),
-      );
-    }
-    return unwrap(api.POST('/api/v1/transactions', { body }));
-  });
-
-  const remove = useApiMutation((api, id: number) =>
-    unwrap(api.DELETE('/api/v1/transactions/{transaction_id}', { params: { path: { transaction_id: id } } })),
-  );
 
   const switchKind = (kind: EntryKind) => {
     if (kind === draft.kind) return;
@@ -109,39 +99,8 @@ export function TransactionForm({ open, onClose, day, transaction, accountId }: 
     }
   };
 
-  const submit = () => save.mutateAsync({ ...draft, accountId: selectedAccount });
-
-  const deleteButton = transaction ? (
-    <button
-      type="button"
-      className="button danger-text"
-      onClick={async () => {
-        if (await confirm({ title: `Delete “${transactionTitle(transaction)}”?` })) {
-          await remove.mutateAsync(transaction.id);
-          onClose();
-        }
-      }}
-    >
-      Delete
-    </button>
-  ) : null;
-
   return (
-    <FormDialog
-      open={open}
-      onClose={onClose}
-      title={transaction ? 'Edit transaction' : 'New transaction'}
-      onSubmit={submit}
-      wide={draft.kind === 'split'}
-      secondary={deleteButton}
-      help={
-        draft.kind === 'split'
-          ? 'Account lines are balance changes (+ money in, − money out); the other lines are income (+) or expenses (−). The two totals must match.'
-          : draft.kind === 'transfer'
-            ? 'Money moving between two of your accounts, e.g. paying a credit card bill or saving.'
-            : 'Type the amount as a positive number.'
-      }
-    >
+    <>
       <div className="segmented" role="tablist" aria-label="Kind">
         {(Object.keys(ENTRY_KIND_LABELS) as EntryKind[]).map((kind) => (
           <button
@@ -157,7 +116,7 @@ export function TransactionForm({ open, onClose, day, transaction, accountId }: 
         ))}
       </div>
       <div className="form-row">
-        <DateField label="Date" value={draft.date} onChange={(date) => update({ date })} today={today} />
+        <DateField label={dateLabel} value={draft.date} onChange={(date) => update({ date })} today={today} />
         {draft.kind !== 'split' ? (
           <AmountField label="Amount" value={draft.amount} onChange={(amount) => update({ amount })} data-autofocus />
         ) : null}
@@ -209,6 +168,147 @@ export function TransactionForm({ open, onClose, day, transaction, accountId }: 
         placeholder="optional"
       />
       <NotesField value={draft.notes} onChange={(notes) => update({ notes })} />
+    </>
+  );
+}
+
+export function transactionHelp(kind: EntryKind): string {
+  if (kind === 'split') {
+    return 'Account lines are balance changes (+ money in, − money out); the other lines are income (+) or expenses (−). The two totals must match.';
+  }
+  if (kind === 'transfer') return 'Money moving between two of your accounts, e.g. paying a credit card bill or saving.';
+  return 'Type the amount as a positive number.';
+}
+
+export function TransactionForm({
+  open,
+  onClose,
+  day,
+  transaction,
+  accountId,
+  occurrence,
+  onMakeRecurring,
+}: TransactionFormProps) {
+  const money = useMoney();
+  const confirm = useConfirm();
+  const today = todayDay();
+
+  const [draft, setDraft] = useState<TransactionDraft>(() => {
+    if (occurrence) return draftFromTransaction(templateTransaction(occurrence.schedule, occurrence.date), money);
+    if (transaction) return draftFromTransaction(transaction, money);
+    return emptyDraft(day, accountId ?? null);
+  });
+  const update = (changes: Partial<TransactionDraft>) => setDraft((current) => ({ ...current, ...changes }));
+  const selectedAccount = useSelectedAccount(draft);
+
+  const used = useMemo(() => {
+    const ids = new Set<number>();
+    for (const split of transaction?.splits ?? []) if (split.type === 'account') ids.add(split.account_id);
+    return ids;
+  }, [transaction]);
+
+  const save = useApiMutation(async (api, current: TransactionDraft) => {
+    const body = {
+      date: parseDate(current.date, today),
+      splits: draftSplits(current, money),
+      description: optionalText(current.description),
+      notes: optionalText(current.notes),
+    };
+    if (occurrence) {
+      return unwrap(
+        api.POST('/api/v1/schedules/{schedule_id}/post', {
+          params: { path: { schedule_id: occurrence.schedule.id } },
+          body,
+        }),
+      );
+    }
+    if (transaction) {
+      return unwrap(
+        api.PATCH('/api/v1/transactions/{transaction_id}', {
+          params: { path: { transaction_id: transaction.id } },
+          body,
+        }),
+      );
+    }
+    return unwrap(api.POST('/api/v1/transactions', { body }));
+  });
+
+  const remove = useApiMutation((api, id: number) =>
+    unwrap(api.DELETE('/api/v1/transactions/{transaction_id}', { params: { path: { transaction_id: id } } })),
+  );
+  const skip = useApiMutation((api, id: number) =>
+    unwrap(api.POST('/api/v1/schedules/{schedule_id}/skip', { params: { path: { schedule_id: id } } })),
+  );
+
+  const submit = () => save.mutateAsync({ ...draft, accountId: selectedAccount });
+
+  let secondary = null;
+  if (occurrence) {
+    secondary = (
+      <button
+        type="button"
+        className="button"
+        onClick={async () => {
+          await skip.mutateAsync(occurrence.schedule.id);
+          onClose();
+        }}
+      >
+        Skip this one
+      </button>
+    );
+  } else if (transaction) {
+    secondary = (
+      <>
+        <button
+          type="button"
+          className="button danger-text"
+          onClick={async () => {
+            if (await confirm({ title: `Delete “${transactionTitle(transaction)}”?` })) {
+              await remove.mutateAsync(transaction.id);
+              onClose();
+            }
+          }}
+        >
+          Delete
+        </button>
+        {onMakeRecurring && transaction.schedule_id == null && !movesShares(transaction) ? (
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              onClose();
+              onMakeRecurring(transaction);
+            }}
+          >
+            Make recurring
+          </button>
+        ) : null}
+      </>
+    );
+  }
+
+  const title = occurrence
+    ? `Confirm “${occurrence.schedule.description || 'recurring transaction'}”`
+    : transaction
+      ? 'Edit transaction'
+      : 'New transaction';
+
+  return (
+    <FormDialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      onSubmit={submit}
+      saveLabel={occurrence ? 'Record' : 'Save'}
+      wide={draft.kind === 'split'}
+      secondary={secondary}
+      help={
+        occurrence
+          ? 'Change the amount or the date if this time is different; the recurring transaction stays the same.'
+          : transactionHelp(draft.kind)
+      }
+    >
+      <TransactionFields draft={draft} update={update} usedAccounts={used} />
     </FormDialog>
   );
 }

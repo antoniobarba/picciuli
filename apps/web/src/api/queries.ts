@@ -250,3 +250,19 @@ export function useRateProviders() {
     staleTime: Infinity,
   });
 }
+
+export function useSchedules() {
+  const api = useApi();
+  return useQuery({ queryKey: ['schedules'], queryFn: () => unwrap(api.GET('/api/v1/schedules')) });
+}
+
+/** Days on which active recurring transactions fall between `start` and `end`; disabled when `start > end`. */
+export function useOccurrences(start: Day, end: Day) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['occurrences', start, end],
+    queryFn: () => unwrap(api.GET('/api/v1/schedules/occurrences', { params: { query: { start, end } } })),
+    enabled: start <= end,
+    placeholderData: keepPreviousData,
+  });
+}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -154,13 +155,21 @@ class TestReport:
 
 class TestSettings:
     def test_defaults_and_update(self, book: Book) -> None:
-        usd = Settings("$", 2, "USD")
+        usd = Settings("$", 2, "USD", period_start_day=1)
         assert book.settings.get() == usd
         assert usd.cost_method is CostMethod.AVERAGE
         assert usd.price_provider == "yahoo"
-        assert book.settings.update(currency=" € ") == Settings("€", 2, "USD")
-        assert book.settings.update(minor_digits=0) == Settings("€", 0, "USD")
-        assert book.settings.get() == Settings("€", 0, "USD")
+        assert book.settings.update(currency=" € ") == replace(usd, currency="€")
+        assert book.settings.update(minor_digits=0) == replace(
+            usd, currency="€", minor_digits=0
+        )
+        assert book.settings.get() == replace(usd, currency="€", minor_digits=0)
+
+    def test_monthly_period_settings(self, book: Book) -> None:
+        updated = book.settings.update(period_start_day=27, period_weekend_shift=False)
+        assert (updated.period_start_day, updated.period_weekend_shift) == (27, False)
+        assert book.settings.update(period_start_day=None).period_start_day is None
+        assert book.settings.get().period_weekend_shift is False
 
     def test_investment_settings(self, book: Book) -> None:
         book.securities.set_exchange_rate("GBP", d(1), Decimal("1.1"))
@@ -186,9 +195,13 @@ class TestSettings:
             {"currency_code": 1},
             {"cost_method": "lifo"},
             {"price_provider": "nowhere"},
+            {"period_start_day": 0},
+            {"period_start_day": 32},
+            {"period_start_day": "1"},
+            {"period_weekend_shift": 1},
         ],
     )
     def test_invalid(self, book: Book, kwargs: dict[str, object]) -> None:
         with pytest.raises(ValidationError):
             book.settings.update(**kwargs)  # type: ignore[arg-type]
-        assert book.settings.get() == Settings("$", 2, "USD")
+        assert book.settings.get() == Settings("$", 2, "USD", period_start_day=1)

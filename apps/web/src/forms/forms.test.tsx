@@ -127,6 +127,7 @@ describe('ImportForm', () => {
     budgets: 0,
     transactions: 5,
     duplicates: 0,
+    schedules: 0,
   };
 
   it('uploads the raw file with the chosen mode', async () => {

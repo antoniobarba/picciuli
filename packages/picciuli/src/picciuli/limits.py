@@ -19,11 +19,15 @@ from typing import Final
 __all__ = [
     "DECIMAL_PLACES",
     "MAX_AMOUNT",
+    "MAX_CATCH_UP",
     "MAX_CATEGORY_SYMBOL_LENGTH",
     "MAX_DECIMAL",
+    "MAX_GENERATED_PERIODS",
     "MAX_ID",
     "MAX_MEMO_LENGTH",
     "MAX_NAME_LENGTH",
+    "MAX_PROJECTION_DAYS",
+    "MAX_SCHEDULE_EVERY",
     "MAX_SPLITS",
     "MAX_SYMBOL_LENGTH",
     "MAX_TEXT_LENGTH",
@@ -66,3 +70,19 @@ MAX_SYMBOL_LENGTH: Final = 32
 
 MAX_CATEGORY_SYMBOL_LENGTH: Final = 12
 """Longest short label of a category, in characters."""
+
+MAX_SCHEDULE_EVERY: Final = 1000
+"""Most days, weeks, months or years between two occurrences of a schedule."""
+
+MAX_CATCH_UP: Final = 1000
+"""Most occurrences a single catch-up records or lists.
+
+Calling [`catch_up`][picciuli.services.ScheduleService.catch_up] again
+continues from where the previous call stopped.
+"""
+
+MAX_PROJECTION_DAYS: Final = 750
+"""Longest range of days, in days, over which occurrences can be listed."""
+
+MAX_GENERATED_PERIODS: Final = 240
+"""Most monthly periods created or regenerated at once (20 years)."""

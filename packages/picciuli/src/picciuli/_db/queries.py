@@ -23,6 +23,9 @@ from picciuli.model import (
     ExternalSplit,
     Period,
     Price,
+    Schedule,
+    ScheduleFrequency,
+    ScheduleMode,
     Security,
     SecurityKind,
     Split,
@@ -39,6 +42,8 @@ from .tables import (
     ExchangeRateRow,
     PeriodRow,
     PriceRow,
+    ScheduleRow,
+    ScheduleSplitRow,
     SecurityRow,
     SplitRow,
     TradeRow,
@@ -160,6 +165,31 @@ def to_transaction(row: TransactionRow) -> Transaction:
         notes=row.notes,
         splits=tuple(to_split(split) for split in row.splits),
         trade=None if row.trade is None else to_trade(row.trade),
+        schedule_id=row.schedule_id,
+    )
+
+
+def to_schedule_split(row: ScheduleSplitRow) -> Split:
+    if row.account_id is not None:
+        return AccountSplit(account_id=row.account_id, amount=row.amount, memo=row.memo)
+    return ExternalSplit(amount=row.amount, category_id=row.category_id, memo=row.memo)
+
+
+def to_schedule(row: ScheduleRow) -> Schedule:
+    return Schedule(
+        id=row.id,
+        description=row.description,
+        notes=row.notes,
+        splits=tuple(to_schedule_split(split) for split in row.splits),
+        frequency=ScheduleFrequency(row.frequency),
+        every=row.every,
+        day_of_month=row.day_of_month,
+        next_date=row.next_date,
+        end=row.end_date,
+        remaining=row.remaining,
+        mode=ScheduleMode(row.mode),
+        paused=bool(row.paused),
+        last_error=row.last_error,
     )
 
 

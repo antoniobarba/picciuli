@@ -25,7 +25,7 @@ from picciuli.errors import SchemaVersionError
 
 from .tables import Base, MetaRow
 
-SCHEMA_VERSION: Final = 3
+SCHEMA_VERSION: Final = 4
 """Version of the schema created by this library release."""
 
 MigrationStep = Callable[[Connection], None]
@@ -301,9 +301,77 @@ def _upgrade_2_to_3(connection: Connection) -> None:
         )
 
 
+# Schema version 4 adds recurring transactions (`schedules` and their template
+# splits) and links the transactions they record. Existing rows are never
+# rewritten: `transactions` only gains a nullable last column, so that its
+# layout matches a new database exactly. Frozen like `_V2_DDL`.
+_V4_DDL: Final = (
+    """CREATE TABLE schedules (
+	id INTEGER NOT NULL,
+	description VARCHAR,
+	notes TEXT,
+	frequency VARCHAR NOT NULL,
+	every INTEGER NOT NULL,
+	day_of_month INTEGER,
+	next_date DATE,
+	end_date DATE,
+	remaining INTEGER,
+	mode VARCHAR NOT NULL,
+	paused BOOLEAN NOT NULL,
+	last_error TEXT,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_schedule_frequency CHECK (frequency IN ('daily', 'weekly', """
+    """'monthly', 'yearly')),
+	CONSTRAINT ck_schedule_every CHECK (every >= 1),
+	CONSTRAINT ck_schedule_day_of_month CHECK ((frequency IN ('monthly', """
+    """'yearly') AND day_of_month BETWEEN 1 AND 31) OR (frequency IN ('daily', """
+    """'weekly') AND day_of_month IS NULL)),
+	CONSTRAINT ck_schedule_remaining CHECK (remaining IS NULL OR remaining >= 0),
+	CONSTRAINT ck_schedule_mode CHECK (mode IN ('auto', 'confirm')),
+	CONSTRAINT ck_schedule_paused CHECK (paused IN (0, 1))
+)""",
+    "CREATE INDEX ix_schedules_next_date ON schedules (next_date)",
+    """CREATE TABLE schedule_splits (
+	id INTEGER NOT NULL,
+	schedule_id INTEGER NOT NULL,
+	position INTEGER NOT NULL,
+	account_id INTEGER,
+	category_id INTEGER,
+	amount INTEGER NOT NULL,
+	memo VARCHAR,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_schedule_split_amount CHECK (amount != 0),
+	CONSTRAINT ck_schedule_split_kind CHECK (account_id IS NULL OR """
+    """category_id IS NULL),
+	FOREIGN KEY(schedule_id) REFERENCES schedules (id) ON DELETE CASCADE,
+	FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE RESTRICT,
+	FOREIGN KEY(category_id) REFERENCES categories (id) ON DELETE RESTRICT
+)""",
+    "CREATE INDEX ix_schedule_splits_schedule_id ON schedule_splits (schedule_id)",
+    "CREATE INDEX ix_schedule_splits_category ON schedule_splits (category_id)",
+    "CREATE INDEX ix_schedule_splits_account ON schedule_splits (account_id)",
+    "ALTER TABLE transactions ADD COLUMN schedule_id INTEGER",
+    "CREATE INDEX ix_transactions_schedule_id ON transactions (schedule_id)",
+)
+
+
+def _upgrade_3_to_4(connection: Connection) -> None:
+    for statement in _V4_DDL:
+        connection.exec_driver_sql(statement)
+    # Existing books keep creating their periods by hand until asked otherwise.
+    connection.execute(
+        insert(MetaRow),
+        [
+            {"key": "period_start_day", "value": ""},
+            {"key": "period_weekend_shift", "value": "1"},
+        ],
+    )
+
+
 MIGRATIONS: Final[Mapping[int, MigrationStep]] = {
     1: _upgrade_1_to_2,
     2: _upgrade_2_to_3,
+    3: _upgrade_3_to_4,
 }
 """Upgrade steps keyed by the version they upgrade *from* (step `n` -> `n + 1`).
 
@@ -318,6 +386,8 @@ DEFAULT_SETTINGS: Final[Mapping[str, str]] = {
     "cost_method": "average",
     "price_provider": "yahoo",
     "rate_provider": "yahoo",
+    "period_start_day": "1",
+    "period_weekend_shift": "1",
 }
 
 

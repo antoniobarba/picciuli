@@ -39,6 +39,7 @@ __all__ = [
     "Budget",
     "BudgetLine",
     "BudgetReport",
+    "CatchUp",
     "Category",
     "CategoryTotal",
     "CostMethod",
@@ -47,12 +48,18 @@ __all__ = [
     "Holding",
     "ImportSummary",
     "NetWorth",
+    "Occurrence",
     "Period",
+    "PeriodChange",
+    "PeriodChangeKind",
     "PeriodSummary",
     "Price",
     "PriceUpdate",
     "Register",
     "RegisterEntry",
+    "Schedule",
+    "ScheduleFrequency",
+    "ScheduleMode",
     "Security",
     "SecurityKind",
     "Settings",
@@ -169,6 +176,39 @@ class CostMethod(str, enum.Enum):
     *regime amministrato*)."""
     FIFO = "fifo"
     """First in, first out: the oldest shares are sold first."""
+
+
+class ScheduleFrequency(str, enum.Enum):
+    """The unit a [`Schedule`][picciuli.model.Schedule] repeats by."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+
+class ScheduleMode(str, enum.Enum):
+    """What happens when an occurrence of a schedule is due."""
+
+    AUTO = "auto"
+    """It is recorded on its own by
+    [`catch_up`][picciuli.services.ScheduleService.catch_up]."""
+    CONFIRM = "confirm"
+    """It waits until it is [posted][picciuli.services.ScheduleService.post]
+    (possibly with a different amount) or
+    [skipped][picciuli.services.ScheduleService.skip]."""
+
+
+class PeriodChangeKind(str, enum.Enum):
+    """What [`PeriodService.regenerate`][picciuli.services.PeriodService] does."""
+
+    CREATE = "create"
+    """A new period is added."""
+    UPDATE = "update"
+    """An existing period gets new dates or a new name; its budgets are kept."""
+    KEEP = "keep"
+    """An existing period overlaps one that is already regenerated; it is left
+    unchanged."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,6 +428,9 @@ class Transaction:
         splits: Splits in their stored order.
         trade: The purchase or sale of shares the splits were built from,
             or `None` for any other transaction.
+        schedule_id: The [`Schedule`][picciuli.model.Schedule] that recorded
+            the transaction, or `None`. It becomes `None` when the schedule
+            is deleted.
     """
 
     id: int
@@ -396,6 +439,7 @@ class Transaction:
     notes: str | None
     splits: tuple[Split, ...]
     trade: Trade | None = None
+    schedule_id: int | None = None
 
     @property
     def account_splits(self) -> tuple[AccountSplit, ...]:
@@ -415,14 +459,110 @@ class Transaction:
     @property
     def kind(self) -> TransactionKind:
         """Income, expense, transfer or mixed, derived from the external splits."""
-        external = self.external_splits
-        if not external:
-            return TransactionKind.TRANSFER
-        if all(s.amount > 0 for s in external):
-            return TransactionKind.INCOME
-        if all(s.amount < 0 for s in external):
-            return TransactionKind.EXPENSE
-        return TransactionKind.MIXED
+        return _kind(self.external_splits)
+
+
+def _kind(external: tuple[ExternalSplit, ...]) -> TransactionKind:
+    if not external:
+        return TransactionKind.TRANSFER
+    if all(s.amount > 0 for s in external):
+        return TransactionKind.INCOME
+    if all(s.amount < 0 for s in external):
+        return TransactionKind.EXPENSE
+    return TransactionKind.MIXED
+
+
+@dataclass(frozen=True, slots=True)
+class Schedule:
+    """A recurring transaction: a template of splits and a repetition rule.
+
+    Occurrences fall every `every` days, weeks, months or years starting
+    from the first one. Monthly and yearly schedules fall on `day_of_month`,
+    or on the last day of shorter months (31 means "the last day of every
+    month"). A schedule finishes after its `end` day or once `remaining`
+    reaches zero.
+
+    The splits follow the rules of [`Transaction`][picciuli.model.Transaction]
+    but cannot move shares.
+
+    Attributes:
+        id: Unique identifier.
+        description: Description of the transactions it records.
+        notes: Notes of the transactions it records.
+        splits: Template of the splits of each transaction.
+        frequency: Unit of repetition.
+        every: Number of units between two occurrences (1 or more).
+        day_of_month: Day of the month of monthly and yearly occurrences
+            (1 to 31), or `None` for daily and weekly schedules.
+        next_date: Day of the next occurrence, or `None` once finished.
+        end: Last day an occurrence may fall on, or `None`.
+        remaining: Occurrences left including `next_date`, or `None` for no
+            limit.
+        mode: Whether due occurrences are recorded on their own or wait for
+            confirmation.
+        paused: Whether the schedule is suspended: paused schedules are
+            neither caught up nor projected.
+        last_error: Why the last automatic posting failed, or `None`.
+    """
+
+    id: int
+    description: str | None
+    notes: str | None
+    splits: tuple[Split, ...]
+    frequency: ScheduleFrequency
+    every: int
+    day_of_month: int | None
+    next_date: dt.date | None
+    end: dt.date | None
+    remaining: int | None
+    mode: ScheduleMode
+    paused: bool
+    last_error: str | None
+
+    @property
+    def is_finished(self) -> bool:
+        """Whether the schedule has no occurrence left."""
+        return self.next_date is None
+
+    @property
+    def net_amount(self) -> int:
+        """Total effect on you of each occurrence: the sum of the external splits."""
+        return sum(s.amount for s in self.splits if isinstance(s, ExternalSplit))
+
+    @property
+    def kind(self) -> TransactionKind:
+        """Income, expense, transfer or mixed, derived from the external splits."""
+        return _kind(tuple(s for s in self.splits if isinstance(s, ExternalSplit)))
+
+
+@dataclass(frozen=True, slots=True)
+class Occurrence:
+    """A day on which a schedule records (or will record) a transaction.
+
+    Attributes:
+        schedule_id: The schedule.
+        date: Day of the occurrence.
+    """
+
+    schedule_id: int
+    date: dt.date
+
+
+@dataclass(frozen=True, slots=True)
+class CatchUp:
+    """Outcome of [`catch_up`][picciuli.services.ScheduleService.catch_up].
+
+    Attributes:
+        posted: Transactions recorded by automatic schedules, by date.
+        due: Occurrences of schedules waiting for confirmation, up to the
+            given day, by date.
+        failed: Automatic schedules that could not record a due occurrence;
+            see their `last_error`.
+    """
+
+    posted: tuple[Transaction, ...]
+    due: tuple[Occurrence, ...]
+    failed: tuple[Schedule, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -588,6 +728,26 @@ class PeriodSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class PeriodChange:
+    """One step of regenerating periods from the monthly period settings.
+
+    Attributes:
+        kind: Whether the period is created, updated or kept.
+        period: The existing period before the change, or `None` when one is
+            created.
+        name: Name after the change.
+        start: First day after the change.
+        end: Last day after the change, or `None` if still open.
+    """
+
+    kind: PeriodChangeKind
+    period: Period | None
+    name: str
+    start: dt.date
+    end: dt.date | None
+
+
+@dataclass(frozen=True, slots=True)
 class BudgetLine:
     """Status of one budget.
 
@@ -644,6 +804,12 @@ class Settings:
         rate_provider: Identifier of the exchange-rate provider used to refresh
             exchange rates (see
             [`ExchangeRateProvider`][picciuli.rates.ExchangeRateProvider]).
+        period_start_day: Day of the month (1 to 31, for example your
+            payday) on which monthly periods start, or `None` when periods
+            are only created by hand. See
+            [`PeriodService.ensure_monthly`][picciuli.services.PeriodService.ensure_monthly].
+        period_weekend_shift: Whether a monthly period that would start on a
+            Saturday or Sunday starts on the Friday before instead.
     """
 
     currency: str
@@ -652,6 +818,8 @@ class Settings:
     cost_method: CostMethod = CostMethod.AVERAGE
     price_provider: str = "yahoo"
     rate_provider: str = "yahoo"
+    period_start_day: int | None = None
+    period_weekend_shift: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -844,6 +1012,7 @@ class ImportSummary:
         transactions: Transactions added.
         duplicates: Transactions skipped because an identical one already
             existed.
+        schedules: Recurring transactions added.
     """
 
     replaced: bool
@@ -856,3 +1025,4 @@ class ImportSummary:
     budgets: int
     transactions: int
     duplicates: int
+    schedules: int = 0

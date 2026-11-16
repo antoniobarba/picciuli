@@ -45,7 +45,7 @@ COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
     "exchange_rates": ("id", "currency", "date", "rate"),
     "periods": ("id", "name", "start_date", "end_date"),
     "budgets": ("id", "category_id", "period_id", "amount"),
-    "transactions": ("id", "date", "description", "notes"),
+    "transactions": ("id", "date", "description", "notes", "schedule_id"),
     "splits": (
         "id",
         "transaction_id",
@@ -70,6 +70,29 @@ COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "tax",
         "tax_category_id",
         "gain_category_id",
+    ),
+    "schedules": (
+        "id",
+        "description",
+        "notes",
+        "frequency",
+        "every",
+        "day_of_month",
+        "next_date",
+        "end_date",
+        "remaining",
+        "mode",
+        "paused",
+        "last_error",
+    ),
+    "schedule_splits": (
+        "id",
+        "schedule_id",
+        "position",
+        "account_id",
+        "category_id",
+        "amount",
+        "memo",
     ),
 }
 """Columns read from each table, in the order of the returned tuples."""

@@ -19,6 +19,7 @@ _MAX_MINOR_DIGITS = 6
 def read_settings(session: Session) -> Settings:
     values = {row.key: row.value for row in session.scalars(select(MetaRow))}
     code = values.get("currency_code") or None
+    start_day = values.get("period_start_day") or None
     return Settings(
         currency=values.get("currency", "$"),
         minor_digits=int(values.get("minor_digits", "2")),
@@ -26,7 +27,18 @@ def read_settings(session: Session) -> Settings:
         cost_method=CostMethod(values.get("cost_method", CostMethod.AVERAGE.value)),
         price_provider=values.get("price_provider", "yahoo"),
         rate_provider=values.get("rate_provider", "yahoo"),
+        period_start_day=None if start_day is None else int(start_day),
+        period_weekend_shift=values.get("period_weekend_shift", "1") == "1",
     )
+
+
+def _period_start_day(value: object) -> int | None:
+    if value is None:
+        return None
+    day = v.integer(value, "period start day")
+    if not 1 <= day <= 31:
+        raise ValidationError("period start day must be between 1 and 31")
+    return day
 
 
 def _write(session: Session, key: str, value: str) -> None:
@@ -66,6 +78,8 @@ class SettingsService:
         cost_method: CostMethod | str | Unset = UNSET,
         price_provider: str | Unset = UNSET,
         rate_provider: str | Unset = UNSET,
+        period_start_day: int | None | Unset = UNSET,
+        period_weekend_shift: bool | Unset = UNSET,
     ) -> Settings:
         """Change settings; arguments left `UNSET` are not modified.
 
@@ -75,6 +89,10 @@ class SettingsService:
         Exchange rates are relative to the book currency, so changing
         `currency_code` deletes every stored exchange rate; refresh prices
         afterwards to download rates for the new currency.
+
+        Changing the monthly period settings does not change existing
+        periods; see
+        [`PeriodService.regenerate`][picciuli.services.PeriodService.regenerate].
 
         Args:
             currency: Currency symbol or code, for example `"€"` or `"EUR"`.
@@ -87,6 +105,10 @@ class SettingsService:
             rate_provider: Identifier of a registered exchange-rate provider
                 (see
                 [`available_rate_providers`][picciuli.rates.available_rate_providers]).
+            period_start_day: Day of the month (1 to 31) monthly periods start
+                on, or `None` to create periods only by hand.
+            period_weekend_shift: Whether monthly periods that would start on
+                a weekend start on the Friday before.
 
         Raises:
             ValidationError: If an argument is invalid.
@@ -123,6 +145,11 @@ class SettingsService:
             rates = v.name(rate_provider, "exchange-rate provider")
             if rates not in rate_provider_ids():
                 raise ValidationError(f"unknown exchange-rate provider {rates!r}")
+        start_day: int | None | Unset = UNSET
+        if not isinstance(period_start_day, Unset):
+            start_day = _period_start_day(period_start_day)
+        if not isinstance(period_weekend_shift, (Unset, bool)):
+            raise ValidationError("period weekend shift must be a boolean")
         with self._uow.session() as session:
             if new_currency is not None:
                 _write(session, "currency", new_currency)
@@ -138,5 +165,17 @@ class SettingsService:
                 _write(session, "price_provider", provider)
             if rates is not None:
                 _write(session, "rate_provider", rates)
+            if not isinstance(start_day, Unset):
+                _write(
+                    session,
+                    "period_start_day",
+                    "" if start_day is None else str(start_day),
+                )
+            if not isinstance(period_weekend_shift, Unset):
+                _write(
+                    session,
+                    "period_weekend_shift",
+                    "1" if period_weekend_shift else "0",
+                )
             session.flush()
             return read_settings(session)

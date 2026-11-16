@@ -2,16 +2,19 @@ import { useRef, useState, type FormEvent } from 'react';
 import { unwrap } from '../api/client';
 import { useApi } from '../api/context';
 import { useApiMutation, useMe, usePriceProviders, useRateProviders, useSettings } from '../api/queries';
-import type { CostMethod, Settings as BookSettings } from '../api/types';
+import type { CostMethod, PeriodChange, Settings as BookSettings } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { displayName } from '../auth/oidc';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage, SelectField, TextField } from '../components/forms';
+import { Modal } from '../components/Modal';
 import { Loading, PageHeader } from '../components/ui';
 import { ImportForm } from '../forms/ImportForm';
-import { COST_METHOD_LABELS } from '../lib/format';
+import { todayDay } from '../lib/dates';
+import { COST_METHOD_LABELS, periodRange } from '../lib/format';
 import { InputError } from '../lib/forms';
 import { MoneyFormat } from '../lib/money';
+import { catchUpMessage } from '../lib/schedules';
 
 const COST_OPTIONS = (Object.keys(COST_METHOD_LABELS) as CostMethod[]).map((value) => ({
   value,
@@ -24,8 +27,145 @@ export function Settings() {
     <div className="page narrow">
       <PageHeader title="Settings" />
       {settings.data ? <BookSettingsForm key={JSON.stringify(settings.data)} settings={settings.data} /> : <Loading />}
+      {settings.data ? <MonthlyPeriodsForm settings={settings.data} /> : null}
       <AccountSection />
     </div>
+  );
+}
+
+const START_DAY_OPTIONS = [
+  { value: 0, label: 'Off: I create periods by hand' },
+  ...Array.from({ length: 30 }, (_, index) => ({ value: index + 1, label: `Day ${index + 1}` })),
+  { value: 31, label: 'Last day of the month' },
+];
+
+const CHANGE_LABELS: Record<PeriodChange['kind'], string> = {
+  create: 'New',
+  update: 'Changed',
+  keep: 'Kept (overlaps)',
+};
+
+/** Monthly periods starting on payday, created on their own, and aligning the existing ones. */
+export function MonthlyPeriodsForm({ settings }: { settings: BookSettings }) {
+  const notify = useNotify();
+  const today = todayDay();
+  const [startDay, setStartDay] = useState(settings.period_start_day ?? 0);
+  const [shift, setShift] = useState(settings.period_weekend_shift);
+  const [changes, setChanges] = useState<PeriodChange[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useApiMutation(async (api) => {
+    const updated = await unwrap(
+      api.PATCH('/api/v1/settings', { body: { period_start_day: startDay || null, period_weekend_shift: shift } }),
+    );
+    if (!updated.period_start_day) return [];
+    return unwrap(api.GET('/api/v1/periods/regenerate', { params: { query: { today } } }));
+  });
+  const regenerate = useApiMutation((api) =>
+    unwrap(api.POST('/api/v1/periods/regenerate', { body: { today } })),
+  );
+  const catchUp = useApiMutation((api) => unwrap(api.POST('/api/v1/schedules/catch-up', { body: { today } })));
+
+  const finish = async () => {
+    setChanges(null);
+    const result = await catchUp.mutateAsync(undefined);
+    notify(catchUpMessage(result) ?? 'Monthly periods saved', { kind: 'success' });
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    try {
+      const preview = await save.mutateAsync(undefined);
+      if (preview.some((change) => change.kind !== 'keep')) setChanges(preview);
+      else if (startDay) await finish();
+      else notify('Monthly periods turned off', { kind: 'success' });
+    } catch (failure) {
+      setError(errorMessage(failure));
+    }
+  };
+
+  return (
+    <form className="card form settings-form" onSubmit={submit} noValidate>
+      <div className="card-header">
+        <h2>Monthly periods</h2>
+      </div>
+      <div className="form-body">
+        <SelectField
+          label="Each period starts on"
+          value={startDay}
+          options={START_DAY_OPTIONS}
+          onChange={setStartDay}
+          hint="For example your payday. A new period starts on its own every month, with the budgets of the previous one."
+        />
+        <label className="switch">
+          <input type="checkbox" checked={shift} onChange={(e) => setShift(e.target.checked)} disabled={!startDay} />
+          When that day is a Saturday or Sunday, start on the Friday before
+        </label>
+      </div>
+      {error ? (
+        <div className="form-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className="form-actions">
+        <button type="submit" className="button primary" disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : 'Save periods'}
+        </button>
+      </div>
+      <Modal open={changes !== null} onClose={() => void finish()} title="Update your existing periods?" wide>
+        <div className="form-body">
+          <p>
+            Your periods can follow the new monthly rule. Changed periods keep their budgets; nothing is deleted.
+          </p>
+          <table className="table compact">
+            <thead>
+              <tr>
+                <th>Change</th>
+                <th>Period</th>
+                <th>Dates</th>
+                <th className="hide-sm">Before</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(changes ?? []).map((change, index) => (
+                <tr key={index}>
+                  <td>{CHANGE_LABELS[change.kind]}</td>
+                  <td className="strong">{change.name}</td>
+                  <td className="nowrap">{periodRange(change)}</td>
+                  <td className="hide-sm muted">
+                    {change.kind === 'update' && change.period
+                      ? `${change.period.name}, ${periodRange(change.period)}`
+                      : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="form-actions">
+          <button type="button" className="button" onClick={() => void finish()}>
+            Keep my periods
+          </button>
+          <button
+            type="button"
+            className="button primary"
+            disabled={regenerate.isPending}
+            onClick={async () => {
+              try {
+                await regenerate.mutateAsync(undefined);
+                await finish();
+              } catch (failure) {
+                setChanges(null);
+                setError(errorMessage(failure));
+              }
+            }}
+          >
+            Update periods
+          </button>
+        </div>
+      </Modal>
+    </form>
   );
 }
 

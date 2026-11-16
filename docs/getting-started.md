@@ -85,6 +85,41 @@ february = book.periods.create(dt.date(2025, 2, 1))  # closes January on the 31s
 book.budgets.copy(january.id, february.id)
 ```
 
+Or let the periods follow your payday: each month's period is then created,
+with the previous budgets, when you call `ensure_monthly`.
+
+```python
+book.settings.update(period_start_day=27)
+book.periods.ensure_monthly(dt.date.today())
+```
+
+## Recurring transactions
+
+Enter the salary and the mortgage once; `catch_up` records every occurrence
+that is due, each on its own day.
+
+```python
+from picciuli import ScheduleMode
+
+book.schedules.create(
+    dt.date(2025, 2, 27),
+    [AccountSplit(checking.id, 250000), ExternalSplit(250000, salary.id)],
+    description="ACME",
+)
+power = book.schedules.create(
+    dt.date(2025, 2, 10),
+    [AccountSplit(checking.id, -9000), ExternalSplit(-9000)],
+    description="Electricity",
+    mode=ScheduleMode.CONFIRM,  # the amount changes: wait for confirmation
+)
+
+result = book.schedules.catch_up(dt.date(2025, 4, 30))
+print(len(result.posted), "recorded,", len(result.due), "to confirm")
+book.schedules.post(  # this month's bill, with its real amount
+    power.id, splits=[AccountSplit(checking.id, -9137), ExternalSplit(-9137)]
+)
+```
+
 ## Investments
 
 ```python

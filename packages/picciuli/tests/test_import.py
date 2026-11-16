@@ -10,9 +10,11 @@ from pathlib import Path
 import pytest
 
 from picciuli import (
+    AccountSplit,
     AccountType,
     Book,
     ConflictError,
+    ExternalSplit,
     ImportSummary,
     TradeKind,
     ValidationError,
@@ -381,3 +383,91 @@ def test_file_breaking_a_domain_rule_is_refused(
     assert book.accounts.list() == []
     assert book.transactions.list() == []
     assert book.settings.get().cost_method == "average"
+
+
+@pytest.fixture
+def scheduled(source: Book) -> Book:
+    checking, _ = source.accounts.list()
+    groceries = next(c for c in source.categories.list() if c.name == "Groceries")
+    source.settings.update(period_start_day=27, period_weekend_shift=False)
+    rent = source.schedules.create(
+        d(5),
+        [AccountSplit(checking.id, -1000), ExternalSplit(-1000, groceries.id)],
+        description="Rent",
+        mode="confirm",
+    )
+    source.schedules.post(rent.id)
+    paused = source.schedules.create(
+        d(20),
+        [AccountSplit(checking.id, -50), ExternalSplit(-50)],
+        frequency="weekly",
+        every=2,
+        occurrences=3,
+    )
+    source.schedules.update(paused.id, paused=True)
+    return source
+
+
+def test_schedules_are_copied_and_merged(
+    book: Book, scheduled: Book, tmp_path: Path
+) -> None:
+    path = _write(scheduled, tmp_path / "export.db")
+    summary = book.import_file(path)
+    assert (summary.schedules, summary.transactions) == (2, 5)
+    assert book.settings.get().period_start_day == 27
+    assert book.settings.get().period_weekend_shift is False
+
+    def shape(target: Book) -> list[tuple[object, ...]]:
+        return [
+            (
+                *(s.description, s.frequency, s.every, s.next_date, s.remaining),
+                *(s.mode, s.paused, len(s.splits), s.net_amount),
+            )
+            for s in target.schedules.list()
+        ]
+
+    assert shape(book) == shape(scheduled)
+    rent = next(s for s in book.schedules.list() if s.description == "Rent")
+    (linked,) = [t for t in book.transactions.list() if t.schedule_id is not None]
+    assert (linked.schedule_id, linked.date) == (rent.id, d(5))
+
+    again = book.import_file(path)
+    assert (again.schedules, again.duplicates) == (0, 5)
+    assert len(book.schedules.list()) == 2
+
+    book.import_file(path, replace=True)
+    assert shape(book) == shape(scheduled)
+
+
+@pytest.mark.parametrize(
+    ("statement", "message"),
+    [
+        ("UPDATE schedules SET frequency = 'hourly'", "invalid frequency"),
+        ("UPDATE schedules SET mode = 'later'", "invalid mode"),
+        ("UPDATE schedules SET paused = 2", "paused must be"),
+        ("UPDATE schedules SET every = 0", "every must be"),
+        ("UPDATE schedules SET next_date = 'soon'", "YYYY-MM-DD"),
+        ("UPDATE schedules SET end_date = '2025-01-01'", "after the end day"),
+        ("UPDATE schedules SET remaining = 0", "occurrences left"),
+        (
+            "UPDATE schedule_splits SET amount = amount * 2 WHERE position = 1",
+            "unbalanced",
+        ),
+        (
+            "UPDATE schedule_splits SET account_id = 99 WHERE position = 1",
+            "account does not exist",
+        ),
+        ("UPDATE schedule_splits SET schedule_id = 99", "schedule does not exist"),
+        ("UPDATE transactions SET schedule_id = 99", "schedule does not exist"),
+        ("UPDATE meta SET value = 'x' WHERE key = 'period_start_day'", "start day"),
+        ("UPDATE meta SET value = '40' WHERE key = 'period_start_day'", "start day"),
+        ("UPDATE meta SET value = 'y' WHERE key = 'period_weekend_shift'", "weekend"),
+    ],
+)
+def test_file_with_broken_schedules_is_refused(
+    book: Book, scheduled: Book, tmp_path: Path, statement: str, message: str
+) -> None:
+    path = _tamper(_write(scheduled, tmp_path / "bad.db"), statement)
+    with pytest.raises(ValidationError, match=message):
+        book.import_file(path, replace=True)
+    assert book.schedules.list() == []

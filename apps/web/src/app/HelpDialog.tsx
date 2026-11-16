@@ -4,7 +4,7 @@ const SECTIONS: [string, [string, string][]][] = [
   [
     'Everywhere',
     [
-      ['1 … 7', 'Overview, Accounts, Categories, Periods, Budgets, Investments, Reports'],
+      ['1 … 8', 'Overview, Accounts, Categories, Periods, Budgets, Investments, Reports, Recurring'],
       ['s', 'Settings'],
       ['ctrl+k', 'Command palette'],
       ['l', 'Live prices on/off'],

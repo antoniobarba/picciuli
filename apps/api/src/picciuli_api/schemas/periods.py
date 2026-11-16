@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 
+from pydantic import Field
+
+from picciuli import PeriodChangeKind
+
 from .accounts import AccountOut
 from .base import (
     Date,
@@ -25,8 +29,10 @@ __all__ = [
     "BudgetReportOut",
     "BudgetUpdate",
     "CategoryTotalOut",
+    "PeriodChangeOut",
     "PeriodCreate",
     "PeriodOut",
+    "PeriodRegenerate",
     "PeriodSummaryOut",
     "PeriodUpdate",
 ]
@@ -57,6 +63,24 @@ class PeriodUpdate(PatchModel):
     name: Name | None = None
     start: Date | None = None
     end: Date | None = None
+
+
+class PeriodChangeOut(OutputModel):
+    """How regenerating the monthly periods changes one period."""
+
+    kind: PeriodChangeKind
+    period: PeriodOut | None = Field(
+        description="The period before the change; `null` when it is created."
+    )
+    name: str
+    start: dt.date
+    end: dt.date | None
+
+
+class PeriodRegenerate(InputModel):
+    """The current day of the user: periods are regenerated up to it."""
+
+    today: Date
 
 
 class CategoryTotalOut(OutputModel):

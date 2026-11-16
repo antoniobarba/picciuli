@@ -1779,6 +1779,107 @@ input[type='checkbox'] {
   }
 }
 
+/* Recurring transactions */
+
+.schedule-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.schedule-rule legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.status-pill {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.status-pill.failed {
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  color: var(--warning);
+}
+
+.recurring-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recurring-list li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.recurring-list li:last-child {
+  border-bottom: none;
+}
+
+.recurring-list li.due {
+  background: var(--accent-soft);
+}
+
+.recurring-date {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recurring-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recurring-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.recurring-mark {
+  color: var(--accent);
+  font-weight: 400;
+}
+
+.scheduled-mark {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .recurring-list li {
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  }
+
+  .recurring-actions:empty {
+    display: none;
+  }
+
+  .recurring-list li .recurring-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+
 .fab {
   display: none;
 }

@@ -30,6 +30,8 @@ from picciuli.model import (
     AccountType,
     ExternalSplit,
     ImportSummary,
+    ScheduleFrequency,
+    ScheduleMode,
     SecurityKind,
     Settings,
     Split,
@@ -37,14 +39,21 @@ from picciuli.model import (
     TradeKind,
 )
 from picciuli.services.investments import trade_row, trade_splits
+from picciuli.services.schedules import (
+    _choice,
+    _day_of_month,
+    _every,
+    _template,
+)
 from picciuli.services.settings import (
     _MAX_MINOR_DIGITS,
     _cost_method,
+    _period_start_day,
     read_settings,
 )
 from picciuli.services.transactions import _security_pairs, _validated_splits
 
-from .queries import check_holdings, external_flows, to_trade
+from .queries import check_holdings, external_flows, to_schedule_split, to_trade
 from .schema import DEFAULT_SETTINGS
 from .tables import (
     AccountRow,
@@ -53,6 +62,8 @@ from .tables import (
     ExchangeRateRow,
     PeriodRow,
     PriceRow,
+    ScheduleRow,
+    ScheduleSplitRow,
     SecurityRow,
     SplitRow,
     TradeRow,
@@ -147,6 +158,12 @@ def _settings(rows: Sequence[tuple[object, ...]]) -> Settings:
         )
         if rate_provider not in rate_provider_ids():
             raise ValidationError(f"unknown exchange-rate provider {rate_provider!r}")
+        start_day = values.get("period_start_day", "")
+        if start_day and not (start_day.isascii() and start_day.isdigit()):
+            raise ValidationError("period start day must be a number")
+        shift = values.get("period_weekend_shift", "1")
+        if shift not in ("0", "1"):
+            raise ValidationError("period weekend shift must be 0 or 1")
         return Settings(
             currency=currency,
             minor_digits=int(digits),
@@ -154,6 +171,8 @@ def _settings(rows: Sequence[tuple[object, ...]]) -> Settings:
             cost_method=_cost_method(values.get("cost_method", "average")),
             price_provider=price_provider,
             rate_provider=rate_provider,
+            period_start_day=_period_start_day(int(start_day)) if start_day else None,
+            period_weekend_shift=shift == "1",
         )
 
 
@@ -311,6 +330,8 @@ class _Importer:
                 cost_method=settings.cost_method,
                 price_provider=settings.price_provider,
                 rate_provider=settings.rate_provider,
+                period_start_day=settings.period_start_day,
+                period_weekend_shift=settings.period_weekend_shift,
             )
         else:
             _check_compatible(read_settings(self._session), settings)
@@ -321,8 +342,9 @@ class _Importer:
         prices = self._prices(securities)
         exchange_rates = self._exchange_rates()
         budgets = self._budgets(categories, periods)
+        schedules, added_schedules = self._schedules(accounts, categories)
         added_transactions, duplicates = self._transactions(
-            accounts, categories, securities
+            accounts, categories, securities, schedules
         )
         self._close(to_close)
         self._read_back()
@@ -337,6 +359,7 @@ class _Importer:
             budgets=budgets,
             transactions=added_transactions,
             duplicates=duplicates,
+            schedules=added_schedules,
         )
 
     def _accounts(
@@ -579,20 +602,96 @@ class _Importer:
                 added += 1
         return added
 
+    def _schedules(
+        self, accounts: dict[int, int], categories: dict[int, int]
+    ) -> tuple[dict[int, int], int]:
+        headers: dict[int, dict[str, object]] = {}
+        for label, row in self._rows("schedules", "schedule"):
+            with _context(label):
+                schedule_id, fields = _parse_schedule(row)
+                headers[schedule_id] = fields
+        templates: dict[int, list[tuple[int, int, Split]]] = {}
+        for label, raw in self._rows("schedule_splits", "schedule split"):
+            with _context(label):
+                id_, owner_id, position, account, category, amount, memo = raw
+                owner = v.identifier(owner_id, "schedule id")
+                if owner not in headers:
+                    raise ValidationError("its schedule does not exist")
+                if account is not None and category is not None:
+                    raise ValidationError(
+                        "a split cannot have both an account and a category"
+                    )
+                value = v.integer(amount, "amount")
+                text = v.optional_text(memo, "memo")
+                split: Split = (
+                    ExternalSplit(
+                        value,
+                        _optional_mapped_id(
+                            category, categories, "category id", "category"
+                        ),
+                        text,
+                    )
+                    if account is None
+                    else AccountSplit(
+                        _mapped_id(account, accounts, "account id", "account"),
+                        value,
+                        text,
+                    )
+                )
+                templates.setdefault(owner, []).append(
+                    (
+                        v.integer(position, "position"),
+                        v.identifier(id_, "id"),
+                        split,
+                    )
+                )
+        existing: dict[tuple[object, ...], list[int]] = {}
+        for stored in self._session.scalars(
+            select(ScheduleRow).order_by(ScheduleRow.id)
+        ):
+            values = {name: getattr(stored, name) for name in _SCHEDULE_FIELDS}
+            values["paused"] = bool(stored.paused)
+            key = _schedule_key(values, [to_schedule_split(s) for s in stored.splits])
+            existing.setdefault(key, []).append(stored.id)
+        mapping: dict[int, int] = {}
+        added = 0
+        for schedule_id in sorted(headers):
+            self._deadline.check()
+            fields = headers[schedule_id]
+            splits = [s for _, _, s in sorted(templates.get(schedule_id, []))]
+            matches = existing.get(_schedule_key(fields, splits))
+            if matches:
+                mapping[schedule_id] = matches.pop(0)
+                continue
+            with _context(f"schedule {schedule_id} of the file"):
+                # The template is checked like a new one; the day only matters
+                # for opening dates, which are checked again when posting.
+                rows = _template(self._session, dt.date.max, splits)
+            new = ScheduleRow(**fields, splits=rows)
+            self._session.add(new)
+            self._session.flush()
+            mapping[schedule_id] = new.id
+            added += 1
+        return mapping, added
+
     def _transactions(
         self,
         accounts: dict[int, int],
         categories: dict[int, int],
         securities: dict[int, int],
+        schedules: dict[int, int],
     ) -> tuple[int, int]:
-        headers: dict[int, tuple[dt.date, str | None, str | None]] = {}
+        headers: dict[int, tuple[dt.date, str | None, str | None, int | None]] = {}
         for label, row in self._rows("transactions", "transaction"):
             with _context(label):
-                id_, day, description, notes = row
+                id_, day, description, notes, schedule_id = row
                 headers[v.identifier(id_, "id")] = (
                     _date(day, "date"),
                     v.optional_text(description, "description"),
                     v.optional_text(notes, "notes"),
+                    _optional_mapped_id(
+                        schedule_id, schedules, "schedule id", "schedule"
+                    ),
                 )
         splits: dict[int, list[_Split]] = {}
         for label, row in self._rows("splits", "split"):
@@ -632,7 +731,7 @@ class _Importer:
         pairs: set[tuple[int, int]] = set()
         for transaction_id in sorted(headers):
             self._deadline.check()
-            day, description, notes = headers[transaction_id]
+            day, description, notes, schedule_id = headers[transaction_id]
             with _context(f"transaction {transaction_id} of the file"):
                 items = sorted(
                     splits.get(transaction_id, []), key=lambda s: (s.position, s.id)
@@ -659,6 +758,7 @@ class _Importer:
                 date=day,
                 description=description,
                 notes=notes,
+                schedule_id=schedule_id,
                 splits=rows,
                 trade=None if trade is None else trade_row(trade),
             )
@@ -707,6 +807,7 @@ class _Importer:
         book.periods.list()
         book.budgets.list()
         book.securities.list()
+        book.schedules.list()
         book.investments.valuations(include_closed=True)
         book.investments.net_worth()
         external_flows(self._session, dt.date.min, None)
@@ -755,6 +856,73 @@ def _transaction_key(
     trade: Trade | None,
 ) -> _TransactionKey:
     return (date, description, notes, splits, trade)
+
+
+_SCHEDULE_FIELDS: Final = (
+    "description",
+    "notes",
+    "frequency",
+    "every",
+    "day_of_month",
+    "next_date",
+    "end_date",
+    "remaining",
+    "mode",
+    "paused",
+    "last_error",
+)
+
+
+def _parse_schedule(row: tuple[object, ...]) -> tuple[int, dict[str, object]]:
+    """Identifier and validated columns of a schedule from untrusted values."""
+    (
+        id_,
+        description,
+        notes,
+        frequency,
+        every,
+        day_of_month,
+        next_date,
+        end,
+        remaining,
+        mode,
+        paused,
+        last_error,
+    ) = row
+    kind = _choice(ScheduleFrequency, frequency, "frequency")
+    if paused not in (0, 1) or isinstance(paused, float):
+        raise ValidationError("paused must be 0 or 1")
+    left = None if remaining is None else v.count(remaining, "remaining")
+    first = _optional_date(next_date, "next date")
+    last = _optional_date(end, "end")
+    if first is not None:
+        if last is not None and first > last:
+            raise ValidationError("the next occurrence is after the end day")
+        if left == 0:
+            raise ValidationError("an active schedule needs occurrences left")
+    return v.identifier(id_, "id"), {
+        "description": v.optional_text(description, "description"),
+        "notes": v.optional_text(notes, "notes"),
+        "frequency": kind.value,
+        "every": _every(every),
+        "day_of_month": _day_of_month(kind, day_of_month, None),
+        "next_date": first,
+        "end_date": last,
+        "remaining": left,
+        "mode": _choice(ScheduleMode, mode, "mode").value,
+        "paused": bool(paused),
+        "last_error": v.optional_text(last_error, "last error"),
+    }
+
+
+def _schedule_key(
+    fields: dict[str, object], splits: Sequence[Split]
+) -> tuple[object, ...]:
+    # The last error is a transient status, not part of the schedule.
+    return (
+        *(fields[name] for name in _SCHEDULE_FIELDS if name != "last_error"),
+        tuple(_split_key(s) for s in splits),
+    )
 
 
 def _mapped_id(value: object, ids: dict[int, int], field: str, label: str) -> int:
@@ -868,6 +1036,8 @@ def _wipe(session: Session) -> None:
         delete(TradeRow),
         delete(SplitRow),
         delete(TransactionRow),
+        delete(ScheduleSplitRow),
+        delete(ScheduleRow),
         delete(BudgetRow),
         delete(PeriodRow),
         delete(PriceRow),
@@ -881,7 +1051,14 @@ def _wipe(session: Session) -> None:
 
 
 def _is_empty(session: Session) -> bool:
-    tables = (AccountRow, CategoryRow, TransactionRow, SecurityRow, PeriodRow)
+    tables = (
+        AccountRow,
+        CategoryRow,
+        TransactionRow,
+        SecurityRow,
+        PeriodRow,
+        ScheduleRow,
+    )
     return all(session.scalar(select(t.id).limit(1)) is None for t in tables)
 
 

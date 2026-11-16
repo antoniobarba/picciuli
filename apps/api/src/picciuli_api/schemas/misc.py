@@ -46,13 +46,28 @@ class SettingsOut(OutputModel):
     cost_method: CostMethod
     price_provider: str
     rate_provider: str
+    period_start_day: int | None = Field(
+        description="Day of the month monthly periods start on (for example "
+        "your payday), or `null` when periods are created by hand."
+    )
+    period_weekend_shift: bool = Field(
+        description="Whether monthly periods starting on a weekend start on "
+        "the Friday before."
+    )
 
 
 class SettingsUpdate(PatchModel):
     """Changes to the settings."""
 
     _not_null = frozenset(
-        {"currency", "minor_digits", "cost_method", "price_provider", "rate_provider"}
+        {
+            "currency",
+            "minor_digits",
+            "cost_method",
+            "price_provider",
+            "rate_provider",
+            "period_weekend_shift",
+        }
     )
 
     currency: Name | None = None
@@ -61,6 +76,8 @@ class SettingsUpdate(PatchModel):
     cost_method: CostMethod | None = None
     price_provider: Name | None = None
     rate_provider: Name | None = None
+    period_start_day: int | None = Field(default=None, ge=1, le=31)
+    period_weekend_shift: bool | None = None
 
 
 class MeOut(OutputModel):
@@ -87,3 +104,4 @@ class ImportOut(OutputModel):
     transactions: int
     duplicates: int
     """Transactions skipped because an identical one already existed."""
+    schedules: int

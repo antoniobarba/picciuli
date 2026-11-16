@@ -15,10 +15,14 @@ What it handles:
 - **Transactions** made of balanced splits. One model covers income, expenses,
   transfers between your accounts, loan payments split into principal and
   interest, and purchases split across several categories.
+- **Recurring transactions**: salary, rent, subscriptions or loan payments
+  entered once and recorded every day, week, month or year, automatically or
+  after you confirm the amount.
 - **Categories** in a two-level tree. Any external cash flow can also stay
   uncategorized.
 - **Periods**: named date ranges that you define and that may overlap, each
-  with a summary of what happened.
+  with a summary of what happened. Monthly periods can start on your payday
+  and be created on their own.
 - **Budgets** per category and period, with reports comparing them to actual
   spending.
 - **Investments**: shares of stocks and ETFs held in investment accounts. The

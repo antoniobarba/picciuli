@@ -9,6 +9,7 @@ import { icons } from '../components/icons';
 import { Modal } from '../components/Modal';
 import { Loading } from '../components/ui';
 import { useHotkeys } from '../lib/useHotkeys';
+import { useCatchUp } from './catchUp';
 import { CommandPalette, type Command } from './CommandPalette';
 import { useEditors } from './editors';
 import { HelpDialog } from './HelpDialog';
@@ -22,6 +23,7 @@ const SCREENS = [
   { to: '/budgets', label: 'Budgets', key: '5', icon: icons.budgets, mobile: true },
   { to: '/investments', label: 'Investments', key: '6', icon: icons.investments, mobile: true },
   { to: '/reports', label: 'Reports', key: '7', icon: icons.reports, mobile: false },
+  { to: '/recurring', label: 'Recurring', key: '8', icon: icons.recurring, mobile: false },
 ] as const;
 
 interface InstallPrompt extends Event {
@@ -104,6 +106,7 @@ export function Shell() {
   const [help, setHelp] = useState(false);
   const [palette, setPalette] = useState(false);
   const [more, setMore] = useState(false);
+  useCatchUp();
 
   const toggleLive = () => {
     live.setLive(!live.live);
@@ -121,6 +124,7 @@ export function Shell() {
   const commands = useMemo<Command[]>(
     () => [
       { id: 'new', label: 'New transaction', hint: 'n', run: () => editors.newTransaction() },
+      { id: 'new-recurring', label: 'New recurring transaction', run: () => editors.newSchedule() },
       ...SCREENS.map((screen) => ({
         id: screen.to,
         label: `Go to ${screen.label}`,
@@ -228,6 +232,11 @@ export function Shell() {
           <li>
             <NavLink to="/reports">
               {icons.reports} Reports
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/recurring">
+              {icons.recurring} Recurring
             </NavLink>
           </li>
           <li>
