@@ -1,18 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { unwrap } from '../api/client';
 import {
   useAccounts,
   useApiMutation,
-  useBalances,
   useBudgetReport,
   useCategories,
   useMoney,
-  useNetWorth,
   usePeriodsOn,
   usePeriodSummary,
   useTransactions,
-  useValuations,
 } from '../api/queries';
 import type { BudgetReport, Period, PeriodSummary, Transaction } from '../api/types';
 import { useEditors } from '../app/editors';
@@ -21,9 +18,8 @@ import { DateField } from '../components/DateField';
 import { useConfirm, useNotify } from '../components/feedback';
 import { FormDialog } from '../components/forms';
 import { Amount, Empty, RowMenu } from '../components/ui';
-import { TransactionListControls, useTransactionList } from '../components/TransactionListControls';
 import { choosePeriod, cyclePeriod, dayFlows, shiftMonth, visibleRange } from '../lib/calendar';
-import { isValidDay, longDate, parts, shortDate, todayDay, type Day } from '../lib/dates';
+import { isValidDay, longDate, parts, todayDay, type Day } from '../lib/dates';
 import {
   byId,
   periodRange,
@@ -75,7 +71,6 @@ export function Overview() {
     () => (transactions.data ?? []).filter((transaction) => transaction.date === day),
     [transactions.data, day],
   );
-  const list = useTransactionList(dayTransactions, day, (transaction) => transaction);
   const accountMap = useMemo(() => byId(accounts.data), [accounts.data]);
   const categoryMap = useMemo(() => byId(categories.data), [categories.data]);
   const hasOpenAccounts = (accounts.data ?? []).some((account) => !account.is_closed);
@@ -84,7 +79,8 @@ export function Overview() {
     unwrap(api.DELETE('/api/v1/transactions/{transaction_id}', { params: { path: { transaction_id: id } } })),
   );
 
-  const selected = list.items.find((t) => t.id === selectedId) ?? (list.items.length === 1 ? list.items[0] : undefined);
+  const selected =
+    dayTransactions.find((t) => t.id === selectedId) ?? (dayTransactions.length === 1 ? dayTransactions[0] : undefined);
 
   const newTransaction = (on: Day = day) => {
     if (accounts.data && !hasOpenAccounts) {
@@ -174,16 +170,15 @@ export function Overview() {
               + New
             </button>
           </div>
-          <TransactionListControls list={list} />
           {!accounts.isLoading && !hasOpenAccounts ? (
             <Empty>
               Welcome! Start by creating an account in <Link to="/accounts">Accounts</Link>.
             </Empty>
-          ) : list.items.length === 0 ? (
-            <Empty>{dayTransactions.length === 0 ? 'No transactions on this day.' : 'No matching transactions.'}</Empty>
+          ) : dayTransactions.length === 0 ? (
+            <Empty>No transactions on this day.</Empty>
           ) : (
             <ul className="transaction-list">
-              {list.items.map((transaction) => (
+              {dayTransactions.map((transaction) => (
                 <li key={transaction.id} className={transaction.id === selected?.id ? 'selected' : ''}>
                   <button
                     type="button"
@@ -219,7 +214,6 @@ export function Overview() {
         </section>
 
         <PeriodPanel summary={summary ?? null} budgets={budgets ?? null} money={money} hasPeriod={period !== null} />
-        <BalancesPanel day={day} money={money} />
       </div>
 
       <button type="button" className="fab" onClick={() => newTransaction()} aria-label="New transaction">
@@ -362,55 +356,6 @@ function PeriodPanel({
           ) : null}
         </table>
       )}
-    </section>
-  );
-}
-
-function BalancesPanel({ day, money }: { day: Day; money: MoneyFormat }) {
-  const navigate = useNavigate();
-  const balances = useBalances(day).data ?? [];
-  const valuations = useValuations(day).data ?? [];
-  const worth = useNetWorth(day).data;
-  const market = new Map(valuations.map((v) => [v.account.id, v.market_value]));
-  if (!balances.length) return null;
-  return (
-    <section className="card" aria-label="Balances">
-      <div className="card-header">
-        <h2>
-          Balances <small className="muted">{shortDate(day)}</small>
-        </h2>
-      </div>
-      <table className="table compact rows-clickable">
-        <tbody>
-          {balances.map((balance) => (
-            <tr key={balance.account.id} onClick={() => navigate(`/accounts/${balance.account.id}`)}>
-              <td>
-                {/* The link gives the row keyboard focus and Enter; clicks elsewhere in the row use the row handler. */}
-                <Link
-                  to={`/accounts/${balance.account.id}`}
-                  className="row-link"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  {balance.account.name}
-                </Link>
-              </td>
-              <td className="num">
-                <Amount value={market.get(balance.account.id) ?? balance.balance} money={money} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        {worth ? (
-          <tfoot>
-            <tr>
-              <th>Net worth</th>
-              <td className="num">
-                <Amount value={worth.net_worth} money={money} bold />
-              </td>
-            </tr>
-          </tfoot>
-        ) : null}
-      </table>
     </section>
   );
 }

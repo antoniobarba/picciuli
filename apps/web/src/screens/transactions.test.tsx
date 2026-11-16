@@ -70,7 +70,7 @@ function renderList(view: string) {
   );
 }
 
-describe.each(['register', 'overview', 'dialog'])('%s transaction list', (view) => {
+describe.each(['register', 'dialog'])('%s transaction list', (view) => {
   it('pages the whole list, searches off-page notes, and resets the page when searching', async () => {
     const user = userEvent.setup();
     renderList(view);
@@ -137,16 +137,12 @@ it('totals every page of the dialog list, narrowed to the search results', async
   expect(screen.getByText('Remaining').parentElement).toHaveTextContent('EUR 100.00');
 });
 
-it('resets the Overview search and page when changing day without filtering the calendar', async () => {
-  const user = userEvent.setup();
+it('lists every transaction of the day on the Overview, without search or pages', async () => {
   renderList('overview');
   await screen.findByText('Purchase 01');
-  await user.click(screen.getByRole('button', { name: 'Next' }));
-  await user.type(screen.getByRole('searchbox'), 'nothing matches');
-  expect(screen.getByRole('button', { name: /Tuesday 10 March 2026/ })).toHaveTextContent('-52');
-  await user.click(screen.getByRole('button', { name: /Wednesday 11 March 2026/ }));
-  expect(screen.getByRole('searchbox')).toHaveValue('');
-  expect(screen.getByText('No transactions on this day.')).toBeInTheDocument();
+  expect(screen.getAllByText(/^Purchase \d+$/)).toHaveLength(52);
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  expect(screen.queryByRole('navigation', { name: 'Transaction pages' })).not.toBeInTheDocument();
 });
 
 it('clamps the page after the last page disappears on a data refresh', async () => {

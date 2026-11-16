@@ -575,7 +575,13 @@ button {
 }
 
 .table tr.child td.handle-cell + td {
-  padding-left: 1.6rem;
+  padding-left: 2.6rem;
+  color: var(--muted);
+}
+
+.tree-toggle {
+  display: inline-block;
+  width: 1rem;
   color: var(--muted);
 }
 

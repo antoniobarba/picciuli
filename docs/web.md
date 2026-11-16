@@ -41,12 +41,12 @@ rest (Categories, Periods, Reports, Settings). Every list row opens when clicked
 A category, period or budget opens its transactions with their total and what
 is left of the budget (`e` or **⋯ › Edit** edits it); a transaction there opens
 in the editor.
-Every transaction list (the day's transactions, an account's register and the
+Every transaction list except the Overview's (an account's register and the
 category, period and budget dialogs) has a **Search transactions** box and
 **Previous** / **Next** buttons, with 25 transactions per page. Search matches
 words in descriptions, notes, accounts, categories, dates and amounts across
 the whole list, not just the current page; clear it to see all transactions
-again. Changing the day or account resets the search and page. In the
+again. Changing the account resets the search and page. In the
 category, period and budget dialogs, the transaction count and **Total** cover
 every page and narrow to the search results. Budget remaining, calendar figures
 and the register's running balances always refer to the original full data,
@@ -58,9 +58,9 @@ along.
 
 | Screen | What you can do |
 |--------|-----------------|
-| Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions; the period's categories against their budgets; balances and net worth at the end of the day, where a balance row opens that account's **register**. Swipe the calendar to change month on a phone. |
+| Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions, all on one list, and the period's categories against their budgets. Swipe the calendar to change month on a phone. |
 | Accounts | Accounts with balance, market value, goal and progress (toward the goal, or toward zero for an account in debt, from the lowest point of the debt), and the ETA: the month the goal (or zero) should be reached at the account's average monthly flow, from its first transaction to last month. Create, edit, close or reopen, reorder (drag the handle) and delete. A row opens the **register** with running balances. |
-| Categories | The two-level tree: create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). A row shows the category's transactions (a top-level category includes its subcategories), their total and what is left of its budget in the period covering today. |
+| Categories | The two-level tree, with subcategories folded: clicking a top-level category (or `enter` on it) shows or hides its subcategories (**▸** / **▾**). Create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). A subcategory, or a top-level category without any, shows the category's transactions when clicked; **⋯ › Transactions** does it for a top-level category with subcategories (including them). With them come their total and what is left of its budget in the period covering today. |
 | Periods | Create, edit and delete periods. A row shows the transactions dated in the period, their net total and what is left of all its budgets. |
 | Budgets | Budgets of a period with their progress; copy them from another period. A row shows the transactions of the budget's category (and subcategories, for a top-level one) in the period, their total and what is left. |
 | Investments | Holdings at market value, securities and their latest prices; find a security online, buy, sell (with a preview of the cost basis and gain), enter prices, refresh prices, download the price history, live prices. |

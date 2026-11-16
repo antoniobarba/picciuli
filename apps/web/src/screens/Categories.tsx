@@ -30,7 +30,21 @@ export function Categories() {
   const tree = useMemo(() => categoryTree(categories.data ?? []), [categories.data]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected = tree.find((c) => c.id === selectedId) ?? null;
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
+  const parentIds = useMemo(() => new Set(tree.flatMap((c) => (c.parent_id === null ? [] : [c.parent_id]))), [tree]);
+  // Subcategories show only under an expanded parent.
+  const visible = useMemo(
+    () => tree.filter((c) => c.parent_id === null || expanded.has(c.parent_id)),
+    [tree, expanded],
+  );
+  const selected = visible.find((c) => c.id === selectedId) ?? null;
+  const toggle = (id: number) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const expand = (id: number) => setExpanded((current) => (current.has(id) ? current : new Set(current).add(id)));
 
   const move = useOptimisticMove<Category>(
     ['categories'],
@@ -57,7 +71,7 @@ export function Categories() {
   const sortable = useSortable<Category>({
     getId: (category) => category.id,
     siblingsOf,
-    extentOf: (category) => [category, ...tree.filter((c) => c.parent_id === category.id)],
+    extentOf: (category) => [category, ...visible.filter((c) => c.parent_id === category.id)],
     label: (category) => category.name,
     onMove: (category, index) => void moveCategory(category, index),
   });
@@ -109,31 +123,51 @@ export function Categories() {
               </tr>
             </thead>
             <tbody>
-              {tree.map((category) => {
+              {visible.map((category) => {
                 const edit = () => setDialog({ kind: 'edit', category, parentId: category.parent_id });
                 const open = () => setDialog({ kind: 'transactions', category });
+                const hasChildren = parentIds.has(category.id);
+                const isOpen = expanded.has(category.id);
+                // A parent row folds and unfolds its subcategories; its transactions are in the row menu.
+                const activate = hasChildren ? () => toggle(category.id) : open;
                 return (
                   <tr
                     key={category.id}
                     ref={sortable.rowRef(category.id)}
                     tabIndex={0}
+                    aria-expanded={hasChildren ? isOpen : undefined}
                     className={`${category.parent_id !== null ? 'child' : 'parent'}${category.id === selectedId ? ' selected' : ''} ${sortable.rowClass(category)}`}
                     onFocus={() => setSelectedId(category.id)}
-                    onClick={open}
-                    onKeyDown={onEnter(open)}
+                    onClick={activate}
+                    onKeyDown={onEnter(activate)}
                   >
                     <td className="handle-cell" onClick={(e) => e.stopPropagation()}>
                       <DragHandle {...sortable.handleProps(category)} />
                     </td>
-                    <td>{category.parent_id !== null ? category.name : <strong>{category.name}</strong>}</td>
+                    <td>
+                      {category.parent_id !== null ? (
+                        category.name
+                      ) : (
+                        <>
+                          <span className="tree-toggle" aria-hidden="true">
+                            {hasChildren ? (isOpen ? '▾' : '▸') : ''}
+                          </span>
+                          <strong>{category.name}</strong>
+                        </>
+                      )}
+                    </td>
                     <td className="muted">{category.symbol}</td>
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
                       <RowMenu
                         actions={[
+                          hasChildren && { label: 'Transactions', onSelect: open },
                           { label: 'Edit', onSelect: edit, shortcut: 'e' },
                           category.parent_id === null && {
                             label: 'Add subcategory',
-                            onSelect: () => setDialog({ kind: 'edit', category: null, parentId: category.id }),
+                            onSelect: () => {
+                              expand(category.id);
+                              setDialog({ kind: 'edit', category: null, parentId: category.id });
+                            },
                           },
                           { label: 'Delete', onSelect: () => void askDelete(category), danger: true, shortcut: 'd' },
                         ]}

@@ -71,7 +71,9 @@ describe('item transactions', () => {
   it('opens the transactions of a category, with its subcategories, total and remaining budget', async () => {
     const user = userEvent.setup();
     const { requests } = render(<Categories />);
-    await user.click(await screen.findByText('Food'));
+    await screen.findByText('Food');
+    await user.click(screen.getAllByRole('button', { name: 'Actions' })[0]!);
+    await user.click(await screen.findByRole('menuitem', { name: /Transactions/ }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Food' });
     expect(within(dialog).getByText('Market')).toBeInTheDocument();
@@ -126,9 +128,36 @@ describe('item transactions', () => {
 });
 
 describe('subcategories', () => {
-  it('are indented rows without a tree glyph', async () => {
+  it('are collapsed until their parent row is clicked, and fold again on a second click', async () => {
+    const user = userEvent.setup();
     render(<Categories />);
-    const row = (await screen.findByText('Groceries')).closest('tr')!;
+    const food = (await screen.findByText('Food')).closest('tr')!;
+    expect(food).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Groceries')).not.toBeInTheDocument();
+
+    await user.click(food);
+    expect(food).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Groceries')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(food);
+    expect(screen.queryByText('Groceries')).not.toBeInTheDocument();
+  });
+
+  it('opens the transactions of a top-level category without subcategories on click', async () => {
+    const user = userEvent.setup();
+    render(<Categories />);
+    const salary = (await screen.findByText('Salary')).closest('tr')!;
+    expect(salary).not.toHaveAttribute('aria-expanded');
+    await user.click(salary);
+    expect(await screen.findByRole('dialog', { name: 'Salary' })).toBeInTheDocument();
+  });
+
+  it('are indented rows without a tree glyph', async () => {
+    const user = userEvent.setup();
+    render(<Categories />);
+    await user.click(await screen.findByText('Food'));
+    const row = screen.getByText('Groceries').closest('tr')!;
     expect(row).toHaveClass('child');
     expect(row).not.toHaveTextContent('└');
   });

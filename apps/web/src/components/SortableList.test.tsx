@@ -19,6 +19,10 @@ async function focusHandle(name: string) {
   return handle;
 }
 
+async function expandFood() {
+  fireEvent.click(await screen.findByText('Food'));
+}
+
 const patches = (requests: { method: string; path: string; body: unknown }[]) =>
   requests.filter((r) => r.method === 'PATCH').map(({ path, body }) => ({ path, body }));
 
@@ -26,6 +30,7 @@ describe('keyboard reordering', () => {
   it('moves a row one step with alt+arrows on its handle', async () => {
     const { requests } = renderWithApi(<Categories />, routes);
     const user = userEvent.setup();
+    await expandFood();
     await focusHandle('Restaurants');
     await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
     await waitFor(() =>
@@ -37,6 +42,7 @@ describe('keyboard reordering', () => {
   it('picks a row up with space, moves it among its siblings only and drops it', async () => {
     const { requests } = renderWithApi(<Categories />, routes);
     const user = userEvent.setup();
+    await expandFood();
     const handle = await focusHandle('Groceries');
     await user.keyboard(' ');
     expect(handle).toHaveAttribute('aria-pressed', 'true');
@@ -64,6 +70,7 @@ describe('keyboard reordering', () => {
 describe('pointer reordering', () => {
   it('drags a parent with its children above another parent', async () => {
     const { requests } = renderWithApi(<Categories />, routes);
+    await expandFood();
     const handle = await screen.findByRole('button', { name: 'Reorder Home' });
     // Food, Groceries, Restaurants, Home: 40px rows; Food's block spans its children.
     document.querySelectorAll('tbody tr').forEach((row, i) => {
@@ -76,6 +83,22 @@ describe('pointer reordering', () => {
     expect(document.querySelector('tr.drop-before')).toHaveTextContent('Food');
     expect(document.querySelector('tr.dragging')).toHaveTextContent('Home');
     fireEvent.pointerUp(handle, { isPrimary: true, pointerId: 1, clientY: 250 });
+    await waitFor(() =>
+      expect(patches(requests)).toEqual([{ path: '/api/v1/categories/2', body: { position: 1 } }]),
+    );
+  });
+
+  it('drags a parent above a collapsed parent', async () => {
+    const { requests } = renderWithApi(<Categories />, routes);
+    const handle = await screen.findByRole('button', { name: 'Reorder Home' });
+    // Food, Home: 40px rows, Food's subcategories hidden.
+    document.querySelectorAll('tbody tr').forEach((row, i) => {
+      row.getBoundingClientRect = () => ({ top: 200 + i * 40, bottom: 240 + i * 40 }) as DOMRect;
+    });
+    fireEvent.pointerDown(handle, { button: 0, isPrimary: true, pointerId: 1, clientY: 260 });
+    fireEvent.pointerMove(handle, { isPrimary: true, pointerId: 1, clientY: 210 });
+    expect(document.querySelector('tr.drop-before')).toHaveTextContent('Food');
+    fireEvent.pointerUp(handle, { isPrimary: true, pointerId: 1, clientY: 210 });
     await waitFor(() =>
       expect(patches(requests)).toEqual([{ path: '/api/v1/categories/2', body: { position: 1 } }]),
     );

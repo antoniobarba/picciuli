@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useParams } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { EditorsProvider } from '../app/editors';
 import { longDate } from '../lib/dates';
@@ -28,13 +28,7 @@ const routes = {
   'GET /api/v1/transactions': [],
   'GET /api/v1/periods': [],
   'GET /api/v1/securities': [],
-  'GET /api/v1/accounts/balances': accounts.map((a) => ({ account: a, balance: 1000 * a.id })),
-  'GET /api/v1/investments/valuations': [],
 };
-
-function AccountView() {
-  return <p>Register of account {useParams().accountId}</p>;
-}
 
 function renderOverview() {
   return renderWithApi(
@@ -42,7 +36,6 @@ function renderOverview() {
       <EditorsProvider>
         <Routes>
           <Route index element={<Overview />} />
-          <Route path="accounts/:accountId" element={<AccountView />} />
         </Routes>
       </EditorsProvider>
     </MemoryRouter>,
@@ -51,28 +44,10 @@ function renderOverview() {
 }
 
 describe('Overview', () => {
-  it('opens the account register when a balance row is clicked', async () => {
-    const user = userEvent.setup();
-    renderOverview();
-    const balances = await screen.findByRole('region', { name: 'Balances' });
-    await user.click(balances.querySelectorAll('td.num')[1]!);
-    expect(await screen.findByText('Register of account 2')).toBeInTheDocument();
-  });
-
-  it('opens the account register with Enter on the focused balance link', async () => {
-    const user = userEvent.setup();
-    renderOverview();
-    const link = await screen.findByRole('link', { name: 'Checking' });
-    link.focus();
-    await user.keyboard('{Enter}');
-    expect(await screen.findByText('Register of account 1')).toBeInTheDocument();
-  });
-
   it('starts a new transaction on a double-clicked day, while a click only selects it', async () => {
     const user = userEvent.setup();
     renderOverview();
-    await screen.findByRole('link', { name: 'Checking' });
-    const day = screen.getByRole('button', { name: longDate('2026-03-12') });
+    const day = await screen.findByRole('button', { name: longDate('2026-03-12') });
 
     await user.click(day);
     expect(day).toHaveAttribute('aria-selected', 'true');
