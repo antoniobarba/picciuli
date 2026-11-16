@@ -1,4 +1,4 @@
-/** Labels shared by every screen, ported from the TUI's `formatting.py`. */
+/** Labels shared by every screen. */
 
 import type {
   Account,

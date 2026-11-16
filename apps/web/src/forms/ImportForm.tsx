@@ -56,7 +56,7 @@ export interface ImportFormProps {
   onClose: () => void;
 }
 
-/** Load a Picciuli database file (e.g. from the console app), merging or replacing. */
+/** Load a Picciuli database file (e.g. a previous export), merging or replacing. */
 export function ImportForm({ file, onClose }: ImportFormProps) {
   const notify = useNotify();
   const [mode, setMode] = useState<ImportMode>('merge');

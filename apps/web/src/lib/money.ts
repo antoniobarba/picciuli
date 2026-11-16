@@ -1,6 +1,6 @@
 /**
  * Amounts are integers in minor units (cents), as in the library and the API.
- * These helpers mirror `picciuli.money` and the TUI's `MoneyFormat`, using
+ * These helpers mirror `picciuli.money`, using
  * string arithmetic so that no floating-point rounding is ever involved.
  */
 

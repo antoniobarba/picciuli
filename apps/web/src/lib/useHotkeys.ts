@@ -24,7 +24,7 @@ function dialogOpen(): boolean {
 }
 
 /**
- * Global keyboard shortcuts, as in the console interface. They are ignored
+ * Global keyboard shortcuts. They are ignored
  * while typing in a field or while a dialog is open, except `ctrl+…` keys.
  */
 export function useHotkeys(bindings: Hotkeys, enabled = true): void {

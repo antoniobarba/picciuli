@@ -1,4 +1,4 @@
-/** Calendar logic of the overview, ported from the TUI's `calendar_model.py`. */
+/** Calendar logic of the overview. */
 
 import type { Period, Transaction } from '../api/types';
 import { addDays, daysInMonth, makeDay, parts, weekday, type Day } from './dates';

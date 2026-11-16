@@ -1,5 +1,5 @@
 /**
- * Turn what the user typed into API bodies, ported from the TUI's `forms.py`.
+ * Turn what the user typed into API bodies.
  * Keeping this logic free of components makes it easy to test.
  */
 

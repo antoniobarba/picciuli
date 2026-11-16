@@ -395,6 +395,15 @@ class TestTrends:
         assert checking_trend.low_point is None
         assert (savings_trend.months, savings_trend.average_flow) == (0, None)
 
+    def test_average_of_the_last_three_complete_months(
+        self, book: Book, checking: Account
+    ) -> None:
+        book.transactions.record_income(d(10, 1), 9000, account_id=checking.id)
+        book.transactions.record_income(d(1, 3), 300, account_id=checking.id)
+        book.transactions.record_expense(d(31, 5), 100, account_id=checking.id)
+        (trend,) = book.accounts.trends(today=d(15, 6))
+        assert (trend.months, trend.average_flow) == (3, round(200 / 3))
+
     def test_low_point_of_the_current_debt(self, book: Book, card: Account) -> None:
         book.accounts.update(card.id, opening_balance=-100)
         for day, amount in ((1, -900), (2, 1500), (3, -400), (4, -800), (5, 200)):

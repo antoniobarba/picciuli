@@ -305,8 +305,8 @@ def _check_version(connection: sqlite3.Connection) -> None:
     if version < SCHEMA_VERSION:
         raise ValidationError(
             f"the file uses the old schema version {version}; open it once with "
-            "an up-to-date Picciuli (for example the console application) to "
-            "upgrade it, then import it again"
+            "an up-to-date Picciuli library (Book.open) to upgrade it, then "
+            "import it again"
         )
 
 

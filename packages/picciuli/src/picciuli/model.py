@@ -445,9 +445,9 @@ class AccountTrend:
     Attributes:
         account: The account.
         balance: Balance including every transaction.
-        months: Number of complete months averaged: from the month of the
-            first transaction of the account to the month before the current
-            one. `0` when there is no such month.
+        months: Number of complete months averaged: the last 3 before the
+            current one, or fewer when the first transaction of the account
+            is more recent. `0` when there is no such month.
         average_flow: Average net change of the balance per month over those
             months, in minor units (rounded), not counting the opening
             balance; `None` when `months` is `0`.

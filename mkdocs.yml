@@ -14,7 +14,6 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Concepts: concepts.md
-  - Console interface: tui.md
   - Web and mobile app: web.md
   - API server: api-server.md
   - Deployment: deployment.md

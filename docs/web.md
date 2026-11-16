@@ -1,8 +1,8 @@
 # Web and mobile app
 
 `apps/web` is the graphical front-end of Picciuli: a web application that can
-also be **installed** on a computer or a phone (a Progressive Web App). It has
-the same screens as the [console interface](tui.md) and talks only to the
+also be **installed** on a computer or a phone (a Progressive Web App). It
+talks only to the
 [API server](api-server.md), so every device sees the same data.
 
 ## Using it
@@ -59,13 +59,13 @@ along.
 | Screen | What you can do |
 |--------|-----------------|
 | Overview | Month calendar with each day's net flow (`↔` = only transfers) and the selected period as a band; double-click a day to record a new transaction on it. The day's transactions, all on one list, and the period's categories against their budgets. Swipe the calendar to change month on a phone. |
-| Accounts | Accounts with balance, market value, goal and progress (toward the goal, or toward zero for an account in debt, from the lowest point of the debt), and the ETA: the month the goal (or zero) should be reached at the account's average monthly flow, from its first transaction to last month. Create, edit, close or reopen, reorder (drag the handle) and delete. A row opens the **register** with running balances. |
+| Accounts | Accounts with balance, market value, goal and progress (toward the goal, or toward zero for an account in debt, from the lowest point of the debt), and the ETA: the month the goal (or zero) should be reached at the account's average monthly flow over the last 3 complete months (fewer for a newer account). Create, edit, close or reopen, reorder (drag the handle) and delete. A row opens the **register** with running balances. |
 | Categories | The two-level tree, with subcategories folded: clicking a top-level category (or `enter` on it) shows or hides its subcategories (**▸** / **▾**). Create, edit, reorder (drag the handle), delete (moving the transactions of a category in use). A subcategory, or a top-level category without any, shows the category's transactions when clicked; **⋯ › Transactions** does it for a top-level category with subcategories (including them). With them come their total and what is left of its budget in the period covering today. |
 | Periods | Create, edit and delete periods. A row shows the transactions dated in the period, their net total and what is left of all its budgets. |
 | Budgets | Budgets of a period with their progress; copy them from another period. A row shows the transactions of the budget's category (and subcategories, for a top-level one) in the period, their total and what is left. |
 | Investments | Holdings at market value, securities and their latest prices; find a security online, buy, sell (with a preview of the cost basis and gain), enter prices, refresh prices, download the price history, live prices. |
 | Reports | Choose categories (a top-level category ticks its subcategories too) and either a period or a range of days typed or picked by hand. Lists the splits booked in those categories in that stretch of time, searchable and paged, with their total; a pie chart and legend show each category's total and share (expenses and income are sized by their amount), and hovering or tapping a slice shows its total at once. With no accounts ticked the report covers the whole portfolio, so transfers between accounts cancel out. Tick some accounts to see only their cash flow: only transactions touching them count, and only for the ticked accounts' share (an expense paid partly from another account counts only for the part paid from the ticked ones), moves between them cancel out, and money moved to or from any other account (say, the principal of a loan payment) can be ticked under *Transfers with*, signed as seen from the ticked accounts. A split opens its transaction in the editor. |
-| Settings | Currency, decimal digits, currency code, cost method and providers; export your data as a SQLite file (it opens with the console interface); import a SQLite file, such as the database of the console interface, choosing to **merge** it with your data or to **replace** your data; delete all your data, sign out. |
+| Settings | Currency, decimal digits, currency code, cost method and providers; export your data as a SQLite file (it opens with the Picciuli library); import a SQLite file, such as a previous export, choosing to **merge** it with your data or to **replace** your data; delete all your data, sign out. |
 
 **Importing.** *Merge* reuses accounts, categories, securities and periods that
 have the same name (securities also by ISIN, periods by their days) and skips
@@ -76,9 +76,9 @@ deletes all your data first and adopts the file's settings. Either way the
 import is all-or-nothing, and the file must follow the same rules as data
 entered by hand (for example balanced transactions), otherwise nothing is
 imported. Files from an older Picciuli version must be opened once with an
-up-to-date console interface before they can be imported.
+up-to-date Picciuli library (`Book.open`) before they can be imported.
 
-The transaction form has the four kinds of the console interface: **Expense**,
+The transaction form has four kinds: **Expense**,
 **Income**, **Transfer** and **Split**. In the split editor a live line shows
 both totals, and the form refuses to save until they match. Editing a purchase
 or sale of shares opens the **Buy shares** / **Sell shares** form instead, so
@@ -94,7 +94,7 @@ Dates can be typed as `2025-02-03`, `3/2/2025`, `3/2`, `3`, `today`, `+7` or
 
 ## Keyboard
 
-The keys of the console interface work on wide screens; press `?` for the full
+Keyboard shortcuts work on wide screens; press `?` for the full
 list and `ctrl+k` for the command palette.
 
 | Key | Action |
@@ -140,7 +140,7 @@ src/api/         typed client (openapi-fetch) and TanStack Query hooks;
                  schema.d.ts is generated from apps/api/openapi.json
 src/auth/        native identity screens and OpenID Connect with PKCE
                  (oidc-client-ts); server operations are in picciuli_api/login.py
-src/lib/         logic without components, ported from the console interface:
+src/lib/         logic without components:
                  money.ts, dates.ts, calendar.ts, forms.ts, format.ts
 src/components/  calendar, dialogs, form fields, menus
 src/forms/       transaction, account, period and investment forms

@@ -36,6 +36,9 @@ from picciuli.model import (
 
 __all__ = ["AccountService"]
 
+_TREND_MONTHS = 3
+"""Complete months averaged by `AccountService.trends`."""
+
 
 def _account_type(value: object) -> AccountType:
     try:
@@ -431,10 +434,16 @@ class AccountService:
                 months = 0
                 if days and days[0][0] < this_month:
                     first = days[0][0]
-                    months = (this_month.year - first.year) * 12 + (
-                        this_month.month - first.month
+                    months = min(
+                        _TREND_MONTHS,
+                        (this_month.year - first.year) * 12
+                        + (this_month.month - first.month),
                     )
-                past = sum(amount for day, amount in days if day < this_month)
+                index = this_month.year * 12 + this_month.month - 1 - months
+                start = dt.date(index // 12, index % 12 + 1, 1)
+                past = sum(
+                    amount for day, amount in days if start <= day < this_month
+                )
                 result.append(
                     AccountTrend(
                         account=to_account(row),

@@ -225,8 +225,8 @@ function AccountSection() {
         </button>
       </div>
       <p className="muted small card-note">
-        The export opens with the Picciuli library and console interface: <code>picciuli-tui picciuli.db</code>. Import
-        loads such a file, for example the database of the console app, merging it with your data or replacing it.
+        The export is a Picciuli database file that opens with the Picciuli library. Import loads such a file,
+        merging it with your data or replacing it.
       </p>
       <ImportForm
         key={importFile ? `${importFile.name}:${importFile.lastModified}` : 'none'}

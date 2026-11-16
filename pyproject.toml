@@ -6,22 +6,21 @@ members = ["packages/*", "apps/*"]
 
 [tool.uv.sources]
 picciuli = { workspace = true }
-picciuli-tui = { workspace = true }
 picciuli-api = { workspace = true }
 
 [dependency-groups]
-dev = ["picciuli[dev,docs]", "picciuli-tui", "picciuli-api[dev]"]
+dev = ["picciuli[dev,docs]", "picciuli-api[dev]"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
-src = ["packages/picciuli/src", "apps/tui/src", "apps/api/src"]
+src = ["packages/picciuli/src", "apps/api/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "D"]
 ignore = ["D105", "D107", "RUF036"]
-# Typographic characters drawn by the console interface.
-allowed-confusables = ["–", "−", "‹", "›"]
+# Typographic minus sign used in docstrings.
+allowed-confusables = ["−"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -36,16 +35,12 @@ strict = true
 files = [
     "packages/picciuli/src",
     "packages/picciuli/tests",
-    "apps/tui/src",
-    "apps/tui/tests",
     "apps/api/src",
     "apps/api/api_tests",
 ]
 mypy_path = [
     "packages/picciuli/src",
     "packages/picciuli",
-    "apps/tui/src",
-    "apps/tui/tests",
     "apps/api/src",
     "apps/api",
 ]
@@ -55,8 +50,6 @@ explicit_package_bases = true
 testpaths = [
     "packages/picciuli/src",
     "packages/picciuli/tests",
-    "apps/tui/src",
-    "apps/tui/tests",
     "apps/api/src",
     "apps/api/api_tests",
 ]
@@ -65,7 +58,7 @@ filterwarnings = ["error"]
 
 [tool.coverage.run]
 branch = true
-source = ["picciuli", "picciuli_tui", "picciuli_api"]
+source = ["picciuli", "picciuli_api"]
 
 [tool.coverage.report]
 show_missing = true

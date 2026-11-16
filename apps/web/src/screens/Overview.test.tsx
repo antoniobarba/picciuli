@@ -30,7 +30,7 @@ const routes = {
   'GET /api/v1/securities': [],
 };
 
-function renderOverview() {
+function renderOverview(overrides: Record<string, unknown> = {}) {
   return renderWithApi(
     <MemoryRouter initialEntries={['/?day=2026-03-10']}>
       <EditorsProvider>
@@ -39,7 +39,7 @@ function renderOverview() {
         </Routes>
       </EditorsProvider>
     </MemoryRouter>,
-    routes,
+    { ...routes, ...overrides },
   );
 }
 
@@ -56,5 +56,55 @@ describe('Overview', () => {
     await user.dblClick(day);
     await screen.findByRole('dialog', { name: 'New transaction' });
     expect(screen.getByLabelText('Date')).toHaveValue('2026-03-12');
+  });
+
+  it('folds subcategories under their category in the period panel', async () => {
+    const user = userEvent.setup();
+    const period = { id: 1, name: 'March', start: '2026-03-01', end: '2026-03-31' };
+    const category = (id: number, name: string, parent_id: number | null) => ({
+      id,
+      name,
+      symbol: name.slice(0, 2),
+      parent_id,
+      position: id,
+    });
+    const total = (c: ReturnType<typeof category>, value: number) => ({ category: c, amount: value, total: value });
+    renderOverview({
+      'GET /api/v1/periods': [period],
+      'GET /api/v1/periods/1/summary': {
+        period,
+        categories: [
+          total(category(1, 'Food', null), -3000),
+          total(category(2, 'Groceries', 1), -2000),
+          total(category(3, 'Restaurants', 1), -1000),
+          total(category(4, 'Salary', null), 50000),
+        ],
+        uncategorized: 0,
+        income: 50000,
+        expenses: -3000,
+        net: 47000,
+        accounts: [],
+      },
+      'GET /api/v1/periods/1/budget-report': {
+        period,
+        lines: [],
+        total_budget: 0,
+        total_actual: 0,
+        total_remaining: 0,
+      },
+    });
+
+    const food = (await screen.findByText('Food')).closest('tr')!;
+    expect(screen.getByText('Salary').closest('tr')).not.toHaveAttribute('aria-expanded');
+    expect(food).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Groceries')).not.toBeInTheDocument();
+
+    await user.click(food);
+    expect(food).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Groceries')).toBeInTheDocument();
+    expect(screen.getByText('Restaurants')).toBeInTheDocument();
+
+    await user.click(food);
+    expect(screen.queryByText('Groceries')).not.toBeInTheDocument();
   });
 });

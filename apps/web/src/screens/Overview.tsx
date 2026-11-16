@@ -17,7 +17,7 @@ import { Calendar } from '../components/Calendar';
 import { DateField } from '../components/DateField';
 import { useConfirm, useNotify } from '../components/feedback';
 import { FormDialog } from '../components/forms';
-import { Amount, Empty, RowMenu } from '../components/ui';
+import { Amount, Empty, onEnter, RowMenu } from '../components/ui';
 import { choosePeriod, cyclePeriod, dayFlows, shiftMonth, visibleRange } from '../lib/calendar';
 import { isValidDay, longDate, parts, todayDay, type Day } from '../lib/dates';
 import {
@@ -293,9 +293,24 @@ function PeriodPanel({
   money: MoneyFormat;
   hasPeriod: boolean;
 }) {
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   if (!hasPeriod || !summary) return null;
   const lines = new Map((budgets?.lines ?? []).map((line) => [line.category.id, line]));
-  const rows = summary.categories.filter((item) => item.total || lines.has(item.category.id));
+  const shownChildren = summary.categories.filter(
+    (item) => item.category.parent_id !== null && (item.total || lines.has(item.category.id)),
+  );
+  const parentIds = new Set(shownChildren.map((item) => item.category.parent_id));
+  const rows = summary.categories.filter(
+    (item) => item.total || lines.has(item.category.id) || parentIds.has(item.category.id),
+  );
+  // Subcategories show only under an expanded parent.
+  const visible = rows.filter((item) => item.category.parent_id === null || expanded.has(item.category.parent_id));
+  const toggle = (id: number) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   return (
     <section className="card" aria-label="Period categories">
       <div className="card-header">
@@ -314,11 +329,32 @@ function PeriodPanel({
             </tr>
           </thead>
           <tbody>
-            {rows.map((item) => {
+            {visible.map((item) => {
               const line = lines.get(item.category.id);
+              const isChild = item.category.parent_id !== null;
+              const hasChildren = parentIds.has(item.category.id);
+              const isOpen = expanded.has(item.category.id);
+              const activate = () => toggle(item.category.id);
               return (
-                <tr key={item.category.id} className={item.category.parent_id !== null ? 'child' : ''}>
-                  <td>{item.category.name}</td>
+                <tr
+                  key={item.category.id}
+                  className={isChild ? 'child' : hasChildren ? 'parent toggleable' : 'parent'}
+                  {...(hasChildren
+                    ? { tabIndex: 0, 'aria-expanded': isOpen, onClick: activate, onKeyDown: onEnter(activate) }
+                    : {})}
+                >
+                  <td>
+                    {isChild ? (
+                      item.category.name
+                    ) : (
+                      <>
+                        <span className="tree-toggle" aria-hidden="true">
+                          {hasChildren ? (isOpen ? '▾' : '▸') : ''}
+                        </span>
+                        <strong>{item.category.name}</strong>
+                      </>
+                    )}
+                  </td>
                   <td className="num">
                     <Amount value={item.total} money={money} />
                   </td>

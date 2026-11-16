@@ -4,7 +4,6 @@
 
 ```
 packages/picciuli/   core library (src layout, tests next to it)
-apps/tui/            console user interface (Textual), with its tests
 apps/api/            multi-user REST API (FastAPI), tests in apps/api/api_tests,
                      committed OpenAPI schema in apps/api/openapi.json
 apps/web/            web and mobile front-end (React, TypeScript, PWA) with a
@@ -18,22 +17,19 @@ Native wrappers (for example Capacitor for the app stores or Tauri for a
 desktop installer) can be added next to it later; the web app is already
 installable everywhere.
 
-Clients use only the public API of the library. For the console interface this
-is enforced by a test (`apps/tui/tests/test_public_api.py`) that inspects its
-imports.
+Clients use only the public API of the library.
 
 ## Commands
 
 ```bash
-pip install -e "packages/picciuli[dev,docs]" -e apps/tui   # or: uv sync
-pip install -e "apps/api[dev]"                             # API server, Python 3.11+
+pip install -e "packages/picciuli[dev,docs]"   # or: uv sync
+pip install -e "apps/api[dev]"                 # API server, Python 3.11+
 
 pytest --cov             # tests with branch coverage (fails below 95 %)
 ruff check . && ruff format --check .
 mypy                     # strict type checking
 mkdocs serve             # live documentation at http://127.0.0.1:8000
 mkdocs build --strict    # what CI runs
-picciuli-tui --demo demo.db && picciuli-tui demo.db   # try the console UI
 picciuli-api openapi --output apps/api/openapi.json   # after changing the API
 cd apps/web && npm run api-types                      # ...then update the web client
 ```
@@ -41,11 +37,6 @@ cd apps/web && npm run api-types                      # ...then update the web c
 The web front-end has its own Node.js tooling (Node 20.19+ or 22):
 `npm ci`, `npm test`, `npm run lint`, `npm run typecheck` and `npm run build`
 in `apps/web`; see [Web and mobile app](web.md#development).
-
-The console interface keeps its logic in widget-free modules
-(`formatting.py`, `calendar_model.py`, `forms.py`) tested directly against
-`Book.in_memory()`. The screens are tested headless with Textual's `Pilot`
-(see `apps/tui/tests/conftest.py`).
 
 ## Pinned dependencies
 

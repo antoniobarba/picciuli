@@ -57,7 +57,7 @@ export interface paths {
         };
         /**
          * Export Data
-         * @description Download a copy of your database, usable with the Picciuli library or TUI.
+         * @description Download a copy of your database, usable with the Picciuli library.
          */
         get: operations["export_data_api_v1_me_export_get"];
         put?: never;
@@ -89,7 +89,7 @@ export interface paths {
          *     are adopted. Either way the import is all-or-nothing.
          *
          *     The file must use the current schema version (open older files once with
-         *     an up-to-date console application) and its data must respect the same
+         *     an up-to-date Picciuli library) and its data must respect the same
          *     rules as data entered by hand, otherwise the request fails with 422.
          *     Only one import per user runs at a time (409 otherwise).
          */
@@ -2507,7 +2507,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description A Picciuli database file, e.g. made by the TUI. */
+        /** @description A Picciuli database file, e.g. a previous export. */
         requestBody: {
             content: {
                 "application/vnd.sqlite3": string;

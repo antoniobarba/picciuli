@@ -4,8 +4,8 @@ Picciuli is a personal budgeting and money tracking engine, written in Python an
 storing everything in a single SQLite file.
 
 It is a **library**: it holds all the rules and the data, and has no user
-interface of its own. Console, desktop, web and mobile front-ends are separate
-programs built on top of it.
+interface of its own. Web, mobile and desktop front-ends are separate programs
+built on top of it.
 
 What it handles:
 
@@ -27,5 +27,4 @@ What it handles:
 
 Start with [Getting started](getting-started.md), then read
 [Concepts](concepts.md) to understand the accounting model. To use Picciuli
-from a terminal, see the [Console interface](tui.md); in a browser or on a
-phone, the [Web and mobile app](web.md).
+in a browser or on a phone, see the [Web and mobile app](web.md).

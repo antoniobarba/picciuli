@@ -103,8 +103,8 @@ read-only, its schema must match the current schema version exactly (no views,
 triggers or extra tables), and every row is created again through the library
 services, so the data must respect the same rules as data entered by hand.
 Files with an older schema version are refused with `422`: open them once with
-an up-to-date console application, which upgrades them, then import them
-again.
+an up-to-date Picciuli library (`Book.open`), which upgrades them, then import
+them again.
 ## Configuration
 
 Environment variables (all prefixed with `PICCIULI_`):

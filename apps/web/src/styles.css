@@ -618,7 +618,8 @@ button {
   opacity: 0.55;
 }
 
-.table.rows-clickable tbody tr {
+.table.rows-clickable tbody tr,
+.table tbody tr.toggleable {
   cursor: pointer;
 }
 
@@ -633,6 +634,7 @@ button {
 }
 
 .table.rows-clickable tbody tr:hover,
+.table tbody tr.toggleable:hover,
 .table tbody tr.selected {
   background: var(--surface-2);
 }

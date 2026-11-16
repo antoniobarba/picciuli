@@ -107,7 +107,7 @@ class AccountTrendOut(OutputModel):
     balance: int
     """Balance including every transaction."""
     months: int
-    """Complete months averaged, from the first transaction to last month."""
+    """Complete months averaged: the last 3, or fewer for a newer account."""
     average_flow: int | None
     """Average net change per month; `null` without complete months."""
     low_point: int | None

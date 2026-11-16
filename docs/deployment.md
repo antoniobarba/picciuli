@@ -275,9 +275,8 @@ Zitadel ID and approved password in `/opt/picciuli/secrets/demo.json` as
 Never commit this file. The script refuses identities outside the configured
 organization or with a username other than `demo`.
 
-Install the script as `/opt/picciuli/demo/reset_demo.py`, together with the
-existing TUI `demo.py` and `calendar_model.py` modules in
-`/opt/picciuli/demo/picciuli_tui/`. Run it using the deployed API image:
+Install the script as `/opt/picciuli/demo/reset_demo.py`; it builds the demo
+book itself, so no other module is needed. Run it using the deployed API image:
 
 ```bash
 cd /opt/picciuli

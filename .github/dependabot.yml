@@ -16,7 +16,6 @@ updates:
     directories:
       - /apps/api
       - /packages/picciuli
-      - /apps/tui
     schedule:
       interval: weekly
     groups:
