@@ -441,9 +441,7 @@ class AccountService:
                     )
                 index = this_month.year * 12 + this_month.month - 1 - months
                 start = dt.date(index // 12, index % 12 + 1, 1)
-                past = sum(
-                    amount for day, amount in days if start <= day < this_month
-                )
+                past = sum(amount for day, amount in days if start <= day < this_month)
                 result.append(
                     AccountTrend(
                         account=to_account(row),
