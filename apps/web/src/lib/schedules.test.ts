@@ -133,7 +133,7 @@ it('lists schedules waiting for confirmation, oldest first', () => {
 });
 
 it('summarizes a catch-up', () => {
-  const empty: CatchUp = { periods: [], posted: [], due: [], failed: [] };
+  const empty: CatchUp = { periods: [], posted: [], due: [], failed: [], skipped: [] };
   expect(catchUpMessage(empty)).toBeNull();
   const result = {
     ...empty,

@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useAccounts } from '../api/queries';
 import type { Schedule, Transaction } from '../api/types';
 import { todayDay, type Day } from '../lib/dates';
+import { AccountForm } from '../forms/AccountForm';
+import { DebtOccurrenceForm } from '../forms/DebtForms';
 import { TradeForm, tradeOf } from '../forms/InvestmentForms';
 import { ScheduleForm } from '../forms/ScheduleForm';
 import { TransactionForm } from '../forms/TransactionForm';
@@ -85,10 +88,20 @@ function Editor({
 }) {
   const transaction = state.kind === 'transaction' ? state.transaction : null;
   const trade = useMemo(() => (transaction ? tradeOf(transaction) : null), [transaction]);
+  const accounts = useAccounts(true).data;
   if (state.kind === 'schedule') {
+    const debt = state.schedule?.debt;
+    if (debt && debt.kind !== 'loan_payment') {
+      // Card interest and minimum payments follow the terms of the card.
+      const card = accounts?.find((account) => account.id === debt.account_id);
+      return card ? <AccountForm account={card} onClose={onClose} /> : null;
+    }
     return <ScheduleForm onClose={onClose} schedule={state.schedule} from={state.from} day={state.day} />;
   }
   if (state.kind === 'occurrence') {
+    if (state.schedule.debt) {
+      return <DebtOccurrenceForm schedule={state.schedule} date={state.date} onClose={onClose} />;
+    }
     return (
       <TransactionForm
         open

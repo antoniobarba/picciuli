@@ -52,6 +52,7 @@ def create_schedule(book: BookDep, body: ScheduleCreate) -> ScheduleOut:
         mode=body.mode,
         description=body.description,
         notes=body.notes,
+        debt=body.debt_model(),
     )
     return ScheduleOut.model_validate(schedule)
 
@@ -79,6 +80,7 @@ def catch_up(book: BookDep, body: CatchUpIn) -> CatchUpOut:
         posted=[TransactionOut.model_validate(t) for t in result.posted],
         due=[OccurrenceOut.model_validate(o) for o in result.due],
         failed=[ScheduleOut.model_validate(s) for s in result.failed],
+        skipped=[OccurrenceOut.model_validate(o) for o in result.skipped],
     )
 
 
@@ -107,7 +109,12 @@ def delete_schedule(book: BookDep, schedule_id: PathId) -> None:
 def post_occurrence(
     book: BookDep, schedule_id: PathId, body: SchedulePost
 ) -> TransactionOut:
-    """Record the next occurrence, possibly with another day or amount."""
+    """Record the next occurrence, possibly with another day or amount.
+
+    Loan payments are split into principal and interest; credit card
+    occurrences get their predicted interest charge or minimum payment unless
+    `amount` (and, for payments, `from_account_id`) say otherwise.
+    """
     transaction = book.schedules.post(schedule_id, **body.changes())
     return TransactionOut.model_validate(transaction)
 

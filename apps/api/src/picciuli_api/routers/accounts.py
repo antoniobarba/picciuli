@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
+from picciuli import Account, Book
 from picciuli_api.deps import BookDep
 from picciuli_api.schemas.accounts import (
     AccountBalanceOut,
@@ -14,6 +15,7 @@ from picciuli_api.schemas.accounts import (
     AccountUpdate,
     BalanceOut,
     CloseAccount,
+    DebtTermsIn,
     NetWorthOut,
 )
 from picciuli_api.schemas.base import PathId, QueryDate
@@ -31,16 +33,35 @@ def list_accounts(book: BookDep, include_closed: bool = True) -> list[AccountOut
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_account(book: BookDep, body: AccountCreate) -> AccountOut:
-    """Create an account."""
-    account = book.accounts.create(
-        body.name,
-        body.type,
-        opening_balance=body.opening_balance,
-        opening_date=body.opening_date,
-        goal=body.goal,
-        notes=body.notes,
-    )
+    """Create an account, with the debt terms of a liability if given."""
+    with book.atomic():
+        account = book.accounts.create(
+            body.name,
+            body.type,
+            opening_balance=body.opening_balance,
+            opening_date=body.opening_date,
+            goal=body.goal,
+            notes=body.notes,
+        )
+        if body.debt_terms is not None:
+            account = apply_terms(book, account.id, body.debt_terms)
     return AccountOut.model_validate(account)
+
+
+def apply_terms(book: Book, account_id: int, terms: DebtTermsIn | None) -> Account:
+    """Set or remove the debt terms of an account, creating their category."""
+    if terms is None:
+        return book.debts.remove_terms(account_id)
+    category_id = terms.interest_category_id
+    if terms.new_interest_category:
+        name = terms.new_interest_category.strip().casefold()
+        found = [c for c in book.categories.list() if c.name.casefold() == name]
+        category_id = (
+            found[0].id
+            if found
+            else book.categories.create(terms.new_interest_category).id
+        )
+    return book.debts.set_terms(account_id, terms.to_model(category_id))
 
 
 @router.get("/balances")
@@ -80,8 +101,14 @@ def get_account(book: BookDep, account_id: PathId) -> AccountOut:
 def update_account(
     book: BookDep, account_id: PathId, body: AccountUpdate
 ) -> AccountOut:
-    """Change some fields of an account."""
-    account = book.accounts.update(account_id, **body.changes())
+    """Change some fields of an account; `debt_terms: null` removes the terms."""
+    changes = body.changes()
+    terms_given = "debt_terms" in changes
+    changes.pop("debt_terms", None)
+    with book.atomic():
+        account = book.accounts.update(account_id, **changes)
+        if terms_given:
+            account = apply_terms(book, account_id, body.debt_terms)
     return AccountOut.model_validate(account)
 
 

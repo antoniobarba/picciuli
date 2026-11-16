@@ -7,10 +7,11 @@ from typing import Annotated, Any
 
 from pydantic import Field, field_validator
 
-from picciuli import ScheduleFrequency, ScheduleMode, TransactionKind
+from picciuli import ScheduleDebt, ScheduleFrequency, ScheduleMode, TransactionKind
 from picciuli.limits import MAX_ID, MAX_SCHEDULE_EVERY
 
-from .base import Date, InputModel, OutputModel, PatchModel, Text
+from .base import Date, Id, InputModel, OutputModel, PatchModel, PositiveAmount, Text
+from .debts import ScheduleDebtIn, ScheduleDebtOut
 from .periods import PeriodOut
 from .transactions import SplitList, SplitOut, TransactionOut, _tag_split
 
@@ -62,6 +63,12 @@ class ScheduleOut(OutputModel):
     kind: TransactionKind
     net_amount: int
     is_finished: bool
+    debt: ScheduleDebtOut | None = Field(
+        default=None,
+        description="The loan or credit card it pays or charges. Credit card "
+        "interest and minimum payments have no splits: their amounts are "
+        "predicted for each occurrence.",
+    )
 
     @field_validator("splits", mode="before")
     @classmethod
@@ -86,6 +93,15 @@ class ScheduleCreate(InputModel):
     mode: ScheduleMode = ScheduleMode.AUTO
     description: Text | None = None
     notes: Text | None = None
+    debt: ScheduleDebtIn | None = None
+
+    def debt_model(self) -> ScheduleDebt | None:
+        """The library loan payment link, if any."""
+        return None if self.debt is None else _debt_model(self.debt)
+
+
+def _debt_model(debt: ScheduleDebtIn) -> ScheduleDebt:
+    return ScheduleDebt(debt.kind, debt.account_id, debt.interest_category_id)
 
 
 class ScheduleUpdate(PatchModel):
@@ -106,12 +122,17 @@ class ScheduleUpdate(PatchModel):
     paused: bool | None = None
     description: Text | None = None
     notes: Text | None = None
+    debt: ScheduleDebtIn | None = Field(
+        default=None, description="A loan payment link; `null` removes it."
+    )
 
     def changes(self) -> dict[str, Any]:
         """Return the explicitly set fields, with splits converted."""
         changes = super().changes()
         if self.splits is not None:
             changes["splits"] = [split.to_model() for split in self.splits]
+        if self.debt is not None:
+            changes["debt"] = _debt_model(self.debt)
         return changes
 
 
@@ -128,6 +149,16 @@ class SchedulePost(PatchModel):
     )
     description: Text | None = None
     notes: Text | None = None
+    amount: PositiveAmount | None = Field(
+        default=None,
+        description="Loans and credit cards: the total payment or charge "
+        "instead of the predicted one.",
+    )
+    from_account_id: Id | None = Field(
+        default=None,
+        description="Loan and minimum payments: the account the money comes "
+        "from instead of the usual one.",
+    )
 
     def changes(self) -> dict[str, Any]:
         """Return the explicitly set fields, with splits converted."""
@@ -142,6 +173,22 @@ class OccurrenceOut(OutputModel):
 
     schedule_id: int
     date: dt.date
+    amount: int | None = Field(
+        default=None,
+        description="Loans and credit cards: the predicted payment or charge.",
+    )
+    splits: list[SplitOut] | None = Field(
+        default=None,
+        description="Loans and credit cards: the predicted splits; `null` "
+        "when the paying account is unknown.",
+    )
+
+    @field_validator("splits", mode="before")
+    @classmethod
+    def _tag_splits(cls, value: Any) -> Any:
+        if isinstance(value, (list, tuple)):
+            return [_tag_split(split) for split in value]
+        return value
 
 
 class CatchUpIn(InputModel):
@@ -162,4 +209,9 @@ class CatchUpOut(OutputModel):
     )
     failed: list[ScheduleOut] = Field(
         description="Automatic schedules that could not record an occurrence."
+    )
+    skipped: list[OccurrenceOut] = Field(
+        default=[],
+        description="Credit card occurrences with nothing to charge or pay, "
+        "skipped on their own.",
     )

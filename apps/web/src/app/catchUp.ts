@@ -24,7 +24,13 @@ export function useCatchUp(): void {
       lastDay.current = today;
       try {
         const result = await unwrap(api.POST('/api/v1/schedules/catch-up', { body: { today } }));
-        if (result.posted.length || result.periods.length || result.due.length || result.failed.length) {
+        if (
+          result.posted.length ||
+          result.periods.length ||
+          result.due.length ||
+          result.failed.length ||
+          result.skipped.length
+        ) {
           await client.invalidateQueries();
         }
         const message = catchUpMessage(result);

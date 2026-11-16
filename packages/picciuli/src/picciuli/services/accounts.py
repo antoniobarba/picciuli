@@ -40,6 +40,7 @@ from picciuli.model import (
     RegisterEntry,
     Unset,
 )
+from picciuli.services import debts
 
 __all__ = ["AccountService"]
 
@@ -217,6 +218,8 @@ class AccountService:
                         f"account {row.name!r} has security transactions and must "
                         "stay an investment account"
                     )
+                if new_type.value != row.type:
+                    debts.on_type_change(session, row, new_type)
                 row.type = new_type.value
             if not isinstance(goal, Unset):
                 row.goal = v.optional_amount(goal, "goal")
@@ -304,6 +307,7 @@ class AccountService:
                 held[move.security_id] = held.get(move.security_id, 0) + move.quantity
             if any(held.values()):
                 raise ConflictError("sell or move every share before closing")
+            debts.on_close(session, row)
             row.closed_on = day
             session.flush()
             return to_account(row)
@@ -365,6 +369,7 @@ class AccountService:
                     f"account {row.name!r} is used by the recurring transaction "
                     f"{label!r}; change or delete it first"
                 )
+            debts.on_delete(session, row)
             session.delete(row)
             session.flush()
             for index, item in enumerate(

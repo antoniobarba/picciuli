@@ -21,12 +21,19 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from picciuli.model import AccountType, ScheduleFrequency, ScheduleMode, SecurityKind
+from picciuli.model import (
+    AccountType,
+    DebtLinkKind,
+    ScheduleFrequency,
+    ScheduleMode,
+    SecurityKind,
+)
 
 _ACCOUNT_TYPES = ", ".join(f"'{t.value}'" for t in AccountType)
 _SECURITY_KINDS = ", ".join(f"'{k.value}'" for k in SecurityKind)
 _FREQUENCIES = ", ".join(f"'{f.value}'" for f in ScheduleFrequency)
 _SCHEDULE_MODES = ", ".join(f"'{m.value}'" for m in ScheduleMode)
+_DEBT_LINKS = ", ".join(f"'{k.value}'" for k in DebtLinkKind)
 
 
 class Base(DeclarativeBase):
@@ -60,6 +67,61 @@ class AccountRow(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     position: Mapped[int] = mapped_column(Integer)
     closed_on: Mapped[dt.date | None] = mapped_column(Date)
+    debt_terms: Mapped[DebtTermsRow | None] = relationship(
+        foreign_keys="DebtTermsRow.account_id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    # The credit card schedules managed by the debt terms (and loan payments).
+    debt_links: Mapped[list[ScheduleDebtRow]] = relationship(
+        viewonly=True, lazy="selectin"
+    )
+
+
+class DebtTermsRow(Base):
+    """Interest and payment terms of a liability account."""
+
+    __tablename__ = "debt_terms"
+    __table_args__ = (
+        CheckConstraint("annual_rate >= 0", name="ck_debt_terms_rate"),
+        CheckConstraint("payment IS NULL OR payment > 0", name="ck_debt_terms_payment"),
+        CheckConstraint(
+            "payment_percent IS NULL OR payment_percent > 0",
+            name="ck_debt_terms_percent",
+        ),
+        CheckConstraint(
+            "due_day IS NULL OR due_day BETWEEN 1 AND 31", name="ck_debt_terms_due_day"
+        ),
+        CheckConstraint(
+            "statement_day IS NULL OR statement_day BETWEEN 1 AND 31",
+            name="ck_debt_terms_statement_day",
+        ),
+        CheckConstraint(
+            "credit_limit IS NULL OR credit_limit > 0", name="ck_debt_terms_limit"
+        ),
+        CheckConstraint(
+            "payment_account_id IS NULL OR payment_account_id != account_id",
+            name="ck_debt_terms_payment_account",
+        ),
+    )
+
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Percent per year scaled by 10**8 (see picciuli._decimal.SCALE).
+    annual_rate: Mapped[int] = mapped_column(Integer)
+    payment: Mapped[int | None] = mapped_column(Integer)
+    # Percent scaled by 10**8.
+    payment_percent: Mapped[int | None] = mapped_column(Integer)
+    due_day: Mapped[int | None] = mapped_column(Integer)
+    statement_day: Mapped[int | None] = mapped_column(Integer)
+    credit_limit: Mapped[int | None] = mapped_column(Integer)
+    payment_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    interest_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT")
+    )
 
 
 class CategoryRow(Base):
@@ -255,6 +317,33 @@ class ScheduleRow(Base):
         cascade="all, delete-orphan",
         order_by="ScheduleSplitRow.position",
         lazy="selectin",
+    )
+    debt: Mapped[ScheduleDebtRow | None] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class ScheduleDebtRow(Base):
+    """Ties a schedule to a loan or a credit card."""
+
+    __tablename__ = "schedule_debts"
+    __table_args__ = (
+        CheckConstraint(f"kind IN ({_DEBT_LINKS})", name="ck_schedule_debt_kind"),
+        CheckConstraint(
+            "kind = 'loan_payment' OR interest_category_id IS NULL",
+            name="ck_schedule_debt_category",
+        ),
+    )
+
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("schedules.id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String)
+    interest_category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="RESTRICT")
     )
 
 

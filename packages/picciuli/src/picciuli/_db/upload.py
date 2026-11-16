@@ -94,6 +94,18 @@ COLUMNS: Final[Mapping[str, tuple[str, ...]]] = {
         "amount",
         "memo",
     ),
+    "debt_terms": (
+        "account_id",
+        "annual_rate",
+        "payment",
+        "payment_percent",
+        "due_day",
+        "statement_day",
+        "credit_limit",
+        "payment_account_id",
+        "interest_category_id",
+    ),
+    "schedule_debts": ("schedule_id", "account_id", "kind", "interest_category_id"),
 }
 """Columns read from each table, in the order of the returned tuples."""
 

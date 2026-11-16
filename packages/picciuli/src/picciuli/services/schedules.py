@@ -15,7 +15,13 @@ from picciuli import _calendar
 from picciuli import _validation as v
 from picciuli._db.queries import get_row, to_schedule, to_transaction
 from picciuli._db.session import UnitOfWork
-from picciuli._db.tables import ScheduleRow, ScheduleSplitRow, TransactionRow
+from picciuli._db.tables import (
+    AccountRow,
+    ScheduleDebtRow,
+    ScheduleRow,
+    ScheduleSplitRow,
+    TransactionRow,
+)
 from picciuli.errors import ConflictError, NotFoundError, ValidationError
 from picciuli.limits import (
     MAX_CATCH_UP,
@@ -27,15 +33,18 @@ from picciuli.model import (
     UNSET,
     AccountSplit,
     CatchUp,
+    DebtLinkKind,
     ExternalSplit,
     Occurrence,
     Schedule,
+    ScheduleDebt,
     ScheduleFrequency,
     ScheduleMode,
     Split,
     Transaction,
     Unset,
 )
+from picciuli.services import debts
 from picciuli.services.transactions import _validated_splits
 
 __all__ = ["ScheduleService"]
@@ -114,11 +123,15 @@ def _template(
 
 
 def _template_splits(row: ScheduleRow) -> builtins.list[Split]:
+    return _splits_of(row.splits)
+
+
+def _splits_of(rows: Sequence[ScheduleSplitRow]) -> builtins.list[Split]:
     return [
         AccountSplit(s.account_id, s.amount, s.memo)
         if s.account_id is not None
         else ExternalSplit(s.amount, s.category_id, s.memo)
-        for s in row.splits
+        for s in rows
     ]
 
 
@@ -183,6 +196,47 @@ def _check_consistent(row: ScheduleRow) -> None:
         raise ValidationError("occurrences must be at least 1")
 
 
+def _is_card(row: ScheduleRow) -> bool:
+    return row.debt is not None and DebtLinkKind(row.debt.kind) in debts.CARD_KINDS
+
+
+def _loan_link(debt: object) -> ScheduleDebtRow | None:
+    if debt is None:
+        return None
+    if not isinstance(debt, ScheduleDebt):
+        raise ValidationError("debt must be a ScheduleDebt or None")
+    kind = _choice(DebtLinkKind, debt.kind, "debt kind")
+    if kind is not DebtLinkKind.LOAN_PAYMENT:
+        raise ValidationError(
+            "credit card interest and minimum payments are proposed by the debt "
+            "terms of the card"
+        )
+    category = debt.interest_category_id
+    link = ScheduleDebtRow(
+        account_id=v.identifier(debt.account_id, "debt account id"),
+        kind=kind.value,
+        interest_category_id=None
+        if category is None
+        else v.identifier(category, "interest category id"),
+    )
+    return link
+
+
+def _due(
+    session: Session,
+    row: ScheduleRow,
+    day: dt.date,
+    ledgers: dict[int, debts.Ledger],
+) -> Occurrence:
+    """An occurrence, with its prediction when the schedule is tied to a debt."""
+    if row.debt is None:
+        return Occurrence(row.id, day)
+    amount, splits = debts.debt_occurrence(
+        session, row, _template_splits(row), day, ledgers=ledgers
+    )
+    return Occurrence(row.id, day, amount, None if splits is None else tuple(splits))
+
+
 class ScheduleService:
     """Create recurring transactions and record their occurrences.
 
@@ -215,6 +269,7 @@ class ScheduleService:
         mode: ScheduleMode | str = ScheduleMode.AUTO,
         description: str | None = None,
         notes: str | None = None,
+        debt: ScheduleDebt | None = None,
     ) -> Schedule:
         """Create a recurring transaction.
 
@@ -236,13 +291,19 @@ class ScheduleService:
                 for confirmation.
             description: Description of the recorded transactions.
             notes: Notes of the recorded transactions.
+            debt: A [`LOAN_PAYMENT`][picciuli.model.DebtLinkKind] link to make
+                it a loan payment: the template must move money from one
+                account into the loan, and each occurrence is split into
+                principal and interest. Credit card schedules are created by
+                [`DebtService.set_terms`][picciuli.services.DebtService.set_terms].
 
         Returns:
             The stored schedule.
 
         Raises:
             ValidationError: If an argument is invalid, the splits do not
-                balance or move shares, or `start` is after `end`.
+                balance or move shares, `start` is after `end`, or a loan
+                payment is not a payment into a loan.
             NotFoundError: If an account or category does not exist.
             ConflictError: If an account is closed.
         """
@@ -257,6 +318,10 @@ class ScheduleService:
         description = v.optional_text(description, "description")
         notes = v.optional_text(notes, "notes")
         with self._uow.session() as session:
+            template = _template(session, start, splits)
+            link = _loan_link(debt)
+            if link is not None:
+                debts.check_loan_template(session, link, _splits_of(template))
             row = ScheduleRow(
                 description=description,
                 notes=notes,
@@ -269,7 +334,8 @@ class ScheduleService:
                 mode=mode.value,
                 paused=False,
                 last_error=None,
-                splits=_template(session, start, splits),
+                splits=template,
+                debt=link,
             )
             session.add(row)
             session.flush()
@@ -311,11 +377,14 @@ class ScheduleService:
         paused: bool | Unset = UNSET,
         description: str | None | Unset = UNSET,
         notes: str | None | Unset = UNSET,
+        debt: ScheduleDebt | None | Unset = UNSET,
     ) -> Schedule:
         """Change a schedule; arguments left `UNSET` are not modified.
 
         Transactions already recorded are never changed. Any change clears
-        [`last_error`][picciuli.model.Schedule].
+        [`last_error`][picciuli.model.Schedule]. The schedules of credit card
+        interest and minimum payments follow the card's debt terms: they can
+        only be paused, posted, skipped or deleted.
 
         Args:
             schedule_id: The schedule.
@@ -333,17 +402,43 @@ class ScheduleService:
             paused: Whether the schedule is suspended.
             description: Description of the recorded transactions.
             notes: Notes of the recorded transactions.
+            debt: A loan payment link, or `None` to make it an ordinary
+                schedule.
 
         Raises:
             NotFoundError: If the schedule, an account or a category does not
                 exist.
-            ValidationError: If an argument is invalid, or the next
+            ValidationError: If an argument is invalid, the next
                 occurrence would be after the end day or without occurrences
-                left.
-            ConflictError: If the new splits use a closed account.
+                left, or a loan payment is not a payment into a loan.
+            ConflictError: If the new splits use a closed account, or
+                anything but `paused` changes on a credit card schedule.
         """
         with self._uow.session() as session:
             row = get_row(session, ScheduleRow, schedule_id, "schedule")
+            if _is_card(row):
+                changed = [
+                    value
+                    for value in (
+                        splits,
+                        next_date,
+                        frequency,
+                        every,
+                        day_of_month,
+                        end,
+                        occurrences,
+                        mode,
+                        description,
+                        notes,
+                        debt,
+                    )
+                    if not isinstance(value, Unset)
+                ]
+                if changed:
+                    raise ConflictError(
+                        "this recurring transaction follows the debt terms of the "
+                        "credit card: change them instead"
+                    )
             if not isinstance(next_date, Unset):
                 row.next_date = v.date(next_date, "next date")
             old_frequency = ScheduleFrequency(row.frequency)
@@ -380,6 +475,14 @@ class ScheduleService:
                 row.splits.clear()
                 session.flush()
                 row.splits.extend(new_rows)
+            if not isinstance(debt, Unset):
+                link = _loan_link(debt)
+                row.debt = None
+                session.flush()
+                row.debt = link
+                session.flush()
+            if row.debt is not None and not _is_card(row):
+                debts.check_loan_template(session, row.debt, _template_splits(row))
             _check_consistent(row)
             row.last_error = None
             session.flush()
@@ -393,19 +496,28 @@ class ScheduleService:
         """
         with self._uow.session() as session:
             row = get_row(session, ScheduleRow, schedule_id, "schedule")
+            account = None if row.debt is None else row.debt.account_id
             session.execute(
                 update(TransactionRow)
                 .where(TransactionRow.schedule_id == row.id)
                 .values(schedule_id=None)
             )
             session.delete(row)
+            if account is not None:
+                # The proposals of a card follow its schedules.
+                cached = session.get(AccountRow, account)
+                if cached is not None:
+                    session.flush()
+                    session.expire(cached, ["debt_links"])
 
     def occurrences(self, start: dt.date, end: dt.date) -> builtins.list[Occurrence]:
         """List the occurrences of active schedules between two days.
 
         Paused and finished schedules have none. Occurrences before the next
         one of a schedule are not listed: they are already recorded or
-        skipped.
+        skipped. Occurrences of schedules tied to a debt carry their predicted
+        amount and splits; credit card occurrences predicted at zero are left
+        out.
 
         Args:
             start: First day to include.
@@ -427,6 +539,7 @@ class ScheduleService:
                 f"the range cannot be longer than {MAX_PROJECTION_DAYS} days"
             )
         result: builtins.list[Occurrence] = []
+        ledgers: dict[int, debts.Ledger] = {}
         with self._uow.session() as session:
             rows = session.scalars(
                 select(ScheduleRow).where(
@@ -434,13 +547,16 @@ class ScheduleService:
                     ScheduleRow.next_date.is_not(None),
                     ScheduleRow.next_date <= end,
                 )
-            )
+            ).all()
             for row in rows:
                 for day in _upcoming(row, start=start):
                     if day > end:
                         break
                     if day >= start:
-                        result.append(Occurrence(row.id, day))
+                        occurrence = _due(session, row, day, ledgers)
+                        if occurrence.amount == 0 and _is_card(row):
+                            continue
+                        result.append(occurrence)
         result.sort(key=lambda o: (o.date, o.schedule_id))
         return result
 
@@ -452,19 +568,30 @@ class ScheduleService:
         splits: Sequence[Split] | None = None,
         description: str | None | Unset = UNSET,
         notes: str | None | Unset = UNSET,
+        amount: int | None = None,
+        from_account_id: int | None = None,
     ) -> Transaction:
         """Record the next occurrence of a schedule and move to the following one.
 
         The arguments change only this transaction, not the schedule: use
         them for a bill whose amount varies, or that was paid on another day.
 
+        Schedules tied to a debt compute their splits for the day: a loan
+        payment is split into principal and interest, a credit card gets its
+        predicted interest charge or minimum payment.
+
         Args:
             schedule_id: The schedule.
             date: Day of the transaction; defaults to the day of the next
                 occurrence.
-            splits: Splits of the transaction; default to the template.
+            splits: Splits of the transaction; default to the template (or to
+                the computed ones of a schedule tied to a debt).
             description: Description; defaults to the schedule's.
             notes: Notes; default to the schedule's.
+            amount: Schedules tied to a debt only: the total payment or
+                charge, instead of the predicted one.
+            from_account_id: Loan and minimum payments only: the account
+                the money comes from, instead of the usual one.
 
         Returns:
             The recorded transaction.
@@ -472,21 +599,61 @@ class ScheduleService:
         Raises:
             NotFoundError: If the schedule, an account or a category does not
                 exist.
-            ConflictError: If the schedule has finished or an account is
-                closed.
-            ValidationError: If an argument is invalid or the splits do not
-                balance or move shares.
+            ConflictError: If the schedule has finished, an account is
+                closed, or a card occurrence has nothing to charge or pay.
+            ValidationError: If an argument is invalid, the splits do not
+                balance or move shares, or the paying account of a minimum
+                payment is unknown.
         """
         with self._uow.session() as session:
             row = get_row(session, ScheduleRow, schedule_id, "schedule")
             if row.next_date is None:
                 raise ConflictError("the recurring transaction has finished")
             day = row.next_date if date is None else v.date(date, "date")
-            if splits is None:
-                chosen: object = _template_splits(row)
-            else:
+            if row.debt is None and (amount is not None or from_account_id is not None):
+                raise ValidationError(
+                    "an amount or a paying account only applies to recurring "
+                    "transactions tied to a debt"
+                )
+            if amount is not None:
+                amount = v.positive_amount(amount, "amount")
+            payer = v.optional_integer(from_account_id, "from account id")
+            if payer is not None:
+                v.identifier(payer, "from account id")
+                if row.debt is not None and (
+                    DebtLinkKind(row.debt.kind) is DebtLinkKind.CARD_INTEREST
+                ):
+                    raise ValidationError("an interest charge has no paying account")
+            if splits is not None:
                 _template(session, day, splits)
-                chosen = splits
+                chosen: object = splits
+            elif row.debt is not None:
+                # Card amounts belong to their statement or due day, whatever
+                # day they are recorded on; loan interest follows the payment day.
+                occurrence = (
+                    row.next_date
+                    if DebtLinkKind(row.debt.kind) in debts.CARD_KINDS
+                    else day
+                )
+                predicted, computed = debts.debt_occurrence(
+                    session,
+                    row,
+                    _template_splits(row),
+                    occurrence,
+                    amount=amount,
+                    payer=payer,
+                )
+                if computed is None:
+                    if predicted is None:
+                        raise ValidationError("the amount is unknown: give it")
+                    if predicted:
+                        raise ValidationError(
+                            "choose the account the payment comes from"
+                        )
+                    raise ConflictError("there is nothing to charge or pay: skip it")
+                chosen = computed
+            else:
+                chosen = _template_splits(row)
             transaction = _record(
                 session,
                 row,
@@ -528,7 +695,9 @@ class ScheduleService:
         example because an account was closed) the schedule stops there and
         keeps the reason in `last_error`; the other schedules go on.
         Schedules waiting for confirmation are not changed: their due
-        occurrences are returned instead.
+        occurrences are returned instead, with their predicted amounts when
+        they are tied to a debt. Credit card occurrences with nothing to
+        charge or pay are skipped on their own and listed in `skipped`.
 
         At most [`MAX_CATCH_UP`][picciuli.limits.MAX_CATCH_UP] occurrences
         are recorded and listed; call again to continue.
@@ -537,7 +706,8 @@ class ScheduleService:
             today: The current day of the user.
 
         Returns:
-            What was recorded, what waits for confirmation and what failed.
+            What was recorded, what waits for confirmation, what failed and
+            what was skipped.
 
         Raises:
             ValidationError: If `today` is not a date.
@@ -546,6 +716,8 @@ class ScheduleService:
         posted: builtins.list[Transaction] = []
         due: builtins.list[Occurrence] = []
         failed: builtins.list[Schedule] = []
+        skipped: builtins.list[Occurrence] = []
+        ledgers: dict[int, debts.Ledger] = {}
         with self._uow.session() as session:
             rows = session.scalars(
                 select(ScheduleRow)
@@ -556,12 +728,9 @@ class ScheduleService:
                 )
                 .order_by(ScheduleRow.next_date, ScheduleRow.id)
             ).all()
+            confirmed = [r for r in rows if r.mode == ScheduleMode.CONFIRM.value]
             for row in rows:
                 if row.mode == ScheduleMode.CONFIRM.value:
-                    for day in _upcoming(row):
-                        if day > today or len(due) >= MAX_CATCH_UP:
-                            break
-                        due.append(Occurrence(row.id, day))
                     continue
                 while (
                     row.next_date is not None
@@ -570,11 +739,16 @@ class ScheduleService:
                 ):
                     try:
                         with session.begin_nested():
+                            splits: object = _template_splits(row)
+                            if row.debt is not None:
+                                splits = debts.debt_occurrence(
+                                    session, row, _template_splits(row), row.next_date
+                                )[1]
                             transaction = _record(
                                 session,
                                 row,
                                 row.next_date,
-                                _template_splits(row),
+                                splits,
                                 row.description,
                                 row.notes,
                             )
@@ -585,7 +759,52 @@ class ScheduleService:
                     posted.append(to_transaction(transaction))
                     _advance(row)
                     row.last_error = None
+            # Predictions only after every automatic transaction is recorded,
+            # so that skipping a card occurrence never relies on a stale ledger.
+            session.flush()
+            for row in confirmed:
+                try:
+                    self._list_due(session, row, today, due, skipped, ledgers)
+                except (ValidationError, ConflictError, NotFoundError) as exc:
+                    row.last_error = str(exc)
+                    failed.append(to_schedule(row))
             session.flush()
         posted.sort(key=lambda t: (t.date, t.id))
         due.sort(key=lambda o: (o.date, o.schedule_id))
-        return CatchUp(posted=tuple(posted), due=tuple(due), failed=tuple(failed))
+        skipped.sort(key=lambda o: (o.date, o.schedule_id))
+        return CatchUp(
+            posted=tuple(posted),
+            due=tuple(due),
+            failed=tuple(failed),
+            skipped=tuple(skipped),
+        )
+
+    @staticmethod
+    def _list_due(
+        session: Session,
+        row: ScheduleRow,
+        today: dt.date,
+        due: builtins.list[Occurrence],
+        skipped: builtins.list[Occurrence],
+        ledgers: dict[int, debts.Ledger],
+    ) -> None:
+        """List the due occurrences of a confirmed schedule.
+
+        Leading credit card occurrences predicted at zero are skipped first.
+        """
+        if _is_card(row):
+            while (
+                row.next_date is not None
+                and row.next_date <= today
+                and len(skipped) < MAX_CATCH_UP
+            ):
+                occurrence = _due(session, row, row.next_date, ledgers)
+                if occurrence.amount != 0:
+                    break
+                skipped.append(occurrence)
+                _advance(row)
+                row.last_error = None
+        for day in _upcoming(row):
+            if day > today or len(due) >= MAX_CATCH_UP:
+                break
+            due.append(_due(session, row, day, ledgers))

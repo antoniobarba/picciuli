@@ -40,7 +40,7 @@ An account is a place where money is kept or owed. Its
 
 Liabilities hold **negative** balances while you owe money. A mortgage of
 150,000 has a balance of `-15000000`. This is why net worth is simply the sum of
-all balances.
+all balances. Liabilities can have [debt terms](#debts).
 
 Balances are never stored; they are always calculated:
 
@@ -130,6 +130,61 @@ keeps its transactions. An account used by a schedule cannot be deleted;
 deleting a category moves the schedules' splits like the transactions'.
 [`occurrences`][picciuli.services.ScheduleService.occurrences] projects the
 upcoming occurrences, for calendars and lists of upcoming bills.
+
+## Debts
+
+Credit cards, loans, mortgages and other liabilities can have
+[debt terms](api/model.md#picciuli.model.DebtTerms), set with
+[`set_terms`][picciuli.services.DebtService.set_terms]: the annual interest
+rate in percent, the payment (the fixed monthly payment of a loan, or the
+minimum payment floor of a card), the day payments are due, the account they
+usually come from and the category of the interest. Cards also have a minimum
+payment percentage, a statement day and a credit limit. Only the current rate
+is kept: a new rate applies from then on.
+
+Interest is computed **per type**:
+
+- **Loans, mortgages and other liabilities** accrue one month of interest,
+  `owed × rate / 12`, on what is owed at the start of the payment day. A
+  payment into the loan is split into interest (an external split in the
+  interest category) and principal (the rest, which reduces the debt):
+  [`loan_payment_split`][picciuli.services.DebtService.loan_payment_split]
+  computes it and
+  [`record_loan_payment`][picciuli.services.DebtService.record_loan_payment]
+  records it. A schedule with a
+  [loan payment](api/model.md#picciuli.model.ScheduleDebt) link moves money
+  from one account into the loan and is split the same way each time it posts.
+- **Credit cards** accrue interest every day: each statement charges the
+  average daily balance owed during the cycle times `rate / 365` per day,
+  unless the previous statement was paid in full by its due day (the grace
+  period). Card payments stay plain transfers. The minimum payment is the
+  percentage of the statement balance, at least the floor, at most the balance.
+
+With `propose_interest` and `propose_minimum`, a card proposes its interest
+charge on every statement day and its minimum payment on every due day, as
+recurring transactions that wait for confirmation. They are managed by the
+terms (changing the days moves them, turning them off deletes them) and can
+only be paused, posted, skipped or deleted. Their amounts are predicted from
+the transactions recorded so far, so a late-entered purchase or payment
+changes them: the minimum payment is reduced by what was paid into the card
+since the statement, and an occurrence with nothing to charge or pay is
+skipped on its own by `catch_up`. When posting a minimum payment, choose the
+account the money comes from (the usual one by default) and, if needed,
+another amount.
+
+[`list`][picciuli.services.DebtService.list] forecasts when each debt is paid
+off at its minimum payment, with interest.
+[`plan`][picciuli.services.DebtService.plan] simulates paying them all off
+month by month: every debt accrues interest and gets its minimum payment, and
+what is left of the budget (the first month's minimum payments, plus an extra
+payment every month and one-off lump sums) goes to one debt at a time:
+
+- **snowball**: the smallest balance first, for quick wins;
+- **avalanche**: the highest interest rate first, for the least interest.
+
+The [rollover](api/model.md#picciuli.model.Rollover) decides what happens to
+the payment of a debt once it is paid off: it goes to the next debt (the
+classic method), it is freed up, or a percentage of it goes on.
 
 ## Categories
 

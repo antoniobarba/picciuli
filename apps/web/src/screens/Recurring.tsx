@@ -6,9 +6,10 @@ import { useEditors } from '../app/editors';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
 import { icons } from '../components/icons';
-import { Amount, Empty, Loading, onEnter, PageHeader, RowMenu } from '../components/ui';
+import { ScheduleAmount } from '../components/RecurringPanel';
+import { Empty, Loading, onEnter, PageHeader, RowMenu } from '../components/ui';
 import { shortDate, todayDay } from '../lib/dates';
-import { byId, transactionAccounts, transactionCategory, transferAmount } from '../lib/format';
+import { byId, transactionAccounts, transactionCategory } from '../lib/format';
 import { ruleText, scheduleStatus, templateTransaction } from '../lib/schedules';
 import { useHotkeys } from '../lib/useHotkeys';
 
@@ -117,7 +118,10 @@ export function Recurring() {
                     <td>
                       <div className="strong">{schedule.description || `(${schedule.kind})`}</div>
                       <div className="muted small">
-                        {transactionAccounts(template, accountMap)} · {transactionCategory(template, categoryMap)}
+                        {schedule.debt && schedule.debt.kind !== 'loan_payment'
+                          ? `Proposed by the terms of ${accountMap.get(schedule.debt.account_id)?.name ?? 'the card'}`
+                          : `${transactionAccounts(template, accountMap)} · ${transactionCategory(template, categoryMap)}`}
+                        {schedule.debt?.kind === 'loan_payment' ? ' · principal and interest' : ''}
                       </div>
                     </td>
                     <td className="hide-sm">
@@ -138,11 +142,7 @@ export function Recurring() {
                       ) : null}
                     </td>
                     <td className="num">
-                      {schedule.kind === 'transfer' ? (
-                        <Amount value={transferAmount(template)} money={money} muted />
-                      ) : (
-                        <Amount value={schedule.net_amount} money={money} />
-                      )}
+                      <ScheduleAmount schedule={schedule} money={money} />
                     </td>
                     <td className="actions" onClick={(e) => e.stopPropagation()}>
                       <RowMenu

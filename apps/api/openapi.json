@@ -657,7 +657,7 @@
           "accounts"
         ],
         "summary": "Create Account",
-        "description": "Create an account.",
+        "description": "Create an account, with the debt terms of a liability if given.",
         "operationId": "create_account_api_v1_accounts_post",
         "security": [
           {
@@ -1168,7 +1168,7 @@
           "accounts"
         ],
         "summary": "Update Account",
-        "description": "Change some fields of an account.",
+        "description": "Change some fields of an account; `debt_terms: null` removes the terms.",
         "operationId": "update_account_api_v1_accounts__account_id__patch",
         "security": [
           {
@@ -4308,7 +4308,7 @@
           "schedules"
         ],
         "summary": "Post Occurrence",
-        "description": "Record the next occurrence, possibly with another day or amount.",
+        "description": "Record the next occurrence, possibly with another day or amount.\n\nLoan payments are split into principal and interest; credit card\noccurrences get their predicted interest charge or minimum payment unless\n`amount` (and, for payments, `from_account_id`) say otherwise.",
         "operationId": "post_occurrence_api_v1_schedules__schedule_id__post_post",
         "security": [
           {
@@ -4501,6 +4501,462 @@
           },
           "503": {
             "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debts": {
+      "get": {
+        "tags": [
+          "debts"
+        ],
+        "summary": "List Debts",
+        "description": "List the open liabilities with debt terms and when they are paid off.\n\nBalances count the transactions up to `today` (default: the server date);\npayoff dates assume the minimum payment from the following month on.",
+        "operationId": "list_debts_api_v1_debts_get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "today",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Today"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DebtStatusOut"
+                  },
+                  "title": "Response List Debts Api V1 Debts Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debts/plan": {
+      "post": {
+        "tags": [
+          "debts"
+        ],
+        "summary": "Plan Payoff",
+        "description": "Simulate paying off every debt with the snowball and avalanche strategies.",
+        "operationId": "plan_payoff_api_v1_debts_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtPlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtPlansOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/debts/{account_id}/payment-split": {
+      "get": {
+        "tags": [
+          "debts"
+        ],
+        "summary": "Payment Split",
+        "description": "How a payment into a loan divides into interest and principal.\n\nPass the payment being edited as `exclude_transaction_id`.",
+        "operationId": "payment_split_api_v1_debts__account_id__payment_split_get",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000000000000,
+              "exclusiveMinimum": 0,
+              "title": "Amount"
+            }
+          },
+          {
+            "name": "exclude_transaction_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exclude Transaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanPaymentSplitOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debts/{account_id}/payments": {
+      "post": {
+        "tags": [
+          "debts"
+        ],
+        "summary": "Record Payment",
+        "description": "Record a payment into a loan, split into principal and interest.",
+        "operationId": "record_payment_api_v1_debts__account_id__payments_post",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoanPaymentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the stored data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request or domain rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The identity provider's keys are unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is too large",
             "content": {
               "application/json": {
                 "schema": {
@@ -8976,6 +9432,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "debt_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtTermsIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Terms of a credit card, loan or mortgage."
           }
         },
         "additionalProperties": false,
@@ -9077,6 +9544,17 @@
           "is_closed": {
             "type": "boolean",
             "title": "Is Closed"
+          },
+          "debt_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtTermsOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Interest and payment terms of a liability."
           }
         },
         "type": "object",
@@ -9346,6 +9824,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "debt_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtTermsIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New debt terms; `null` removes them."
           }
         },
         "additionalProperties": false,
@@ -9790,6 +10279,15 @@
             "type": "array",
             "title": "Failed",
             "description": "Automatic schedules that could not record an occurrence."
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/OccurrenceOut"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "description": "Credit card occurrences with nothing to charge or pay, skipped on their own.",
+            "default": []
           }
         },
         "type": "object",
@@ -9986,6 +10484,559 @@
         ],
         "title": "CostMethod",
         "description": "How the cost of sold shares is computed when a sale is recorded.\n\nThe cost removed from the account sets the realized gain of the sale:\n`gain = proceeds - cost`."
+      },
+      "DebtLinkKind": {
+        "type": "string",
+        "enum": [
+          "loan_payment",
+          "card_interest",
+          "card_min_payment"
+        ],
+        "title": "DebtLinkKind",
+        "description": "How a [`Schedule`][picciuli.model.Schedule] is tied to a debt."
+      },
+      "DebtPayoffOut": {
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          },
+          "payoff": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payoff"
+          },
+          "interest": {
+            "type": "integer",
+            "title": "Interest"
+          },
+          "paid": {
+            "type": "integer",
+            "title": "Paid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "order",
+          "balance",
+          "payoff",
+          "interest",
+          "paid"
+        ],
+        "title": "DebtPayoffOut",
+        "description": "How one debt is paid off."
+      },
+      "DebtPlanIn": {
+        "properties": {
+          "extra": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "minimum": 0.0,
+            "title": "Extra",
+            "description": "Extra payment every month.",
+            "default": 0
+          },
+          "lump_sums": {
+            "items": {
+              "$ref": "#/components/schemas/LumpSumIn"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Lump Sums",
+            "default": []
+          },
+          "rollover": {
+            "$ref": "#/components/schemas/Rollover",
+            "default": "full"
+          },
+          "rollover_percent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{1,4}(\\.[0-9]{1,8})?$"
+              },
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollover Percent",
+            "description": "With a partial rollover, the percentage of a paid-off debt's payment that goes to the next one (default 50)."
+          },
+          "today": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Today",
+            "description": "The plan starts the month after this day."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DebtPlanIn",
+        "description": "How to simulate paying off the debts."
+      },
+      "DebtPlanOut": {
+        "properties": {
+          "strategy": {
+            "$ref": "#/components/schemas/PayoffStrategy"
+          },
+          "rollover": {
+            "$ref": "#/components/schemas/Rollover"
+          },
+          "rollover_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollover Percent"
+          },
+          "extra": {
+            "type": "integer",
+            "title": "Extra"
+          },
+          "monthly_budget": {
+            "type": "integer",
+            "title": "Monthly Budget"
+          },
+          "debts": {
+            "items": {
+              "$ref": "#/components/schemas/DebtPayoffOut"
+            },
+            "type": "array",
+            "title": "Debts"
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/PlanMonthOut"
+            },
+            "type": "array",
+            "title": "Months"
+          },
+          "payoff": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payoff",
+            "description": "When the last debt is paid off; `null` beyond 100 years."
+          },
+          "total_interest": {
+            "type": "integer",
+            "title": "Total Interest"
+          },
+          "total_paid": {
+            "type": "integer",
+            "title": "Total Paid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "strategy",
+          "rollover",
+          "rollover_percent",
+          "extra",
+          "monthly_budget",
+          "debts",
+          "months",
+          "payoff",
+          "total_interest",
+          "total_paid"
+        ],
+        "title": "DebtPlanOut",
+        "description": "A month-by-month payoff simulation."
+      },
+      "DebtPlansOut": {
+        "properties": {
+          "snowball": {
+            "$ref": "#/components/schemas/DebtPlanOut"
+          },
+          "avalanche": {
+            "$ref": "#/components/schemas/DebtPlanOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "snowball",
+          "avalanche"
+        ],
+        "title": "DebtPlansOut",
+        "description": "The snowball and avalanche strategies, side by side."
+      },
+      "DebtStatusOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountOut"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance",
+            "description": "Balance up to today (negative when owed)."
+          },
+          "owed": {
+            "type": "integer",
+            "title": "Owed"
+          },
+          "minimum_payment": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Payment"
+          },
+          "next_due": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due"
+          },
+          "payoff": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payoff",
+            "description": "First day of the month the debt is paid off at the minimum payment, with interest; `null` if never or unknown."
+          },
+          "interest_to_payoff": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest To Payoff"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account",
+          "balance",
+          "owed",
+          "minimum_payment",
+          "next_due",
+          "payoff",
+          "interest_to_payoff"
+        ],
+        "title": "DebtStatusOut",
+        "description": "A liability with terms, and when it is paid off at the minimum payment."
+      },
+      "DebtTermsIn": {
+        "properties": {
+          "annual_rate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{1,4}(\\.[0-9]{1,8})?$"
+              },
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              }
+            ],
+            "title": "Annual Rate",
+            "examples": [
+              "19.9"
+            ]
+          },
+          "payment": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment"
+          },
+          "payment_percent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{1,4}(\\.[0-9]{1,8})?$"
+              },
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Percent"
+          },
+          "due_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "description": "Day of the month; shorter months use their last."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Day"
+          },
+          "statement_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "description": "Day of the month; shorter months use their last."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Day"
+          },
+          "credit_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Limit"
+          },
+          "payment_account_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Account Id"
+          },
+          "interest_category_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Category Id"
+          },
+          "new_interest_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Interest Category",
+            "description": "Name of the interest category to use, created if no category has it; instead of `interest_category_id`.",
+            "examples": [
+              "Visa interest"
+            ]
+          },
+          "propose_interest": {
+            "type": "boolean",
+            "title": "Propose Interest",
+            "default": false
+          },
+          "propose_minimum": {
+            "type": "boolean",
+            "title": "Propose Minimum",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "annual_rate"
+        ],
+        "title": "DebtTermsIn",
+        "description": "Interest and payment terms of a credit card, loan, mortgage or other debt.\n\nPayment percent, statement day, credit limit and the proposals only apply\nto credit cards."
+      },
+      "DebtTermsOut": {
+        "properties": {
+          "annual_rate": {
+            "type": "string",
+            "title": "Annual Rate",
+            "description": "Annual interest rate in percent."
+          },
+          "payment": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment",
+            "description": "Loans: the monthly payment. Credit cards: the minimum payment floor."
+          },
+          "payment_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Percent",
+            "description": "Credit cards: the minimum payment in percent of the statement balance."
+          },
+          "due_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Day"
+          },
+          "statement_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Day"
+          },
+          "credit_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Limit"
+          },
+          "payment_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Account Id"
+          },
+          "interest_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Category Id"
+          },
+          "propose_interest": {
+            "type": "boolean",
+            "title": "Propose Interest",
+            "description": "Credit cards: an interest charge waits for confirmation on every statement day."
+          },
+          "propose_minimum": {
+            "type": "boolean",
+            "title": "Propose Minimum",
+            "description": "Credit cards: the minimum payment waits for confirmation on every due day."
+          }
+        },
+        "type": "object",
+        "required": [
+          "annual_rate",
+          "payment",
+          "payment_percent",
+          "due_day",
+          "statement_day",
+          "credit_limit",
+          "payment_account_id",
+          "interest_category_id",
+          "propose_interest",
+          "propose_minimum"
+        ],
+        "title": "DebtTermsOut",
+        "description": "Interest and payment terms of a liability."
       },
       "ErrorResponse": {
         "properties": {
@@ -10520,6 +11571,138 @@
         "title": "LatestPriceOut",
         "description": "The latest known price of a security."
       },
+      "LoanPaymentIn": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "from_account_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
+            "title": "From Account Id"
+          },
+          "interest_category_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Category Id",
+            "description": "Defaults to the loan's interest category."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "amount",
+          "from_account_id"
+        ],
+        "title": "LoanPaymentIn",
+        "description": "A payment into a loan, split into principal and interest."
+      },
+      "LoanPaymentSplitOut": {
+        "properties": {
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "amount": {
+            "type": "integer",
+            "title": "Amount"
+          },
+          "owed": {
+            "type": "integer",
+            "title": "Owed"
+          },
+          "interest": {
+            "type": "integer",
+            "title": "Interest"
+          },
+          "principal": {
+            "type": "integer",
+            "title": "Principal"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "date",
+          "amount",
+          "owed",
+          "interest",
+          "principal"
+        ],
+        "title": "LoanPaymentSplitOut",
+        "description": "How a payment into a loan divides into interest and principal."
+      },
+      "LumpSumIn": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date",
+            "description": "Any day of the month it is paid in."
+          },
+          "amount": {
+            "type": "integer",
+            "maximum": 1000000000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "date",
+          "amount"
+        ],
+        "title": "LumpSumIn",
+        "description": "A one-off extra payment."
+      },
       "MeOut": {
         "properties": {
           "id": {
@@ -10591,6 +11774,47 @@
             "type": "string",
             "format": "date",
             "title": "Date"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount",
+            "description": "Loans and credit cards: the predicted payment or charge."
+          },
+          "splits": {
+            "anyOf": [
+              {
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AccountSplitOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExternalSplitOut"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "type",
+                    "mapping": {
+                      "account": "#/components/schemas/AccountSplitOut",
+                      "external": "#/components/schemas/ExternalSplitOut"
+                    }
+                  }
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Splits",
+            "description": "Loans and credit cards: the predicted splits; `null` when the paying account is unknown."
           }
         },
         "type": "object",
@@ -10600,6 +11824,15 @@
         ],
         "title": "OccurrenceOut",
         "description": "A day on which a recurring transaction is (or was) due."
+      },
+      "PayoffStrategy": {
+        "type": "string",
+        "enum": [
+          "snowball",
+          "avalanche"
+        ],
+        "title": "PayoffStrategy",
+        "description": "Which debt a [`DebtPlan`][picciuli.model.DebtPlan] pays off first."
       },
       "PeriodChangeKind": {
         "type": "string",
@@ -10834,6 +12067,45 @@
         "type": "object",
         "title": "PeriodUpdate",
         "description": "Changes to a period."
+      },
+      "PlanMonthOut": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "format": "date",
+            "title": "Month"
+          },
+          "payment": {
+            "type": "integer",
+            "title": "Payment"
+          },
+          "interest": {
+            "type": "integer",
+            "title": "Interest"
+          },
+          "balance": {
+            "type": "integer",
+            "title": "Balance"
+          },
+          "balances": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Balances",
+            "description": "Owed on each debt, in plan order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "payment",
+          "interest",
+          "balance",
+          "balances"
+        ],
+        "title": "PlanMonthOut",
+        "description": "One month of a plan."
       },
       "PriceIn": {
         "properties": {
@@ -11101,6 +12373,16 @@
         "title": "RegisterOut",
         "description": "The ledger of one account."
       },
+      "Rollover": {
+        "type": "string",
+        "enum": [
+          "full",
+          "none",
+          "partial"
+        ],
+        "title": "Rollover",
+        "description": "What happens to the payment of a debt once it is paid off."
+      },
       "SaleCostOut": {
         "properties": {
           "cost": {
@@ -11225,6 +12507,16 @@
               }
             ],
             "title": "Notes"
+          },
+          "debt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleDebtIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -11235,6 +12527,74 @@
         ],
         "title": "ScheduleCreate",
         "description": "A new recurring transaction. Its splits cannot move shares."
+      },
+      "ScheduleDebtIn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "loan_payment",
+            "title": "Kind",
+            "default": "loan_payment"
+          },
+          "account_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
+            "title": "Account Id",
+            "description": "The loan."
+          },
+          "interest_category_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Category Id",
+            "description": "Category of the interest; defaults to the loan's."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "ScheduleDebtIn",
+        "description": "Makes a recurring transaction a loan payment.\n\nEach occurrence is split into principal and interest when posted. The\nsplits must move money from one account into the loan."
+      },
+      "ScheduleDebtOut": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DebtLinkKind"
+          },
+          "account_id": {
+            "type": "integer",
+            "title": "Account Id"
+          },
+          "interest_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Category Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "account_id",
+          "interest_category_id"
+        ],
+        "title": "ScheduleDebtOut",
+        "description": "The debt a recurring transaction pays or charges."
       },
       "ScheduleFrequency": {
         "type": "string",
@@ -11389,6 +12749,17 @@
           "is_finished": {
             "type": "boolean",
             "title": "Is Finished"
+          },
+          "debt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleDebtOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The loan or credit card it pays or charges. Credit card interest and minimum payments have no splits: their amounts are predicted for each occurrence."
           }
         },
         "type": "object",
@@ -11482,6 +12853,34 @@
               }
             ],
             "title": "Notes"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount",
+            "description": "Loans and credit cards: the total payment or charge instead of the predicted one."
+          },
+          "from_account_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Account Id",
+            "description": "Loan and minimum payments: the account the money comes from instead of the usual one."
           }
         },
         "additionalProperties": false,
@@ -11598,6 +12997,17 @@
               }
             ],
             "title": "Notes"
+          },
+          "debt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleDebtIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A loan payment link; `null` removes it."
           }
         },
         "additionalProperties": false,
@@ -12581,6 +13991,10 @@
     {
       "name": "schedules",
       "description": "Recurring transactions and catching up on them."
+    },
+    {
+      "name": "debts",
+      "description": "Debt payoff forecasts, snowball and avalanche plans, loan payments."
     },
     {
       "name": "periods",

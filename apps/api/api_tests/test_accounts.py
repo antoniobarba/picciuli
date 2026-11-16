@@ -26,6 +26,7 @@ def test_create_and_get(alice: TestClient) -> None:
         "position": 1,
         "closed_on": None,
         "is_closed": False,
+        "debt_terms": None,
     }
     assert alice.get(f"{API}/accounts/{created['id']}").json() == created
 

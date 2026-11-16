@@ -20,6 +20,7 @@ from picciuli._db.tables import (
 from picciuli.errors import ConflictError, ValidationError
 from picciuli.limits import MAX_CATEGORY_SYMBOL_LENGTH
 from picciuli.model import UNSET, Category, Unset
+from picciuli.services import debts
 
 __all__ = ["CategoryService"]
 
@@ -289,6 +290,7 @@ class CategoryService:
                     .values({column.key: target})
                 )
             session.execute(delete(BudgetRow).where(BudgetRow.category_id == row.id))
+            debts.on_category_delete(session, row.id, target)
             parent_id = row.parent_id
             session.delete(row)
             session.flush()

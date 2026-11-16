@@ -15,22 +15,8 @@ months, and entering every expense takes more effort than it should.
 ## Functionality
 
 ### High priority
-
-1. **Recurring transactions.** Salary, rent, loan payments, subscriptions and
-   automatic savings must be typed in by hand every month. Add schedules
-   (monthly, a day of the month, every N weeks, an end date) that either add
-   the transaction automatically or remind you to confirm it. This is the
-   biggest gap.
-2. **Debt payoff plan.** Loans and cards have no interest rate, minimum
-   payment or due date. The ETA is a straight-line average and ignores
-   interest. Suggested additions:
-   - interest rate, minimum payment and due day on loan, mortgage and card
-     accounts;
-   - a planner comparing "snowball" (smallest debt first) and "avalanche"
-     (highest interest first), with payoff dates, total interest and an
-     extra-payment slider;
-   - automatic principal/interest split on loan payments from the
-     amortization schedule.
+1. (deleted, done)
+2. (deleted, done)
 3. **Real savings goals.** Today a goal is just one number per account. You
    can't hold several goals in one savings account (emergency fund, holiday,
    car), set a target date, or see "save X per month to hit it on time." Add
@@ -44,9 +30,7 @@ months, and entering every expense takes more effort than it should.
    Picciuli database file. Logging every expense by hand will be skipped
    sooner or later. Add CSV import with column mapping, duplicate detection
    and rules ("description contains ESSELUNGA → Food").
-6. **Monthly periods by default.** Budgets need a period, and periods are
-   made by hand. Offer "monthly, starting on day N (your payday)" so each new
-   period is created on its own, with last month's budgets copied in.
+6. (deleted, done)
 
 ### Medium priority
 

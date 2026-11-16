@@ -15,6 +15,7 @@ from picciuli import (
     Book,
     ConflictError,
     CostMethod,
+    DebtTerms,
     ExternalSplit,
     SchemaVersionError,
     Trade,
@@ -29,6 +30,7 @@ from .conftest import d
 from .schema_v1 import SCHEMA_V1
 from .schema_v2 import SCHEMA_V2
 from .schema_v3 import SCHEMA_V3
+from .schema_v4 import SCHEMA_V4
 
 
 def test_open_creates_and_reopens_a_file(tmp_path: Path) -> None:
@@ -360,12 +362,18 @@ def test_version_3_is_upgraded_to_version_4_without_losing_data(
     Book.open(path).close()
 
     after = _rows(path)
-    assert set(after) == set(before) | {"schedules", "schedule_splits"}
+    assert set(after) == set(before) | {
+        "schedules",
+        "schedule_splits",
+        "debt_terms",
+        "schedule_debts",
+    }
     assert after["schedules"] == after["schedule_splits"] == []
+    assert after["debt_terms"] == after["schedule_debts"] == []
     assert after["transactions"] == [(*row, None) for row in before["transactions"]]
     assert dict(after["meta"]) == {  # type: ignore[arg-type]
         **dict(before["meta"]),  # type: ignore[arg-type]
-        "schema_version": "4",
+        "schema_version": "5",
         "period_start_day": "",
         "period_weekend_shift": "1",
     }
@@ -401,6 +409,99 @@ def test_version_3_is_upgraded_to_version_4_without_losing_data(
         summary = copy.import_file(path)
         assert (summary.transactions, summary.schedules) == (5, 1)
         assert copy.transactions.list()[-1].schedule_id == copy.schedules.list()[0].id
+
+
+def _make_v4(path: Path) -> None:
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(SCHEMA_V4)
+        connection.executemany(
+            "INSERT INTO meta VALUES (?, ?)",
+            [
+                ("schema_version", "4"),
+                ("currency", "€"),
+                ("minor_digits", "2"),
+                ("currency_code", "EUR"),
+                ("cost_method", "average"),
+                ("price_provider", "yahoo"),
+                ("rate_provider", "yahoo"),
+                ("period_start_day", "27"),
+                ("period_weekend_shift", "1"),
+            ],
+        )
+        connection.executescript(
+            """
+            INSERT INTO accounts VALUES (1, 'Checking', 'checking', 300000, NULL,
+                NULL, NULL, 1, NULL);
+            INSERT INTO accounts VALUES (2, 'Visa', 'credit_card', -50000, NULL,
+                NULL, 'card', 2, NULL);
+            INSERT INTO accounts VALUES (3, 'Mortgage', 'mortgage', -15000000,
+                '2024-12-31', NULL, NULL, 3, NULL);
+            INSERT INTO categories VALUES (1, 'Food', 'FOOD', NULL, 1);
+            INSERT INTO categories VALUES (2, 'Interest', 'INT', NULL, 2);
+            INSERT INTO periods VALUES (1, 'January 2025', '2024-12-27',
+                '2025-01-26');
+            INSERT INTO budgets VALUES (1, 1, 1, 40000);
+            INSERT INTO schedules VALUES (1, 'Mortgage', NULL, 'monthly', 1, 5,
+                '2025-02-05', NULL, NULL, 'auto', 0, NULL);
+            INSERT INTO schedule_splits VALUES (1, 1, 1, 1, NULL, -80000, NULL);
+            INSERT INTO schedule_splits VALUES (2, 1, 2, 3, NULL, 60000, NULL);
+            INSERT INTO schedule_splits VALUES (3, 1, 3, NULL, 2, -20000, NULL);
+            INSERT INTO transactions VALUES (1, '2025-01-05', 'Mortgage', NULL, 1);
+            INSERT INTO splits VALUES (1, 1, 1, 1, NULL, -80000, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (2, 1, 2, 3, NULL, 60000, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (3, 1, 3, NULL, 2, -20000, NULL, NULL, NULL);
+            INSERT INTO transactions VALUES (2, '2025-01-10', 'Shop', NULL, NULL);
+            INSERT INTO splits VALUES (4, 2, 1, 2, NULL, -4500, NULL, NULL, NULL);
+            INSERT INTO splits VALUES (5, 2, 2, NULL, 1, -4500, NULL, NULL, NULL);
+            """
+        )
+
+
+def test_version_4_is_upgraded_to_version_5_without_losing_data(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "v4.db"
+    _make_v4(path)
+    before = _rows(path)
+
+    Book.open(path).close()
+
+    after = _rows(path)
+    assert set(after) == set(before) | {"debt_terms", "schedule_debts"}
+    assert after["debt_terms"] == after["schedule_debts"] == []
+    assert dict(after["meta"]) == {  # type: ignore[arg-type]
+        **dict(before["meta"]),  # type: ignore[arg-type]
+        "schema_version": "5",
+    }
+    for table in set(before) - {"meta"}:
+        assert after[table] == before[table], table
+
+    fresh = file_engine(tmp_path / "fresh.db")
+    prepare_schema(fresh)
+    upgraded = file_engine(path)
+    try:
+        assert _structure(upgraded) == _structure(fresh)
+    finally:
+        fresh.dispose()
+        upgraded.dispose()
+
+    with Book.open(path) as book:
+        assert [a.debt_terms for a in book.accounts.list()] == [None] * 3
+        assert book.schedules.get(1).debt is None
+        assert book.accounts.balance(3) == -15000000 + 60000
+        book.debts.set_terms(
+            3, DebtTerms(Decimal(3), payment=80000, interest_category_id=2)
+        )
+        (status,) = book.debts.list(today=d(31))
+        assert status.owed == 14940000
+        assert status.payoff is not None
+    # The upgraded file has exactly the current schema: it can be imported.
+    with Book.in_memory() as copy:
+        summary = copy.import_file(path)
+        assert (summary.accounts, summary.transactions, summary.schedules) == (3, 2, 1)
+        assert copy.accounts.get(3).debt_terms == DebtTerms(
+            Decimal(3), payment=80000, interest_category_id=2
+        )
 
 
 def test_each_call_is_atomic(book: Book) -> None:

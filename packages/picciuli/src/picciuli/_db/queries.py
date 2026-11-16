@@ -19,11 +19,14 @@ from picciuli.model import (
     AccountType,
     Budget,
     Category,
+    DebtLinkKind,
+    DebtTerms,
     ExchangeRate,
     ExternalSplit,
     Period,
     Price,
     Schedule,
+    ScheduleDebt,
     ScheduleFrequency,
     ScheduleMode,
     Security,
@@ -65,6 +68,27 @@ def get_row(session: Session, model: type[RowT], row_id: int, label: str) -> Row
     return row
 
 
+def to_debt_terms(row: AccountRow) -> DebtTerms | None:
+    terms = row.debt_terms
+    if terms is None:
+        return None
+    kinds = {link.kind for link in row.debt_links}
+    return DebtTerms(
+        annual_rate=from_scaled(terms.annual_rate),
+        payment=terms.payment,
+        payment_percent=None
+        if terms.payment_percent is None
+        else from_scaled(terms.payment_percent),
+        due_day=terms.due_day,
+        statement_day=terms.statement_day,
+        credit_limit=terms.credit_limit,
+        payment_account_id=terms.payment_account_id,
+        interest_category_id=terms.interest_category_id,
+        propose_interest=DebtLinkKind.CARD_INTEREST.value in kinds,
+        propose_minimum=DebtLinkKind.CARD_MIN_PAYMENT.value in kinds,
+    )
+
+
 def to_account(row: AccountRow) -> Account:
     return Account(
         id=row.id,
@@ -76,6 +100,7 @@ def to_account(row: AccountRow) -> Account:
         notes=row.notes,
         position=row.position,
         closed_on=row.closed_on,
+        debt_terms=to_debt_terms(row),
     )
 
 
@@ -190,6 +215,13 @@ def to_schedule(row: ScheduleRow) -> Schedule:
         mode=ScheduleMode(row.mode),
         paused=bool(row.paused),
         last_error=row.last_error,
+        debt=None
+        if row.debt is None
+        else ScheduleDebt(
+            kind=DebtLinkKind(row.debt.kind),
+            account_id=row.debt.account_id,
+            interest_category_id=row.debt.interest_category_id,
+        ),
     )
 
 

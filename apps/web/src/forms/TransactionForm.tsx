@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { unwrap } from '../api/client';
-import { useAccounts, useApiMutation, useCategories, useMoney, useSecurities } from '../api/queries';
+import { useAccounts, useApiMutation, useCategories, useLoanSplit, useMoney, useSecurities } from '../api/queries';
 import type { Account, Category, Schedule, Transaction } from '../api/types';
 import { DateField } from '../components/DateField';
 import { AmountField, FormDialog, SelectField, TextField, type Option } from '../components/forms';
 import { useConfirm } from '../components/feedback';
 import { todayDay, type Day } from '../lib/dates';
+import { isLoan } from '../lib/debts';
 import { byId, categoryTree, movesShares, transactionTitle } from '../lib/format';
 import {
   accountTarget,
@@ -309,7 +310,64 @@ export function TransactionForm({
       }
     >
       <TransactionFields draft={draft} update={update} usedAccounts={used} />
+      {!occurrence && draft.kind === 'transfer' ? (
+        <LoanSplitSuggestion
+          draft={draft}
+          fromAccountId={selectedAccount}
+          transactionId={transaction?.id ?? null}
+          onApply={(lines) => update({ kind: 'split', lines })}
+        />
+      ) : null}
     </FormDialog>
+  );
+}
+
+/** For a transfer into a loan with terms: offer to split it into principal and interest. */
+function LoanSplitSuggestion({
+  draft,
+  fromAccountId,
+  transactionId,
+  onApply,
+}: {
+  draft: TransactionDraft;
+  fromAccountId: number | null;
+  transactionId: number | null;
+  onApply: (lines: LineDraft[]) => void;
+}) {
+  const money = useMoney();
+  const today = todayDay();
+  const accounts = useAccounts(true).data ?? [];
+  const loan = accounts.find((a) => a.id === draft.toAccountId && isLoan(a.type) && a.debt_terms) ?? null;
+  let date: Day | null = null;
+  let amount: number | null = null;
+  try {
+    date = parseDate(draft.date, today);
+    amount = draft.amount.trim() ? money.parse(draft.amount) : null;
+  } catch {
+    // Nothing to suggest until the date and the amount are valid.
+  }
+  const split = useLoanSplit(loan?.id ?? null, date, amount, transactionId).data;
+  if (!loan || !split || !split.interest || fromAccountId === null) return null;
+  const apply = () =>
+    onApply([
+      { ...emptyLine(accountTarget(fromAccountId)), amount: money.plain(-split.amount) },
+      { ...emptyLine(accountTarget(loan.id)), amount: money.plain(split.principal) },
+      {
+        ...emptyLine(categoryTarget(loan.debt_terms?.interest_category_id)),
+        amount: money.plain(-split.interest),
+        memo: 'Interest',
+      },
+    ]);
+  return (
+    <div className="loan-split suggestion" role="note">
+      <span>
+        {money.amount(split.interest)} of this payment is interest and {money.amount(split.principal)} reduces the
+        debt.
+      </span>
+      <button type="button" className="button small" onClick={apply}>
+        Split into principal and interest
+      </button>
+    </div>
   );
 }
 

@@ -88,10 +88,11 @@ picciuli-api openapi --output apps/api/openapi.json
 |----------------|---------------------------------------------------------------------------|
 | me             | `GET /me`, `GET /me/export` (SQLite download), `POST /me/import?mode=merge\|replace` (SQLite upload), `DELETE /me` (erase data) |
 | settings       | `GET`, `PATCH /settings`                                                  |
-| accounts       | CRUD, `/balances`, `/trends`, `/net-worth`, `/{id}/balance`, `/{id}/register`, `/{id}/move`, `/{id}/close`, `/{id}/reopen` |
+| accounts       | CRUD (with `debt_terms` for liabilities; `new_interest_category` creates their interest category), `/balances`, `/trends`, `/net-worth`, `/{id}/balance`, `/{id}/register`, `/{id}/move`, `/{id}/close`, `/{id}/reopen` |
 | categories     | CRUD, `?top_level=true`, `/{id}/children`, `DELETE ?reassign_to=` or `?uncategorize=true` |
 | transactions   | CRUD with splits, search filters, `/dates`, `/expense`, `/income`, `/transfer` |
-| schedules      | CRUD, `/occurrences?start=&end=`, `/{id}/post`, `/{id}/skip`, `POST /catch-up` (body `{"today": ...}`, the user's current day: records due recurring transactions and creates the missing monthly periods) |
+| schedules      | CRUD (a `debt` link makes a loan payment), `/occurrences?start=&end=` (with the predicted amount of loan and card occurrences), `/{id}/post` (`amount` and `from_account_id` for loans and cards), `/{id}/skip`, `POST /catch-up` (body `{"today": ...}`, the user's current day: records due recurring transactions and creates the missing monthly periods) |
+| debts          | `GET /debts?today=` (payoff forecasts), `POST /debts/plan` (snowball and avalanche), `/{id}/payment-split?date=&amount=`, `POST /{id}/payments` (loan payment split into principal and interest) |
 | periods        | CRUD, `?on=<day>`, `/{id}/summary`, `/{id}/budget-report`, `GET /regenerate?today=` (preview), `POST /regenerate` |
 | budgets        | CRUD, `/copy`                                                             |
 | securities     | CRUD, `/{id}/prices`, `PUT`/`DELETE /{id}/prices/{date}`, `/{id}/latest-price` |

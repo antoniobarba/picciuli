@@ -43,21 +43,32 @@ __all__ = [
     "Category",
     "CategoryTotal",
     "CostMethod",
+    "DebtLinkKind",
+    "DebtPayoff",
+    "DebtPlan",
+    "DebtStatus",
+    "DebtTerms",
     "ExchangeRate",
     "ExternalSplit",
     "Holding",
     "ImportSummary",
+    "LoanPaymentSplit",
+    "LumpSum",
     "NetWorth",
     "Occurrence",
+    "PayoffStrategy",
     "Period",
     "PeriodChange",
     "PeriodChangeKind",
     "PeriodSummary",
+    "PlanMonth",
     "Price",
     "PriceUpdate",
     "Register",
     "RegisterEntry",
+    "Rollover",
     "Schedule",
+    "ScheduleDebt",
     "ScheduleFrequency",
     "ScheduleMode",
     "Security",
@@ -199,6 +210,43 @@ class ScheduleMode(str, enum.Enum):
     [skipped][picciuli.services.ScheduleService.skip]."""
 
 
+class DebtLinkKind(str, enum.Enum):
+    """How a [`Schedule`][picciuli.model.Schedule] is tied to a debt."""
+
+    LOAN_PAYMENT = "loan_payment"
+    """A payment into a loan: each occurrence is split into principal and
+    interest from the balance owed on its day."""
+    CARD_INTEREST = "card_interest"
+    """The interest charge of a credit card, proposed on each statement day
+    and managed by the card's [`DebtTerms`][picciuli.model.DebtTerms]."""
+    CARD_MIN_PAYMENT = "card_min_payment"
+    """The minimum payment of a credit card, proposed on each due day and
+    managed by the card's [`DebtTerms`][picciuli.model.DebtTerms]."""
+
+
+class PayoffStrategy(str, enum.Enum):
+    """Which debt a [`DebtPlan`][picciuli.model.DebtPlan] pays off first."""
+
+    SNOWBALL = "snowball"
+    """Smallest balance first: quick wins that keep you motivated."""
+    AVALANCHE = "avalanche"
+    """Highest interest rate first: the least interest overall."""
+
+
+class Rollover(str, enum.Enum):
+    """What happens to the payment of a debt once it is paid off."""
+
+    FULL = "full"
+    """It goes to the next debt: the total monthly payment stays the same
+    (classic snowball or avalanche). Fastest and cheapest, but the monthly
+    outlay never drops until every debt is paid."""
+    NONE = "none"
+    """It is freed up: the total monthly payment drops as debts close. More
+    cash every month, but slower and more interest."""
+    PARTIAL = "partial"
+    """A percentage of it goes to the next debt and the rest is freed up."""
+
+
 class PeriodChangeKind(str, enum.Enum):
     """What [`PeriodService.regenerate`][picciuli.services.PeriodService] does."""
 
@@ -209,6 +257,48 @@ class PeriodChangeKind(str, enum.Enum):
     KEEP = "keep"
     """An existing period overlaps one that is already regenerated; it is left
     unchanged."""
+
+
+@dataclass(frozen=True, slots=True)
+class DebtTerms:
+    """Interest and payment terms of a liability account.
+
+    Loans, mortgages and other liabilities accrue interest every month on the
+    balance owed (`annual_rate / 12`). Credit cards accrue it every day: each
+    statement charges the average daily balance owed during the cycle times
+    `annual_rate / 365`, unless the previous statement was paid in full by its
+    due day (grace period).
+
+    Attributes:
+        annual_rate: Nominal annual interest rate in percent, for example
+            `Decimal("19.9")`.
+        payment: Loans: the fixed monthly payment. Credit cards: the smallest
+            minimum payment (floor). `None` if unknown.
+        payment_percent: Credit cards only: the minimum payment as a
+            percentage of the statement balance, for example `Decimal(3)`.
+        due_day: Day of the month payments are due (1 to 31; shorter months
+            use their last day), or `None`.
+        statement_day: Credit cards only: day of the month the statement
+            closes, or `None`.
+        credit_limit: Credit cards only: the credit limit, or `None`.
+        payment_account_id: Account the payments usually come from, or `None`.
+        interest_category_id: Category of the interest expense, or `None`.
+        propose_interest: Credit cards only: whether an interest charge waits
+            for confirmation on every statement day.
+        propose_minimum: Credit cards only: whether the minimum payment waits
+            for confirmation on every due day.
+    """
+
+    annual_rate: Decimal
+    payment: int | None = None
+    payment_percent: Decimal | None = None
+    due_day: int | None = None
+    statement_day: int | None = None
+    credit_limit: int | None = None
+    payment_account_id: int | None = None
+    interest_category_id: int | None = None
+    propose_interest: bool = False
+    propose_minimum: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +317,7 @@ class Account:
         notes: Free text.
         position: 1-based display position among all accounts.
         closed_on: Day the account was closed, or `None` while it is open.
+        debt_terms: Interest and payment terms of a liability, or `None`.
     """
 
     id: int
@@ -238,6 +329,7 @@ class Account:
     notes: str | None
     position: int
     closed_on: dt.date | None
+    debt_terms: DebtTerms | None = None
 
     @property
     def account_class(self) -> AccountClass:
@@ -503,6 +595,9 @@ class Schedule:
         paused: Whether the schedule is suspended: paused schedules are
             neither caught up nor projected.
         last_error: Why the last automatic posting failed, or `None`.
+        debt: The debt the schedule pays or charges, or `None`. Schedules of
+            credit card interest and minimum payments have no template
+            splits: their amounts are computed for each occurrence.
     """
 
     id: int
@@ -518,6 +613,7 @@ class Schedule:
     mode: ScheduleMode
     paused: bool
     last_error: str | None
+    debt: ScheduleDebt | None = None
 
     @property
     def is_finished(self) -> bool:
@@ -536,16 +632,42 @@ class Schedule:
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduleDebt:
+    """The debt a [`Schedule`][picciuli.model.Schedule] pays or charges.
+
+    Attributes:
+        kind: Loan payment, credit card interest or credit card minimum
+            payment.
+        account_id: The loan or credit card account.
+        interest_category_id: Loan payments only: category of the interest
+            part, or `None` to use the one of the loan's
+            [`DebtTerms`][picciuli.model.DebtTerms].
+    """
+
+    kind: DebtLinkKind
+    account_id: int
+    interest_category_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Occurrence:
     """A day on which a schedule records (or will record) a transaction.
 
     Attributes:
         schedule_id: The schedule.
         date: Day of the occurrence.
+        amount: For schedules tied to a debt, the predicted amount computed
+            from the transactions recorded so far: the total payment of a
+            loan, the interest charge or the minimum payment still due on a
+            credit card. `None` for other schedules.
+        splits: For schedules tied to a debt, the predicted splits, or `None`
+            when they follow the template or the paying account is unknown.
     """
 
     schedule_id: int
     date: dt.date
+    amount: int | None = None
+    splits: tuple[Split, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,11 +680,15 @@ class CatchUp:
             given day, by date.
         failed: Automatic schedules that could not record a due occurrence;
             see their `last_error`.
+        skipped: Credit card occurrences with nothing to charge or pay (no
+            interest thanks to the grace period, or a minimum payment already
+            covered), skipped on their own.
     """
 
     posted: tuple[Transaction, ...]
     due: tuple[Occurrence, ...]
     failed: tuple[Schedule, ...]
+    skipped: tuple[Occurrence, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1026,3 +1152,149 @@ class ImportSummary:
     transactions: int
     duplicates: int
     schedules: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class DebtStatus:
+    """A liability with interest and payment terms, and when it will be paid off.
+
+    Attributes:
+        account: The account, with its
+            [`debt_terms`][picciuli.model.Account].
+        balance: Balance including every transaction up to today (negative
+            while you owe money).
+        minimum_payment: What is due every month now: the fixed payment of
+            a loan or the minimum payment of a credit card on the current
+            balance; `None` when the terms do not say.
+        next_due: Next due day on or after today, or `None` without a due day.
+        payoff: First day of the month in which the debt is paid off at the
+            minimum payment, with interest; `None` if it never is (the payment
+            does not cover the interest) or the minimum payment is unknown.
+        interest_to_payoff: Interest paid until then, or `None` with `payoff`.
+    """
+
+    account: Account
+    balance: int
+    minimum_payment: int | None
+    next_due: dt.date | None
+    payoff: dt.date | None
+    interest_to_payoff: int | None
+
+    @property
+    def owed(self) -> int:
+        """The amount owed: the opposite of a negative balance, else zero."""
+        return max(0, -self.balance)
+
+
+@dataclass(frozen=True, slots=True)
+class LumpSum:
+    """A one-off extra payment in a [`DebtPlan`][picciuli.model.DebtPlan].
+
+    Attributes:
+        date: Any day of the month the payment is made in.
+        amount: Positive amount.
+    """
+
+    date: dt.date
+    amount: int
+
+
+@dataclass(frozen=True, slots=True)
+class DebtPayoff:
+    """How one debt is paid off in a [`DebtPlan`][picciuli.model.DebtPlan].
+
+    Attributes:
+        account_id: The liability account.
+        order: 1-based position in the payoff order of the strategy.
+        balance: Amount owed at the start of the plan.
+        payoff: First day of the month the debt is paid off, or `None` if it
+            is not paid off within the horizon of the plan.
+        interest: Interest accrued until then.
+        paid: Total paid into the debt.
+    """
+
+    account_id: int
+    order: int
+    balance: int
+    payoff: dt.date | None
+    interest: int
+    paid: int
+
+
+@dataclass(frozen=True, slots=True)
+class PlanMonth:
+    """One month of a [`DebtPlan`][picciuli.model.DebtPlan].
+
+    Attributes:
+        month: First day of the month.
+        payment: Total paid into the debts.
+        interest: Total interest accrued.
+        balance: Total owed at the end of the month.
+        balances: Amount owed on each debt at the end of the month, in the
+            order of [`DebtPlan.debts`][picciuli.model.DebtPlan].
+    """
+
+    month: dt.date
+    payment: int
+    interest: int
+    balance: int
+    balances: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DebtPlan:
+    """A month-by-month simulation of paying off every debt.
+
+    Every month each debt accrues interest and gets its minimum payment; the
+    rest of the monthly budget (the minimum payments of the first month plus
+    the extra payment, and the lump sums of the month) goes to the debts in
+    the order of the strategy. See [`Rollover`][picciuli.model.Rollover] for
+    what happens to the payment of a debt once it is paid off.
+
+    Attributes:
+        strategy: Which debt is paid off first.
+        rollover: What happens to the payment of a paid-off debt.
+        rollover_percent: With `Rollover.PARTIAL`, the percentage of it that
+            goes to the next debt; `None` otherwise.
+        extra: Extra payment every month, on top of the minimum payments.
+        monthly_budget: Total paid in the first month without lump sums: the
+            minimum payments plus `extra`.
+        debts: Each debt, in payoff order.
+        months: Every month until the last debt is paid off (or the horizon).
+        payoff: First day of the month the last debt is paid off, or `None`
+            if some debt is not paid off within the horizon.
+        total_interest: Interest accrued over the plan.
+        total_paid: Total paid over the plan.
+    """
+
+    strategy: PayoffStrategy
+    rollover: Rollover
+    rollover_percent: Decimal | None
+    extra: int
+    monthly_budget: int
+    debts: tuple[DebtPayoff, ...]
+    months: tuple[PlanMonth, ...]
+    payoff: dt.date | None
+    total_interest: int
+    total_paid: int
+
+
+@dataclass(frozen=True, slots=True)
+class LoanPaymentSplit:
+    """How a payment into a loan divides into interest and principal.
+
+    Attributes:
+        account_id: The loan.
+        date: Day of the payment.
+        amount: The whole payment.
+        owed: Amount owed at the start of the day.
+        interest: Interest of the month on `owed`, at most `amount`.
+        principal: `amount - interest`: what reduces the debt.
+    """
+
+    account_id: int
+    date: dt.date
+    amount: int
+    owed: int
+    interest: int
+    principal: int

@@ -4,7 +4,7 @@ const SECTIONS: [string, [string, string][]][] = [
   [
     'Everywhere',
     [
-      ['1 … 8', 'Overview, Accounts, Categories, Periods, Budgets, Investments, Reports, Recurring'],
+      ['1 … 9', 'Overview, Accounts, Categories, Periods, Budgets, Investments, Reports, Recurring, Debts'],
       ['s', 'Settings'],
       ['ctrl+k', 'Command palette'],
       ['l', 'Live prices on/off'],
@@ -49,6 +49,7 @@ const SECTIONS: [string, [string, string][]][] = [
       ['r / h', 'Refresh prices / download the price history'],
     ],
   ],
+  ['Debts', [['p', 'Record a loan payment']]],
 ];
 
 export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

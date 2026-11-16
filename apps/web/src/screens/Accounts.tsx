@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { unwrap } from '../api/client';
-import { useAccounts, useAccountTrends, useApiMutation, useBalances, useMoney, useNetWorth, useOptimisticMove, useValuations } from '../api/queries';
+import { useAccounts, useAccountTrends, useApiMutation, useBalances, useDebts, useMoney, useNetWorth, useOptimisticMove, useValuations } from '../api/queries';
 import type { Account } from '../api/types';
 import { useConfirm, useNotify } from '../components/feedback';
 import { errorMessage } from '../components/forms';
 import { DragHandle, useSortable } from '../components/SortableList';
 import { Amount, Empty, Loading, PageHeader, ProgressBar, RowMenu } from '../components/ui';
 import { shortDate, todayDay } from '../lib/dates';
+import { payoffLabel } from '../lib/debts';
 import { ACCOUNT_TYPE_LABELS } from '../lib/format';
 import { accountTarget, etaLabel, targetEta } from '../lib/goals';
 import { useHotkeys } from '../lib/useHotkeys';
@@ -26,12 +27,14 @@ export function Accounts() {
   const worth = useNetWorth().data;
   const today = todayDay();
   const trends = useAccountTrends(today).data;
+  const debts = useDebts(today).data;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const balance = useMemo(() => new Map((balances ?? []).map((b) => [b.account.id, b.balance])), [balances]);
   const market = useMemo(() => new Map((valuations ?? []).map((v) => [v.account.id, v])), [valuations]);
   const trend = useMemo(() => new Map((trends ?? []).map((t) => [t.account.id, t])), [trends]);
+  const payoff = useMemo(() => new Map((debts ?? []).map((d) => [d.account.id, d])), [debts]);
   const list = useMemo(
     () => [...(accounts.data ?? [])].sort((a, b) => a.position - b.position || a.id - b.id),
     [accounts.data],
@@ -135,6 +138,19 @@ export function Accounts() {
                 const target = accountTarget(account.goal, current, flow?.low_point);
                 const progress = target?.fraction ?? null;
                 const eta = target ? targetEta(current, target.target, flow?.average_flow, today) : null;
+                const debt = payoff.get(account.id);
+                const etaText = debt
+                  ? debt.owed === 0
+                    ? ''
+                    : payoffLabel(debt.payoff)
+                  : eta
+                    ? etaLabel(eta)
+                    : '';
+                const etaTitle = debt
+                  ? 'Paid off at the minimum payment, with interest'
+                  : eta?.kind === 'never'
+                    ? 'Not getting closer at the average monthly flow'
+                    : undefined;
                 return (
                   <tr
                     key={account.id}
@@ -173,8 +189,8 @@ export function Accounts() {
                         </span>
                       ) : null}
                     </td>
-                    <td className="hide-md muted small" title={eta?.kind === 'never' ? 'Not getting closer at the average monthly flow' : undefined}>
-                      {eta ? etaLabel(eta) : ''}
+                    <td className="hide-md muted small" title={etaTitle}>
+                      {etaText}
                     </td>
                     <td className="hide-sm muted">
                       {account.closed_on ? `closed ${shortDate(account.closed_on)}` : 'open'}

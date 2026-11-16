@@ -17,6 +17,7 @@ import re
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import delete, insert, select
@@ -28,6 +29,8 @@ from picciuli.errors import ConflictError, NotFoundError, ValidationError
 from picciuli.model import (
     AccountSplit,
     AccountType,
+    DebtLinkKind,
+    DebtTerms,
     ExternalSplit,
     ImportSummary,
     ScheduleFrequency,
@@ -38,6 +41,7 @@ from picciuli.model import (
     Trade,
     TradeKind,
 )
+from picciuli.services import debts
 from picciuli.services.investments import trade_row, trade_splits
 from picciuli.services.schedules import (
     _choice,
@@ -59,9 +63,11 @@ from .tables import (
     AccountRow,
     BudgetRow,
     CategoryRow,
+    DebtTermsRow,
     ExchangeRateRow,
     PeriodRow,
     PriceRow,
+    ScheduleDebtRow,
     ScheduleRow,
     ScheduleSplitRow,
     SecurityRow,
@@ -311,6 +317,8 @@ class _Importer:
         self._session = session
         self._raw = raw
         self._deadline = deadline
+        # Accounts added by this import: only they take terms from the file.
+        self._created: set[int] = set()
 
     def _rows(self, table: str, label: str) -> Iterator[tuple[str, tuple[object, ...]]]:
         """Rows of a source table, with a label for error messages."""
@@ -342,7 +350,8 @@ class _Importer:
         prices = self._prices(securities)
         exchange_rates = self._exchange_rates()
         budgets = self._budgets(categories, periods)
-        schedules, added_schedules = self._schedules(accounts, categories)
+        own_terms = self._debt_terms(accounts, categories)
+        schedules, added_schedules = self._schedules(accounts, categories, own_terms)
         added_transactions, duplicates = self._transactions(
             accounts, categories, securities, schedules
         )
@@ -390,6 +399,7 @@ class _Importer:
                         notes=account.notes,
                     )
                 by_name[key] = new.id
+                self._created.add(new.id)
                 added += 1
                 if account.closed_on is not None:
                     to_close.append((new.id, account))
@@ -602,14 +612,87 @@ class _Importer:
                 added += 1
         return added
 
-    def _schedules(
+    def _debt_terms(
         self, accounts: dict[int, int], categories: dict[int, int]
-    ) -> tuple[dict[int, int], int]:
+    ) -> set[int]:
+        """Add the terms of the accounts this import created; return them.
+
+        An account already in the book is never changed: it keeps its own
+        terms, or none, and its own credit card schedules.
+        """
+        imported: set[int] = set()
+        for label, row in self._rows("debt_terms", "debt terms"):
+            with _context(label):
+                (
+                    account,
+                    rate,
+                    payment,
+                    percent,
+                    due_day,
+                    statement_day,
+                    limit,
+                    payer,
+                    category,
+                ) = row
+                account_id = _mapped_id(account, accounts, "account id", "account")
+                if account_id in imported:
+                    raise ValidationError("the account has terms twice")
+                if account_id not in self._created:
+                    continue
+                terms = DebtTerms(
+                    annual_rate=_scaled(rate, "annual rate"),
+                    payment=v.optional_integer(payment, "payment"),
+                    payment_percent=None
+                    if percent is None
+                    else _scaled(percent, "payment percent"),
+                    due_day=v.optional_integer(due_day, "due day"),
+                    statement_day=v.optional_integer(statement_day, "statement day"),
+                    credit_limit=v.optional_integer(limit, "credit limit"),
+                    payment_account_id=_optional_mapped_id(
+                        payer, accounts, "payment account id", "payment account"
+                    ),
+                    interest_category_id=_optional_mapped_id(
+                        category, categories, "interest category id", "category"
+                    ),
+                )
+                target = self._session.get(AccountRow, account_id)
+                assert target is not None
+                columns, _, _ = debts.validated_terms(self._session, target, terms)
+                self._session.add(DebtTermsRow(account_id=account_id, **columns))
+                self._session.flush()
+                self._session.expire(target, ["debt_terms"])
+                imported.add(account_id)
+        return imported
+
+    def _schedules(
+        self,
+        accounts: dict[int, int],
+        categories: dict[int, int],
+        own_terms: set[int],
+    ) -> tuple[dict[int, int | None], int]:
         headers: dict[int, dict[str, object]] = {}
         for label, row in self._rows("schedules", "schedule"):
             with _context(label):
                 schedule_id, fields = _parse_schedule(row)
                 headers[schedule_id] = fields
+        links: dict[int, tuple[DebtLinkKind, int, int | None]] = {}
+        for label, raw in self._rows("schedule_debts", "schedule debt"):
+            with _context(label):
+                owner_id, account, kind, category = raw
+                owner = v.identifier(owner_id, "schedule id")
+                if owner not in headers:
+                    raise ValidationError("its schedule does not exist")
+                link_kind = _choice(DebtLinkKind, kind, "debt kind")
+                interest = _optional_mapped_id(
+                    category, categories, "interest category id", "category"
+                )
+                if link_kind is not DebtLinkKind.LOAN_PAYMENT and interest is not None:
+                    raise ValidationError("only loan payments have a category")
+                links[owner] = (
+                    link_kind,
+                    _mapped_id(account, accounts, "account id", "account"),
+                    interest,
+                )
         templates: dict[int, list[tuple[int, int, Split]]] = {}
         for label, raw in self._rows("schedule_splits", "schedule split"):
             with _context(label):
@@ -646,30 +729,78 @@ class _Importer:
                     )
                 )
         existing: dict[tuple[object, ...], list[int]] = {}
+        card_schedules: dict[tuple[DebtLinkKind, int], int] = {}
         for stored in self._session.scalars(
             select(ScheduleRow).order_by(ScheduleRow.id)
         ):
             values = {name: getattr(stored, name) for name in _SCHEDULE_FIELDS}
             values["paused"] = bool(stored.paused)
-            key = _schedule_key(values, [to_schedule_split(s) for s in stored.splits])
+            link = None
+            if stored.debt is not None:
+                link = (
+                    DebtLinkKind(stored.debt.kind),
+                    stored.debt.account_id,
+                    stored.debt.interest_category_id,
+                )
+                card_schedules.setdefault(link[:2], stored.id)
+            key = _schedule_key(
+                values, [to_schedule_split(s) for s in stored.splits], link
+            )
             existing.setdefault(key, []).append(stored.id)
-        mapping: dict[int, int] = {}
+        mapping: dict[int, int | None] = {}
         added = 0
         for schedule_id in sorted(headers):
             self._deadline.check()
             fields = headers[schedule_id]
             splits = [s for _, _, s in sorted(templates.get(schedule_id, []))]
-            matches = existing.get(_schedule_key(fields, splits))
+            link = links.get(schedule_id)
+            card = link is not None and link[0] in debts.CARD_KINDS
+            if card and link is not None and link[1] not in own_terms:
+                if link[1] in self._created:
+                    raise ValidationError(
+                        f"schedule {schedule_id} of the file: its credit card has "
+                        "no debt terms"
+                    )
+                # The account keeps the card schedules it had, if any.
+                mapping[schedule_id] = card_schedules.get(link[:2])
+                continue
+            if link is not None and not card and link[1] not in self._created:
+                loan = self._session.get(AccountRow, link[1])
+                if loan is None or not debts.is_liability(loan) or debts.is_card(loan):
+                    # An account of the book that is not a loan: a plain transfer.
+                    link = None
+            matches = existing.get(_schedule_key(fields, splits, link))
             if matches:
                 mapping[schedule_id] = matches.pop(0)
                 continue
             with _context(f"schedule {schedule_id} of the file"):
-                # The template is checked like a new one; the day only matters
-                # for opening dates, which are checked again when posting.
-                rows = _template(self._session, dt.date.max, splits)
-            new = ScheduleRow(**fields, splits=rows)
+                rows: list[ScheduleSplitRow] = []
+                debt_row = None
+                if link is not None:
+                    debt_row = ScheduleDebtRow(
+                        account_id=link[1],
+                        kind=link[0].value,
+                        interest_category_id=link[2],
+                    )
+                if card and link is not None:
+                    if splits:
+                        raise ValidationError("credit card schedules have no splits")
+                    if link[:2] in card_schedules:
+                        raise ValidationError("its credit card has it twice")
+                    card_account = self._session.get(AccountRow, link[1])
+                    assert card_account is not None
+                    debts.check_card_schedule(card_account, link[0], fields)
+                else:
+                    # The template is checked like a new one; the day only
+                    # matters for opening dates, checked again when posting.
+                    rows = _template(self._session, dt.date.max, splits)
+                    if debt_row is not None:
+                        debts.check_loan_template(self._session, debt_row, splits)
+            new = ScheduleRow(**fields, splits=rows, debt=debt_row)
             self._session.add(new)
             self._session.flush()
+            if card and link is not None:
+                card_schedules[link[:2]] = new.id
             mapping[schedule_id] = new.id
             added += 1
         return mapping, added
@@ -679,7 +810,7 @@ class _Importer:
         accounts: dict[int, int],
         categories: dict[int, int],
         securities: dict[int, int],
-        schedules: dict[int, int],
+        schedules: dict[int, int | None],
     ) -> tuple[int, int]:
         headers: dict[int, tuple[dt.date, str | None, str | None, int | None]] = {}
         for label, row in self._rows("transactions", "transaction"):
@@ -689,9 +820,7 @@ class _Importer:
                     _date(day, "date"),
                     v.optional_text(description, "description"),
                     v.optional_text(notes, "notes"),
-                    _optional_mapped_id(
-                        schedule_id, schedules, "schedule id", "schedule"
-                    ),
+                    _schedule_of(schedule_id, schedules),
                 )
         splits: dict[int, list[_Split]] = {}
         for label, row in self._rows("splits", "split"):
@@ -808,6 +937,7 @@ class _Importer:
         book.budgets.list()
         book.securities.list()
         book.schedules.list()
+        book.debts.list()
         book.investments.valuations(include_closed=True)
         book.investments.net_worth()
         external_flows(self._session, dt.date.min, None)
@@ -916,13 +1046,30 @@ def _parse_schedule(row: tuple[object, ...]) -> tuple[int, dict[str, object]]:
 
 
 def _schedule_key(
-    fields: dict[str, object], splits: Sequence[Split]
+    fields: dict[str, object],
+    splits: Sequence[Split],
+    link: tuple[DebtLinkKind, int, int | None] | None = None,
 ) -> tuple[object, ...]:
     # The last error is a transient status, not part of the schedule.
     return (
         *(fields[name] for name in _SCHEDULE_FIELDS if name != "last_error"),
         tuple(_split_key(s) for s in splits),
+        link,
     )
+
+
+def _schedule_of(value: object, schedules: dict[int, int | None]) -> int | None:
+    """The schedule of a transaction; `None` for one dropped by the import."""
+    if value is None:
+        return None
+    schedule_id = v.identifier(value, "schedule id")
+    if schedule_id not in schedules:
+        raise ValidationError("its schedule does not exist")
+    return schedules[schedule_id]
+
+
+def _scaled(value: object, field: str) -> Decimal:
+    return to_decimal(from_scaled(v.integer(value, field)), field)
 
 
 def _mapped_id(value: object, ids: dict[int, int], field: str, label: str) -> int:
@@ -1036,8 +1183,10 @@ def _wipe(session: Session) -> None:
         delete(TradeRow),
         delete(SplitRow),
         delete(TransactionRow),
+        delete(ScheduleDebtRow),
         delete(ScheduleSplitRow),
         delete(ScheduleRow),
+        delete(DebtTermsRow),
         delete(BudgetRow),
         delete(PeriodRow),
         delete(PriceRow),

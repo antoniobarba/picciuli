@@ -15,7 +15,24 @@ import { Amount } from './ui';
 export const UPCOMING_DAYS = 14;
 const MAX_UPCOMING = 6;
 
-function ScheduleAmount({ schedule, money }: { schedule: Schedule; money: MoneyFormat }) {
+/** The amount of a schedule: its template, or the prediction of a credit card occurrence. */
+export function ScheduleAmount({
+  schedule,
+  money,
+  predicted,
+}: {
+  schedule: Schedule;
+  money: MoneyFormat;
+  predicted?: number | null;
+}) {
+  if (schedule.debt && schedule.debt.kind !== 'loan_payment') {
+    if (predicted == null) return <span className="muted small">varies</span>;
+    return schedule.debt.kind === 'card_interest' ? (
+      <Amount value={-predicted} money={money} />
+    ) : (
+      <Amount value={predicted} money={money} muted />
+    );
+  }
   if (schedule.kind === 'transfer') {
     return <Amount value={transferAmount(templateTransaction(schedule, ''))} money={money} muted />;
   }
@@ -38,18 +55,23 @@ export function RecurringPanel({
   const editors = useEditors();
   const notify = useNotify();
   const schedules = useSchedules().data ?? [];
+  const due = toConfirm(schedules, today);
   const occurrences = useOccurrences(addDays(today, 1), addDays(today, UPCOMING_DAYS)).data ?? [];
+  const since = due[0]?.next_date ?? today;
+  const oldest = addDays(today, -700);
+  const pending =
+    useOccurrences(since < oldest ? oldest : since, today, due.some((s) => s.debt)).data ?? [];
   const skip = useApiMutation((api, id: number) =>
     unwrap(api.POST('/api/v1/schedules/{schedule_id}/skip', { params: { path: { schedule_id: id } } })),
   );
   if (!schedules.length) return null;
 
   const byId = new Map(schedules.map((s) => [s.id, s]));
-  const due = toConfirm(schedules, today);
+  const predicted = new Map(pending.map((o) => [`${o.schedule_id}:${o.date}`, o.amount]));
   const broken = failing(schedules);
   const upcoming = occurrences
-    .map((o) => ({ date: o.date, schedule: byId.get(o.schedule_id) }))
-    .filter((o): o is { date: Day; schedule: Schedule } => o.schedule !== undefined)
+    .map((o) => ({ date: o.date, amount: o.amount, schedule: byId.get(o.schedule_id) }))
+    .filter((o): o is { date: Day; amount: number | null; schedule: Schedule } => o.schedule !== undefined)
     .slice(0, MAX_UPCOMING);
   const title = (s: Schedule) => s.description || transactionCategory(templateTransaction(s, today), categories);
 
@@ -69,7 +91,11 @@ export function RecurringPanel({
               {title(schedule)}
               <small className="muted"> · to confirm</small>
             </span>
-            <ScheduleAmount schedule={schedule} money={money} />
+            <ScheduleAmount
+              schedule={schedule}
+              money={money}
+              predicted={predicted.get(`${schedule.id}:${schedule.next_date}`)}
+            />
             <span className="recurring-actions">
               <button type="button" className="button small primary" onClick={() => editors.confirmOccurrence(schedule)}>
                 Confirm
@@ -105,14 +131,14 @@ export function RecurringPanel({
             </span>
           </li>
         ))}
-        {upcoming.map(({ date, schedule }) => (
+        {upcoming.map(({ date, amount, schedule }) => (
           <li key={`next-${schedule.id}-${date}`}>
             <span className="recurring-date">{shortDate(date)}</span>
             <span className="recurring-title">
               {title(schedule)}
               {schedule.mode === 'confirm' ? <small className="muted"> · to confirm</small> : null}
             </span>
-            <ScheduleAmount schedule={schedule} money={money} />
+            <ScheduleAmount schedule={schedule} money={money} predicted={amount} />
             <span className="recurring-actions" />
           </li>
         ))}

@@ -139,7 +139,7 @@ export interface paths {
         put?: never;
         /**
          * Create Account
-         * @description Create an account.
+         * @description Create an account, with the debt terms of a liability if given.
          */
         post: operations["create_account_api_v1_accounts_post"];
         delete?: never;
@@ -233,7 +233,7 @@ export interface paths {
         head?: never;
         /**
          * Update Account
-         * @description Change some fields of an account.
+         * @description Change some fields of an account; `debt_terms: null` removes the terms.
          */
         patch: operations["update_account_api_v1_accounts__account_id__patch"];
         trace?: never;
@@ -652,6 +652,10 @@ export interface paths {
         /**
          * Post Occurrence
          * @description Record the next occurrence, possibly with another day or amount.
+         *
+         *     Loan payments are split into principal and interest; credit card
+         *     occurrences get their predicted interest charge or minimum payment unless
+         *     `amount` (and, for payments, `from_account_id`) say otherwise.
          */
         post: operations["post_occurrence_api_v1_schedules__schedule_id__post_post"];
         delete?: never;
@@ -674,6 +678,91 @@ export interface paths {
          * @description Move to the following occurrence without recording anything.
          */
         post: operations["skip_occurrence_api_v1_schedules__schedule_id__skip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Debts
+         * @description List the open liabilities with debt terms and when they are paid off.
+         *
+         *     Balances count the transactions up to `today` (default: the server date);
+         *     payoff dates assume the minimum payment from the following month on.
+         */
+        get: operations["list_debts_api_v1_debts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debts/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Payoff
+         * @description Simulate paying off every debt with the snowball and avalanche strategies.
+         */
+        post: operations["plan_payoff_api_v1_debts_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debts/{account_id}/payment-split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payment Split
+         * @description How a payment into a loan divides into interest and principal.
+         *
+         *     Pass the payment being edited as `exclude_transaction_id`.
+         */
+        get: operations["payment_split_api_v1_debts__account_id__payment_split_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debts/{account_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Payment
+         * @description Record a payment into a loan, split into principal and interest.
+         */
+        post: operations["record_payment_api_v1_debts__account_id__payments_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1392,6 +1481,8 @@ export interface components {
             goal?: number | null;
             /** Notes */
             notes?: string | null;
+            /** @description Terms of a credit card, loan or mortgage. */
+            debt_terms?: components["schemas"]["DebtTermsIn"] | null;
         };
         /**
          * AccountMove
@@ -1426,6 +1517,8 @@ export interface components {
             closed_on: string | null;
             /** Is Closed */
             is_closed: boolean;
+            /** @description Interest and payment terms of a liability. */
+            debt_terms?: components["schemas"]["DebtTermsOut"] | null;
         };
         /**
          * AccountSplitIn
@@ -1515,6 +1608,8 @@ export interface components {
             goal?: number | null;
             /** Notes */
             notes?: string | null;
+            /** @description New debt terms; `null` removes them. */
+            debt_terms?: components["schemas"]["DebtTermsIn"] | null;
         };
         /**
          * AccountValuationOut
@@ -1705,6 +1800,12 @@ export interface components {
              * @description Automatic schedules that could not record an occurrence.
              */
             failed: components["schemas"]["ScheduleOut"][];
+            /**
+             * Skipped
+             * @description Credit card occurrences with nothing to charge or pay, skipped on their own.
+             * @default []
+             */
+            skipped: components["schemas"]["OccurrenceOut"][];
         };
         /**
          * CategoryCreate
@@ -1779,6 +1880,204 @@ export interface components {
          * @enum {string}
          */
         CostMethod: "average" | "fifo";
+        /**
+         * DebtLinkKind
+         * @description How a [`Schedule`][picciuli.model.Schedule] is tied to a debt.
+         * @enum {string}
+         */
+        DebtLinkKind: "loan_payment" | "card_interest" | "card_min_payment";
+        /**
+         * DebtPayoffOut
+         * @description How one debt is paid off.
+         */
+        DebtPayoffOut: {
+            /** Account Id */
+            account_id: number;
+            /** Order */
+            order: number;
+            /** Balance */
+            balance: number;
+            /** Payoff */
+            payoff: string | null;
+            /** Interest */
+            interest: number;
+            /** Paid */
+            paid: number;
+        };
+        /**
+         * DebtPlanIn
+         * @description How to simulate paying off the debts.
+         */
+        DebtPlanIn: {
+            /**
+             * Extra
+             * @description Extra payment every month.
+             * @default 0
+             */
+            extra: number;
+            /**
+             * Lump Sums
+             * @default []
+             */
+            lump_sums: components["schemas"]["LumpSumIn"][];
+            /** @default full */
+            rollover: components["schemas"]["Rollover"];
+            /**
+             * Rollover Percent
+             * @description With a partial rollover, the percentage of a paid-off debt's payment that goes to the next one (default 50).
+             */
+            rollover_percent?: string | number | null;
+            /**
+             * Today
+             * @description The plan starts the month after this day.
+             */
+            today?: string | null;
+        };
+        /**
+         * DebtPlanOut
+         * @description A month-by-month payoff simulation.
+         */
+        DebtPlanOut: {
+            strategy: components["schemas"]["PayoffStrategy"];
+            rollover: components["schemas"]["Rollover"];
+            /** Rollover Percent */
+            rollover_percent: string | null;
+            /** Extra */
+            extra: number;
+            /** Monthly Budget */
+            monthly_budget: number;
+            /** Debts */
+            debts: components["schemas"]["DebtPayoffOut"][];
+            /** Months */
+            months: components["schemas"]["PlanMonthOut"][];
+            /**
+             * Payoff
+             * @description When the last debt is paid off; `null` beyond 100 years.
+             */
+            payoff: string | null;
+            /** Total Interest */
+            total_interest: number;
+            /** Total Paid */
+            total_paid: number;
+        };
+        /**
+         * DebtPlansOut
+         * @description The snowball and avalanche strategies, side by side.
+         */
+        DebtPlansOut: {
+            snowball: components["schemas"]["DebtPlanOut"];
+            avalanche: components["schemas"]["DebtPlanOut"];
+        };
+        /**
+         * DebtStatusOut
+         * @description A liability with terms, and when it is paid off at the minimum payment.
+         */
+        DebtStatusOut: {
+            account: components["schemas"]["AccountOut"];
+            /**
+             * Balance
+             * @description Balance up to today (negative when owed).
+             */
+            balance: number;
+            /** Owed */
+            owed: number;
+            /** Minimum Payment */
+            minimum_payment: number | null;
+            /** Next Due */
+            next_due: string | null;
+            /**
+             * Payoff
+             * @description First day of the month the debt is paid off at the minimum payment, with interest; `null` if never or unknown.
+             */
+            payoff: string | null;
+            /** Interest To Payoff */
+            interest_to_payoff: number | null;
+        };
+        /**
+         * DebtTermsIn
+         * @description Interest and payment terms of a credit card, loan, mortgage or other debt.
+         *
+         *     Payment percent, statement day, credit limit and the proposals only apply
+         *     to credit cards.
+         */
+        DebtTermsIn: {
+            /**
+             * Annual Rate
+             * @example 19.9
+             */
+            annual_rate: string | number;
+            /** Payment */
+            payment?: number | null;
+            /** Payment Percent */
+            payment_percent?: string | number | null;
+            /** Due Day */
+            due_day?: number | null;
+            /** Statement Day */
+            statement_day?: number | null;
+            /** Credit Limit */
+            credit_limit?: number | null;
+            /** Payment Account Id */
+            payment_account_id?: number | null;
+            /** Interest Category Id */
+            interest_category_id?: number | null;
+            /**
+             * New Interest Category
+             * @description Name of the interest category to use, created if no category has it; instead of `interest_category_id`.
+             * @example Visa interest
+             */
+            new_interest_category?: string | null;
+            /**
+             * Propose Interest
+             * @default false
+             */
+            propose_interest: boolean;
+            /**
+             * Propose Minimum
+             * @default false
+             */
+            propose_minimum: boolean;
+        };
+        /**
+         * DebtTermsOut
+         * @description Interest and payment terms of a liability.
+         */
+        DebtTermsOut: {
+            /**
+             * Annual Rate
+             * @description Annual interest rate in percent.
+             */
+            annual_rate: string;
+            /**
+             * Payment
+             * @description Loans: the monthly payment. Credit cards: the minimum payment floor.
+             */
+            payment: number | null;
+            /**
+             * Payment Percent
+             * @description Credit cards: the minimum payment in percent of the statement balance.
+             */
+            payment_percent: string | null;
+            /** Due Day */
+            due_day: number | null;
+            /** Statement Day */
+            statement_day: number | null;
+            /** Credit Limit */
+            credit_limit: number | null;
+            /** Payment Account Id */
+            payment_account_id: number | null;
+            /** Interest Category Id */
+            interest_category_id: number | null;
+            /**
+             * Propose Interest
+             * @description Credit cards: an interest charge waits for confirmation on every statement day.
+             */
+            propose_interest: boolean;
+            /**
+             * Propose Minimum
+             * @description Credit cards: the minimum payment waits for confirmation on every due day.
+             */
+            propose_minimum: boolean;
+        };
         /**
          * ErrorResponse
          * @description Body of every error response.
@@ -1978,6 +2277,65 @@ export interface components {
             price_in_book_currency: string | null;
         };
         /**
+         * LoanPaymentIn
+         * @description A payment into a loan, split into principal and interest.
+         */
+        LoanPaymentIn: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Amount */
+            amount: number;
+            /** From Account Id */
+            from_account_id: number;
+            /**
+             * Interest Category Id
+             * @description Defaults to the loan's interest category.
+             */
+            interest_category_id?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * LoanPaymentSplitOut
+         * @description How a payment into a loan divides into interest and principal.
+         */
+        LoanPaymentSplitOut: {
+            /** Account Id */
+            account_id: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Amount */
+            amount: number;
+            /** Owed */
+            owed: number;
+            /** Interest */
+            interest: number;
+            /** Principal */
+            principal: number;
+        };
+        /**
+         * LumpSumIn
+         * @description A one-off extra payment.
+         */
+        LumpSumIn: {
+            /**
+             * Date
+             * Format: date
+             * @description Any day of the month it is paid in.
+             */
+            date: string;
+            /** Amount */
+            amount: number;
+        };
+        /**
          * MeOut
          * @description The authenticated user.
          */
@@ -2015,7 +2373,23 @@ export interface components {
              * Format: date
              */
             date: string;
+            /**
+             * Amount
+             * @description Loans and credit cards: the predicted payment or charge.
+             */
+            amount?: number | null;
+            /**
+             * Splits
+             * @description Loans and credit cards: the predicted splits; `null` when the paying account is unknown.
+             */
+            splits?: (components["schemas"]["AccountSplitOut"] | components["schemas"]["ExternalSplitOut"])[] | null;
         };
+        /**
+         * PayoffStrategy
+         * @description Which debt a [`DebtPlan`][picciuli.model.DebtPlan] pays off first.
+         * @enum {string}
+         */
+        PayoffStrategy: "snowball" | "avalanche";
         /**
          * PeriodChangeKind
          * @description What [`PeriodService.regenerate`][picciuli.services.PeriodService] does.
@@ -2118,6 +2492,28 @@ export interface components {
             end?: string | null;
         };
         /**
+         * PlanMonthOut
+         * @description One month of a plan.
+         */
+        PlanMonthOut: {
+            /**
+             * Month
+             * Format: date
+             */
+            month: string;
+            /** Payment */
+            payment: number;
+            /** Interest */
+            interest: number;
+            /** Balance */
+            balance: number;
+            /**
+             * Balances
+             * @description Owed on each debt, in plan order.
+             */
+            balances: number[];
+        };
+        /**
          * PriceIn
          * @description A price entered by hand.
          */
@@ -2216,6 +2612,12 @@ export interface components {
             ending_balance: number;
         };
         /**
+         * Rollover
+         * @description What happens to the payment of a debt once it is paid off.
+         * @enum {string}
+         */
+        Rollover: "full" | "none" | "partial";
+        /**
          * SaleCostOut
          * @description Cost basis of shares that would be sold.
          */
@@ -2258,6 +2660,43 @@ export interface components {
             description?: string | null;
             /** Notes */
             notes?: string | null;
+            debt?: components["schemas"]["ScheduleDebtIn"] | null;
+        };
+        /**
+         * ScheduleDebtIn
+         * @description Makes a recurring transaction a loan payment.
+         *
+         *     Each occurrence is split into principal and interest when posted. The
+         *     splits must move money from one account into the loan.
+         */
+        ScheduleDebtIn: {
+            /**
+             * Kind
+             * @default loan_payment
+             * @constant
+             */
+            kind: "loan_payment";
+            /**
+             * Account Id
+             * @description The loan.
+             */
+            account_id: number;
+            /**
+             * Interest Category Id
+             * @description Category of the interest; defaults to the loan's.
+             */
+            interest_category_id?: number | null;
+        };
+        /**
+         * ScheduleDebtOut
+         * @description The debt a recurring transaction pays or charges.
+         */
+        ScheduleDebtOut: {
+            kind: components["schemas"]["DebtLinkKind"];
+            /** Account Id */
+            account_id: number;
+            /** Interest Category Id */
+            interest_category_id: number | null;
         };
         /**
          * ScheduleFrequency
@@ -2314,6 +2753,8 @@ export interface components {
             net_amount: number;
             /** Is Finished */
             is_finished: boolean;
+            /** @description The loan or credit card it pays or charges. Credit card interest and minimum payments have no splits: their amounts are predicted for each occurrence. */
+            debt?: components["schemas"]["ScheduleDebtOut"] | null;
         };
         /**
          * SchedulePost
@@ -2334,6 +2775,16 @@ export interface components {
             description?: string | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Amount
+             * @description Loans and credit cards: the total payment or charge instead of the predicted one.
+             */
+            amount?: number | null;
+            /**
+             * From Account Id
+             * @description Loan and minimum payments: the account the money comes from instead of the usual one.
+             */
+            from_account_id?: number | null;
         };
         /**
          * ScheduleUpdate
@@ -2363,6 +2814,8 @@ export interface components {
             description?: string | null;
             /** Notes */
             notes?: string | null;
+            /** @description A loan payment link; `null` removes it. */
+            debt?: components["schemas"]["ScheduleDebtIn"] | null;
         };
         /**
          * SecurityCreate
@@ -5932,6 +6385,320 @@ export interface operations {
             };
             /** @description Conflict with the stored data */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_debts_api_v1_debts_get: {
+        parameters: {
+            query?: {
+                today?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebtStatusOut"][];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    plan_payoff_api_v1_debts_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DebtPlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebtPlansOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    payment_split_api_v1_debts__account_id__payment_split_get: {
+        parameters: {
+            query: {
+                date: string;
+                amount: number;
+                exclude_transaction_id?: number | null;
+            };
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanPaymentSplitOut"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Invalid request or domain rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The identity provider's keys are unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    record_payment_api_v1_debts__account_id__payments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoanPaymentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description The body is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Entity not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict with the stored data */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

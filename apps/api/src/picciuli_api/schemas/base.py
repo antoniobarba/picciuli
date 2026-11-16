@@ -48,6 +48,7 @@ __all__ = [
     "PathCurrency",
     "PathDate",
     "PathId",
+    "Percent",
     "Position",
     "PositiveAmount",
     "PositiveDecimal",
@@ -147,6 +148,21 @@ SignedDecimal = Annotated[
     _decimal_schema(_SIGNED_TEXT, {"exclusiveMinimum": -int(DECIMAL_LIMIT)}),
 ]
 """A share quantity: negative when shares leave the account."""
+_PERCENT_TEXT = rf"[0-9]{{1,4}}(\.[0-9]{{1,{DECIMAL_PLACES}}})?"
+Percent = Annotated[
+    Decimal,
+    Field(ge=0, le=1000, decimal_places=DECIMAL_PLACES),
+    _decimal_text(_PERCENT_TEXT),
+    WithJsonSchema(
+        {
+            "anyOf": [
+                {"type": "string", "pattern": f"^{_PERCENT_TEXT}$"},
+                {"type": "number", "minimum": 0, "maximum": 1000},
+            ]
+        }
+    ),
+]
+"""A percentage such as an interest rate: from 0 to 1000, at most 8 decimals."""
 
 Name = Annotated[str, Field(min_length=1, max_length=MAX_NAME_LENGTH)]
 Text = Annotated[str, Field(max_length=MAX_TEXT_LENGTH)]

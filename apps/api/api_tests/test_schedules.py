@@ -74,6 +74,7 @@ def test_crud(alice: TestClient, ids: dict[str, int]) -> None:
         "kind": "expense",
         "net_amount": -80000,
         "is_finished": False,
+        "debt": None,
     }
     url = f"{API}/schedules/{schedule['id']}"
     assert alice.get(url).json() == schedule
@@ -116,7 +117,7 @@ def test_occurrences_post_and_skip(alice: TestClient, ids: dict[str, int]) -> No
         params={"start": "2025-01-01", "end": "2025-03-31"},
     ).json()
     assert found == [
-        {"schedule_id": bill["id"], "date": day}
+        {"schedule_id": bill["id"], "date": day, "amount": None, "splits": None}
         for day in ("2025-01-10", "2025-02-10", "2025-03-10")
     ]
     too_long = alice.get(

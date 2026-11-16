@@ -13,7 +13,7 @@ import { MoneyFormat } from '../lib/money';
 import { applyMove, type Positioned } from '../lib/reorder';
 import { unwrap, type ApiClient } from './client';
 import { useApi } from './context';
-import type { LatestPrice, Security } from './types';
+import type { DebtPlanIn, LatestPrice, Security } from './types';
 
 /**
  * Every write can change balances, summaries and valuations everywhere, so a
@@ -257,12 +257,57 @@ export function useSchedules() {
 }
 
 /** Days on which active recurring transactions fall between `start` and `end`; disabled when `start > end`. */
-export function useOccurrences(start: Day, end: Day) {
+export function useOccurrences(start: Day, end: Day, enabled = true) {
   const api = useApi();
   return useQuery({
     queryKey: ['occurrences', start, end],
     queryFn: () => unwrap(api.GET('/api/v1/schedules/occurrences', { params: { query: { start, end } } })),
-    enabled: start <= end,
+    enabled: enabled && start <= end,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Open liabilities with debt terms, and when each is paid off at its minimum payment. */
+export function useDebts(today: Day) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['debts', today],
+    queryFn: () => unwrap(api.GET('/api/v1/debts', { params: { query: { today } } })),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The snowball and avalanche plans for the given options. */
+export function useDebtPlans(body: DebtPlanIn, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['debt-plans', body],
+    queryFn: () => unwrap(api.POST('/api/v1/debts/plan', { body })),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** How a payment into a loan divides into interest and principal; disabled without an amount. */
+export function useLoanSplit(
+  accountId: number | null,
+  date: Day | null,
+  amount: number | null,
+  excludeTransactionId?: number | null,
+) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['loan-split', accountId, date, amount, excludeTransactionId ?? null],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/debts/{account_id}/payment-split', {
+          params: {
+            path: { account_id: accountId! },
+            query: { date: date!, amount: amount!, exclude_transaction_id: excludeTransactionId ?? undefined },
+          },
+        }),
+      ),
+    enabled: accountId !== null && date !== null && amount !== null && amount > 0,
     placeholderData: keepPreviousData,
   });
 }

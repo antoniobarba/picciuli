@@ -22,6 +22,7 @@ from picciuli_api.providers import SharedProviders
 from picciuli_api.routers import (
     accounts,
     categories,
+    debts,
     investments,
     periods,
     schedules,
@@ -61,6 +62,11 @@ _TAGS: list[dict[str, Any]] = [
     {
         "name": "schedules",
         "description": "Recurring transactions and catching up on them.",
+    },
+    {
+        "name": "debts",
+        "description": "Debt payoff forecasts, snowball and avalanche plans, "
+        "loan payments.",
     },
     {"name": "periods", "description": "Named ranges of days and their summaries."},
     {"name": "budgets", "description": "Allowances per category and period."},
@@ -175,6 +181,7 @@ def create_app(
         categories.router,
         transactions.router,
         schedules.router,
+        debts.router,
         periods.periods,
         periods.budgets,
         securities.securities,

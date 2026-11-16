@@ -21,6 +21,7 @@ const Budgets = lazy(() => import('../screens/Budgets').then((m) => ({ default: 
 const Investments = lazy(() => import('../screens/Investments').then((m) => ({ default: m.Investments })));
 const Reports = lazy(() => import('../screens/Reports').then((m) => ({ default: m.Reports })));
 const Recurring = lazy(() => import('../screens/Recurring').then((m) => ({ default: m.Recurring })));
+const Debts = lazy(() => import('../screens/Debts').then((m) => ({ default: m.Debts })));
 const Settings = lazy(() => import('../screens/Settings').then((m) => ({ default: m.Settings })));
 
 export function App({ config, manager }: { config: AppConfig; manager: UserManager }) {
@@ -134,6 +135,7 @@ function Authenticated({ config }: { config: AppConfig }) {
                     <Route path="investments" element={<Investments />} />
                     <Route path="reports" element={<Reports />} />
                     <Route path="recurring" element={<Recurring />} />
+                    <Route path="debts" element={<Debts />} />
                     <Route path="settings" element={<Settings />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>

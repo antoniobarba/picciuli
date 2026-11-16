@@ -76,4 +76,9 @@ export const icons = {
       <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" />
     </Icon>
   ),
+  debts: (
+    <Icon>
+      <path d="M4 6h16M4 6v12h16V6M8 10h8M8 14l3 3 5-5" />
+    </Icon>
+  ),
 };

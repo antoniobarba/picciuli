@@ -893,10 +893,19 @@ input[aria-invalid='true'] {
   border-color: var(--negative);
 }
 
-input[type='checkbox'] {
+input[type='checkbox'],
+input[type='radio'] {
   width: auto;
   min-height: 0;
   accent-color: var(--accent);
+}
+
+input[type='range'] {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
 }
 
 .amount-field input,
@@ -1810,6 +1819,237 @@ input[type='checkbox'] {
 .status-pill.failed {
   background: color-mix(in srgb, var(--warning) 15%, transparent);
   color: var(--warning);
+}
+
+/* Debts */
+
+.debt-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.debt-terms legend,
+.rollover-options legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.form-warning {
+  margin: 0;
+  color: var(--warning);
+}
+
+.loan-split {
+  margin: 0;
+  color: var(--muted);
+}
+
+.loan-split.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.debt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.debt-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.debt-owed {
+  font-size: 1.15rem;
+}
+
+.debt-facts {
+  flex: 1;
+  align-content: start;
+}
+
+.debt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.planner-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.extra-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.extra-control input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.extra-control .amount-input {
+  width: 7rem;
+}
+
+.rollover-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.rollover-option {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.rollover-option.active {
+  background: var(--accent-soft);
+}
+
+.rollover-option input {
+  flex: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.rollover-option > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.inline-field .amount-input {
+  width: 4.5rem;
+}
+
+.lump-sums {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lump-sums-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lump-sum {
+  align-items: end;
+}
+
+.plan-results {
+  padding: 0 1rem 1rem;
+}
+
+.plan-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 1rem;
+}
+
+.plan {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.plan h3 {
+  margin: 0;
+}
+
+.plan p {
+  margin: 0.2rem 0 0;
+}
+
+.plan .facts {
+  padding: 0.75rem 0;
+}
+
+.payoff-order {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.payoff-order li > span + span::before {
+  content: ' · ';
+}
+
+.plan-summary {
+  margin: 0.75rem 0 0;
+  font-weight: 600;
+}
+
+.debt-chart {
+  margin: 0.75rem 0 0;
+}
+
+.debt-chart svg {
+  width: 100%;
+  height: 9rem;
+  overflow: visible;
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-line.snowball,
+.legend.snowball::before {
+  stroke: var(--warning);
+  stroke-dasharray: 6 4;
+  background: var(--warning);
+}
+
+.chart-line.avalanche,
+.legend.avalanche::before {
+  stroke: var(--accent);
+  background: var(--accent);
+}
+
+.legend::before {
+  content: '';
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.2rem;
+  margin-right: 0.3rem;
+  vertical-align: middle;
 }
 
 .recurring-list {

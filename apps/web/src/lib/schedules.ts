@@ -178,6 +178,8 @@ export function catchUpMessage(result: CatchUp): string | null {
   }
   const due = result.due.length;
   if (due) parts.push(`${due} recurring transaction${due === 1 ? '' : 's'} to confirm`);
+  const skipped = result.skipped?.length ?? 0;
+  if (skipped) parts.push(`nothing due on ${skipped} card charge${skipped === 1 ? '' : 's'} or payment${skipped === 1 ? '' : 's'}`);
   if (!parts.length) return null;
   const text = parts.join(', ');
   return text.charAt(0).toUpperCase() + text.slice(1);

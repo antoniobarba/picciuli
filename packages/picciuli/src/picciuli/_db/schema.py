@@ -25,7 +25,7 @@ from picciuli.errors import SchemaVersionError
 
 from .tables import Base, MetaRow
 
-SCHEMA_VERSION: Final = 4
+SCHEMA_VERSION: Final = 5
 """Version of the schema created by this library release."""
 
 MigrationStep = Callable[[Connection], None]
@@ -368,10 +368,66 @@ def _upgrade_3_to_4(connection: Connection) -> None:
     )
 
 
+# Schema version 5 adds the interest and payment terms of liabilities
+# (`debt_terms`) and ties schedules to loans and credit cards
+# (`schedule_debts`). It only creates new, empty tables: no existing row is
+# touched, and liabilities simply have no terms yet. Frozen like `_V2_DDL`.
+_V5_DDL: Final = (
+    """CREATE TABLE debt_terms (
+	account_id INTEGER NOT NULL,
+	annual_rate INTEGER NOT NULL,
+	payment INTEGER,
+	payment_percent INTEGER,
+	due_day INTEGER,
+	statement_day INTEGER,
+	credit_limit INTEGER,
+	payment_account_id INTEGER,
+	interest_category_id INTEGER,
+	PRIMARY KEY (account_id),
+	CONSTRAINT ck_debt_terms_rate CHECK (annual_rate >= 0),
+	CONSTRAINT ck_debt_terms_payment CHECK (payment IS NULL OR payment > 0),
+	CONSTRAINT ck_debt_terms_percent CHECK (payment_percent IS NULL OR """
+    """payment_percent > 0),
+	CONSTRAINT ck_debt_terms_due_day CHECK (due_day IS NULL OR due_day """
+    """BETWEEN 1 AND 31),
+	CONSTRAINT ck_debt_terms_statement_day CHECK (statement_day IS NULL OR """
+    """statement_day BETWEEN 1 AND 31),
+	CONSTRAINT ck_debt_terms_limit CHECK (credit_limit IS NULL OR """
+    """credit_limit > 0),
+	CONSTRAINT ck_debt_terms_payment_account CHECK (payment_account_id IS NULL """
+    """OR payment_account_id != account_id),
+	FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+	FOREIGN KEY(payment_account_id) REFERENCES accounts (id) ON DELETE RESTRICT,
+	FOREIGN KEY(interest_category_id) REFERENCES categories (id) ON DELETE RESTRICT
+)""",
+    """CREATE TABLE schedule_debts (
+	schedule_id INTEGER NOT NULL,
+	account_id INTEGER NOT NULL,
+	kind VARCHAR NOT NULL,
+	interest_category_id INTEGER,
+	PRIMARY KEY (schedule_id),
+	CONSTRAINT ck_schedule_debt_kind CHECK (kind IN ('loan_payment', """
+    """'card_interest', 'card_min_payment')),
+	CONSTRAINT ck_schedule_debt_category CHECK (kind = 'loan_payment' OR """
+    """interest_category_id IS NULL),
+	FOREIGN KEY(schedule_id) REFERENCES schedules (id) ON DELETE CASCADE,
+	FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE RESTRICT,
+	FOREIGN KEY(interest_category_id) REFERENCES categories (id) ON DELETE RESTRICT
+)""",
+    "CREATE INDEX ix_schedule_debts_account_id ON schedule_debts (account_id)",
+)
+
+
+def _upgrade_4_to_5(connection: Connection) -> None:
+    for statement in _V5_DDL:
+        connection.exec_driver_sql(statement)
+
+
 MIGRATIONS: Final[Mapping[int, MigrationStep]] = {
     1: _upgrade_1_to_2,
     2: _upgrade_2_to_3,
     3: _upgrade_3_to_4,
+    4: _upgrade_4_to_5,
 }
 """Upgrade steps keyed by the version they upgrade *from* (step `n` -> `n + 1`).
 
