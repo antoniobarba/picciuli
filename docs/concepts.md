@@ -121,7 +121,10 @@ starts, so "start next month" naturally ends the current month.
 - total income and total expenses;
 - each account's opening and closing balance.
 
-Transfers never count as income or expense.
+Transfers never count as income or expense. Income and expenses add up the
+categories by their net flow, so a refund or reimbursement booked in an expense
+category lowers the expenses instead of counting as income. Uncategorized
+splits count one by one, by their sign.
 
 ## Budgets
 

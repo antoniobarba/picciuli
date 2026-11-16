@@ -368,7 +368,12 @@ def ordered_categories(session: Session) -> list[CategoryRow]:
 def external_flows(
     session: Session, start: dt.date, end: dt.date | None
 ) -> tuple[dict[int | None, int], int, int]:
-    """Net external flow by category (None = uncategorized), income and expenses."""
+    """Net external flow by category (None = uncategorized), income and expenses.
+
+    Each category counts by its net flow, so a refund or reimbursement reduces
+    the spending of its category instead of counting as income. Uncategorized
+    splits have nothing in common, so each counts by its own sign.
+    """
     positive = case((SplitRow.amount > 0, SplitRow.amount), else_=0)
     negative = case((SplitRow.amount < 0, SplitRow.amount), else_=0)
     statement = (
@@ -387,9 +392,14 @@ def external_flows(
     by_category: dict[int | None, int] = {}
     income = expenses = 0
     for category_id, *parts in session.execute(statement):
-        by_category[category_id] = _combine(parts[0], parts[1])
-        income += _combine(parts[2], parts[3])
-        expenses += _combine(parts[4], parts[5])
+        net = by_category[category_id] = _combine(parts[0], parts[1])
+        if category_id is None:
+            income += _combine(parts[2], parts[3])
+            expenses += _combine(parts[4], parts[5])
+        elif net > 0:
+            income += net
+        else:
+            expenses += net
     return by_category, income, expenses
 
 

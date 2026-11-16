@@ -567,8 +567,10 @@ class PeriodSummary:
         categories: Every category in display order (top-level categories each
             followed by their subcategories), including those without flows.
         uncategorized: Net flow of external splits without a category.
-        income: Sum of all positive external splits.
-        expenses: Sum of all negative external splits (zero or negative).
+        income: Sum of the categories with a positive net flow, plus the
+            positive uncategorized splits.
+        expenses: Sum of the categories with a negative net flow, plus the
+            negative uncategorized splits (zero or negative).
         accounts: Balance changes of the accounts open during the period.
     """
 

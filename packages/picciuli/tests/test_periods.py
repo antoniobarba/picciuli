@@ -140,6 +140,28 @@ class TestSummary:
         assert old.id not in {c.account.id for c in summary.accounts}
         assert future.id not in {c.account.id for c in summary.accounts}
 
+    def test_refunds_reduce_their_category_spending(
+        self, book: Book, checking: Account, food: Category
+    ) -> None:
+        gifts = book.categories.create("Gifts")
+        salary = book.categories.create("Salary")
+        period = book.periods.create(d(1), end=d(31))
+        book.transactions.record_income(
+            d(1), 3000, account_id=checking.id, category_id=salary.id
+        )
+        book.transactions.record_expense(
+            d(2), 180, account_id=checking.id, category_id=gifts.id
+        )
+        book.transactions.record_income(
+            d(3), 120, account_id=checking.id, category_id=gifts.id
+        )
+        book.transactions.record_income(
+            d(4), 50, account_id=checking.id, category_id=food.id
+        )
+        summary = book.periods.summary(period.id)
+        assert (summary.income, summary.expenses) == (3050, -60)
+        assert summary.net == 2990
+
     def test_open_ended_summary_includes_everything_after_start(
         self, book: Book, checking: Account
     ) -> None:
