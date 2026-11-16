@@ -275,7 +275,6 @@ function SplitEditor({
           <input
             aria-label={`Line ${index + 1} amount`}
             className="amount-input"
-            inputMode="decimal"
             placeholder="±0.00"
             value={line.amount}
             onChange={(e) => setLine(index, { amount: e.target.value })}

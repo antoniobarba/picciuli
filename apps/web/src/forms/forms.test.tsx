@@ -54,6 +54,21 @@ describe('PeriodForm', () => {
       body: { start: '2026-08-01', end: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), name: 'Holiday' },
     });
   });
+
+  it('focuses the first field only when there is no on-screen keyboard to pop up', async () => {
+    const onClose = vi.fn();
+    const { unmount } = renderWithApi(<PeriodForm open onClose={onClose} />, routes);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus());
+    unmount();
+
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }));
+    try {
+      renderWithApi(<PeriodForm open onClose={onClose} />, routes);
+      await waitFor(() => expect(screen.getByRole('dialog')).toHaveFocus());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('TransactionForm', () => {

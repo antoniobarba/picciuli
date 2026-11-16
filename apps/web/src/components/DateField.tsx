@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react';
 import { shortDate, weekday, WEEKDAY_SHORT, type Day } from '../lib/dates';
+import { isTouchScreen } from '../lib/device';
 import { parseDate } from '../lib/forms';
 import { Field } from './forms';
 
@@ -64,7 +65,7 @@ export function DateField({ label, value, onChange, today, placeholder, hint, au
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             autoComplete="off"
-            autoFocus={autoFocus}
+            autoFocus={autoFocus && !isTouchScreen()}
             aria-invalid={invalid || undefined}
           />
           <button type="button" className="icon-button" onClick={openPicker} aria-label="Pick a date" tabIndex={-1}>

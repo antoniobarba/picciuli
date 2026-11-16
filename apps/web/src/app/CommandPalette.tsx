@@ -50,7 +50,6 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
             setIndex(0);
           }}
           onKeyDown={onKeyDown}
-          autoFocus
         />
         <ul role="listbox" aria-label="Commands">
           {matches.map((command, i) => (

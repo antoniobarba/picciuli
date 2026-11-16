@@ -43,8 +43,9 @@ export function TextField({ label, value, onChange, hint, className, ...rest }: 
   );
 }
 
+/** Amounts can be negative, and phone number pads have no minus key, so this keeps the full keyboard. */
 export function AmountField(props: InputProps) {
-  return <TextField inputMode="decimal" placeholder="0.00" className="amount-field" {...props} />;
+  return <TextField placeholder="0.00" className="amount-field" {...props} />;
 }
 
 export interface Option<T extends string | number> {

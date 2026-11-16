@@ -1,5 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import type { ReactNode } from 'react';
+import { isTouchScreen } from '../lib/device';
 
 export interface ModalProps {
   open: boolean;
@@ -19,8 +20,14 @@ export function Modal({ open, onClose, title, description, wide, children }: Mod
         <Dialog.Content
           className={`dialog${wide ? ' dialog-wide' : ''}`}
           onOpenAutoFocus={(event) => {
-            // Focus the first field rather than the close button.
             const content = event.currentTarget as HTMLElement;
+            if (isTouchScreen()) {
+              // Keep the on-screen keyboard closed until a field is tapped.
+              event.preventDefault();
+              content.focus();
+              return;
+            }
+            // Focus the first field rather than the close button.
             const target =
               content.querySelector<HTMLElement>('[data-autofocus]') ??
               content.querySelector<HTMLElement>('input:not([type=hidden]):not([tabindex="-1"]), select, textarea');

@@ -159,7 +159,6 @@ export function FindSecurity({ onClose, onFound }: { onClose: () => void; onFoun
           placeholder="Name, symbol or ISIN, e.g. VWCE or IE00BK5BQT80"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          autoFocus
         />
         <button type="submit" className="button primary" disabled={!text.trim()}>
           Search
